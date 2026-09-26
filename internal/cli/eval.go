@@ -14,6 +14,7 @@ import (
 	"jevlint/internal/config"
 	"jevlint/internal/evals"
 	"jevlint/internal/evaluation"
+	"jevlint/internal/packs"
 	"jevlint/internal/parsing"
 )
 
@@ -25,12 +26,13 @@ type evalOptions struct {
 
 // evalContext holds the settings that shape an eval.
 type evalContext struct {
-	configPath  string
-	evalsPath   string
-	ruleID      string
-	concurrency int
-	cache       cacheMode
-	verbose     bool
+	configPath   string
+	evalsPath    string
+	ruleID       string
+	includePacks bool
+	concurrency  int
+	cache        cacheMode
+	verbose      bool
 }
 
 // parseEvalOptions reads the eval flags.
@@ -46,6 +48,7 @@ func parseEvalOptions(args []string, stderr io.Writer) (evalOptions, int, bool) 
 	concurrency := flags.Int("concurrency", defaultCheckConcurrency, "maximum concurrent Jev requests")
 	evalsPath := flags.String("evals", "", "eval cases")
 	format := flags.String("format", "text", "output format")
+	includePacks := flags.Bool("packs", false, "also run pack evals")
 	refreshCache := flags.Bool("refresh-cache", false, "refresh cached evaluations")
 	ruleID := flags.String("rule", "", "evaluate only this rule")
 	verbose := flags.Bool("verbose", false, "show per-unit Jev decisions")
@@ -90,12 +93,13 @@ func parseEvalOptions(args []string, stderr io.Writer) (evalOptions, int, bool) 
 			color:  parsedColor,
 		},
 		eval: evalContext{
-			configPath:  *configPath,
-			evalsPath:   *evalsPath,
-			ruleID:      *ruleID,
-			concurrency: *concurrency,
-			cache:       mode,
-			verbose:     *verbose,
+			configPath:   *configPath,
+			evalsPath:    *evalsPath,
+			ruleID:       *ruleID,
+			includePacks: *includePacks,
+			concurrency:  *concurrency,
+			cache:        mode,
+			verbose:      *verbose,
 		},
 	}, exitSuccess, true
 }
@@ -108,7 +112,11 @@ func executeEval(
 	stderr io.Writer,
 	userCacheDir func() (string, error),
 ) int {
-	absoluteConfig, cfg, extractor, exitCode := loadProject(options.eval.configPath, stderr)
+	absoluteConfig, cfg, extractor, loadedPacks, exitCode := loadProject(
+		options.eval.configPath,
+		stderr,
+		userCacheDir,
+	)
 	if exitCode != 0 {
 		return exitCode
 	}
@@ -121,6 +129,13 @@ func executeEval(
 	)
 	if exitCode != 0 {
 		return exitCode
+	}
+	if options.eval.includePacks {
+		packDocument, packExit := loadPackEvalDocuments(loadedPacks, cfg, extractor, stderr)
+		if packExit != 0 {
+			return packExit
+		}
+		document = document.Concat(packDocument)
 	}
 	document, err := document.FilterRule(options.eval.ruleID)
 	if err != nil {
@@ -204,6 +219,32 @@ func writeEvalJSON(writer io.Writer, report evals.Report, verbose bool) error {
 		report = stripUnits(report)
 	}
 	return encoder.Encode(report)
+}
+
+func loadPackEvalDocuments(
+	loadedPacks []packs.Loaded,
+	cfg config.Config,
+	extractor *parsing.Extractor,
+	stderr io.Writer,
+) (evals.Document, int) {
+	combined := evals.Document{Version: 1}
+	for _, pack := range loadedPacks {
+		path := pack.EvalPath()
+		if _, err := os.Stat(path); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			fmt.Fprintf(stderr, "jevlint: %v\n", err)
+			return evals.Document{}, exitUsageError
+		}
+		document, err := evals.Load(path, cfg, extractor)
+		if err != nil {
+			fmt.Fprintf(stderr, "jevlint: %v\n", err)
+			return evals.Document{}, exitUsageError
+		}
+		combined = combined.Concat(document)
+	}
+	return combined, exitSuccess
 }
 
 // streamPrinter prints unit decisions and case results as they arrive.
