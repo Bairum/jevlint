@@ -92,6 +92,10 @@ customize a preset, but it cannot load an arbitrary external grammar.
   up to 24 regions per function or type.
 - `minConfidence`: optional `0`–`1`. Omit or `0` uses every Jev result. Failures
   below the minimum are not reported.
+- `allowSkip`: let Jev answer `skip` when the rule does not apply to the unit.
+  Skip is not a finding.
+- `allowAbstain`: let Jev answer `abstain` when the rule applies but there is
+  not enough context to decide. Abstain is not a finding.
 
 ## How it works
 

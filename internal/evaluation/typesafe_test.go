@@ -222,6 +222,12 @@ func TestTypeSafeCacheKeyTracksExactEvaluationInput(t *testing.T) {
 		"batch membership": func(batch *Batch) {
 			batch.Rules = batch.Rules[:1]
 		},
+		"allowSkip": func(batch *Batch) {
+			batch.Rules[0].AllowSkip = true
+		},
+		"allowAbstain": func(batch *Batch) {
+			batch.Rules[0].AllowAbstain = true
+		},
 	}
 	for name, mutate := range mutations {
 		name, mutate := name, mutate
@@ -537,6 +543,75 @@ func TestTypeSafeEvaluateReplacesIncompleteCachedBatch(t *testing.T) {
 	}
 	if got := requests.Load(); got != 1 {
 		t.Fatalf("HTTP requests = %d, want 1", got)
+	}
+}
+
+func TestTypeSafeSkipAndAbstainCriteria(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var payload systemOneRequest
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		joins := payload.Questions["database-joins"].Criteria
+		if joins.Skip != criterionSkip || joins.Abstain != "" {
+			t.Errorf("database-joins criteria = %#v", joins)
+		}
+		semicolons := payload.Questions["semicolons"].Criteria
+		if semicolons.Skip != "" || semicolons.Abstain != criterionAbstain {
+			t.Errorf("semicolons criteria = %#v", semicolons)
+		}
+		fmt.Fprint(writer, `{
+			"answers": {
+				"database-joins": {"type": "choice", "choice": "skip", "confidence": 0.9},
+				"semicolons": {"type": "choice", "choice": "abstain", "confidence": 0.8}
+			}
+		}`)
+	}))
+	defer server.Close()
+
+	batch := testBatch()
+	batch.Rules[0].AllowSkip = true
+	batch.Rules[1].AllowAbstain = true
+	client := newTestClient(t, server, nil)
+	results, err := client.Evaluate(context.Background(), batch)
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+	if results["database-joins"].Status != StatusSkip {
+		t.Fatalf("database-joins = %#v", results["database-joins"])
+	}
+	if results["semicolons"].Status != StatusAbstain {
+		t.Fatalf("semicolons = %#v", results["semicolons"])
+	}
+}
+
+func TestTypeSafeRejectsDisallowedSkipAndAbstain(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"skip":    "skip",
+		"abstain": "abstain",
+	}
+	for name, choice := range tests {
+		name, choice := name, choice
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				fmt.Fprintf(writer, `{
+					"answers": {
+						"database-joins": {"type": "choice", "choice": %q, "confidence": 0.9},
+						"semicolons": {"type": "choice", "choice": "pass", "confidence": 0.9}
+					}
+				}`, choice)
+			}))
+			defer server.Close()
+			client := newTestClient(t, server, nil)
+			if _, err := client.Evaluate(context.Background(), testBatch()); err == nil {
+				t.Fatal("Evaluate() error = nil")
+			}
+		})
 	}
 }
 

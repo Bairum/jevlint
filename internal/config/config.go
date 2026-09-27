@@ -25,14 +25,16 @@ type Language struct {
 }
 
 type Rule struct {
-	ID          string       `json:"id"`
-	Description string       `json:"description"`
-	Severity    Severity     `json:"severity"`
-	Include     []string     `json:"include,omitempty"`
-	Exclude     []string     `json:"exclude,omitempty"`
-	Exceptions  []string     `json:"exceptions,omitempty"`
-	Kinds       []TargetKind `json:"kinds,omitempty"`
-	Localize    []TargetKind `json:"localize,omitempty"`
+	ID           string       `json:"id"`
+	Description  string       `json:"description"`
+	Severity     Severity     `json:"severity"`
+	Include      []string     `json:"include,omitempty"`
+	Exclude      []string     `json:"exclude,omitempty"`
+	Exceptions   []string     `json:"exceptions,omitempty"`
+	Kinds        []TargetKind `json:"kinds,omitempty"`
+	Localize     []TargetKind `json:"localize,omitempty"`
+	AllowSkip    bool         `json:"allowSkip,omitempty"`
+	AllowAbstain bool         `json:"allowAbstain,omitempty"`
 }
 
 type TargetKind int
