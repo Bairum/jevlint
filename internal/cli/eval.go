@@ -13,6 +13,7 @@ import (
 	"jevlint/internal/config"
 	"jevlint/internal/evals"
 	"jevlint/internal/evaluation"
+	"jevlint/internal/packs"
 	"jevlint/internal/parsing"
 )
 
@@ -22,11 +23,12 @@ type evalOptions struct {
 }
 
 type evalContext struct {
-	configPath  string
-	evalsPath   string
-	ruleID      string
-	concurrency int
-	cache       cacheMode
+	configPath   string
+	evalsPath    string
+	ruleID       string
+	includePacks bool
+	concurrency  int
+	cache        cacheMode
 }
 
 func parseEvalOptions(args []string, stderr io.Writer) (evalOptions, int, bool) {
@@ -41,6 +43,7 @@ func parseEvalOptions(args []string, stderr io.Writer) (evalOptions, int, bool) 
 	concurrency := flags.Int("concurrency", defaultCheckConcurrency, "maximum concurrent Jev requests")
 	evalsPath := flags.String("evals", "", "eval cases")
 	format := flags.String("format", "text", "output format")
+	includePacks := flags.Bool("packs", false, "also run pack evals")
 	refreshCache := flags.Bool("refresh-cache", false, "refresh cached evaluations")
 	ruleID := flags.String("rule", "", "evaluate only this rule")
 	flagArgs, leftover, err := splitFlagsAndPaths(flags, args)
@@ -84,11 +87,12 @@ func parseEvalOptions(args []string, stderr io.Writer) (evalOptions, int, bool) 
 			color:  parsedColor,
 		},
 		eval: evalContext{
-			configPath:  *configPath,
-			evalsPath:   *evalsPath,
-			ruleID:      *ruleID,
-			concurrency: *concurrency,
-			cache:       mode,
+			configPath:   *configPath,
+			evalsPath:    *evalsPath,
+			ruleID:       *ruleID,
+			includePacks: *includePacks,
+			concurrency:  *concurrency,
+			cache:        mode,
 		},
 	}, exitSuccess, true
 }
@@ -100,7 +104,11 @@ func executeEval(
 	stderr io.Writer,
 	userCacheDir func() (string, error),
 ) int {
-	absoluteConfig, cfg, extractor, exitCode := loadProject(options.eval.configPath, stderr)
+	absoluteConfig, cfg, extractor, loadedPacks, exitCode := loadProject(
+		options.eval.configPath,
+		stderr,
+		userCacheDir,
+	)
 	if exitCode != 0 {
 		return exitCode
 	}
@@ -113,6 +121,13 @@ func executeEval(
 	)
 	if exitCode != 0 {
 		return exitCode
+	}
+	if options.eval.includePacks {
+		packDocument, packExit := loadPackEvalDocuments(loadedPacks, cfg, extractor, stderr)
+		if packExit != 0 {
+			return packExit
+		}
+		document = document.Concat(packDocument)
 	}
 	document, err := document.FilterRule(options.eval.ruleID)
 	if err != nil {
@@ -181,6 +196,32 @@ func loadEvalDocument(
 		return evals.Document{}, exitUsageError
 	}
 	return document, exitSuccess
+}
+
+func loadPackEvalDocuments(
+	loadedPacks []packs.Loaded,
+	cfg config.Config,
+	extractor *parsing.Extractor,
+	stderr io.Writer,
+) (evals.Document, int) {
+	combined := evals.Document{Version: 1}
+	for _, pack := range loadedPacks {
+		path := pack.EvalPath()
+		if _, err := os.Stat(path); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			fmt.Fprintf(stderr, "jevlint: %v\n", err)
+			return evals.Document{}, exitUsageError
+		}
+		document, err := evals.Load(path, cfg, extractor)
+		if err != nil {
+			fmt.Fprintf(stderr, "jevlint: %v\n", err)
+			return evals.Document{}, exitUsageError
+		}
+		combined = combined.Concat(document)
+	}
+	return combined, exitSuccess
 }
 
 func writeEvalReport(

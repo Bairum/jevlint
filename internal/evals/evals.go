@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	DefaultFile    = "jevlint-evals.json"
+	DefaultFile    = "evals.json"
 	currentVersion = 1
 	expectPassName = "pass"
 	expectFailName = "fail"
@@ -120,6 +120,14 @@ func Load(
 		}
 	}
 	return document, nil
+}
+
+func (document Document) Concat(others ...Document) Document {
+	combined := Document{Version: document.Version, Cases: append([]Case{}, document.Cases...)}
+	for _, other := range others {
+		combined.Cases = append(combined.Cases, other.Cases...)
+	}
+	return combined
 }
 
 func (document Document) FilterRule(ruleID string) (Document, error) {

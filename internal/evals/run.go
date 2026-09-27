@@ -102,7 +102,7 @@ func runCase(
 		Expected:   evalCase.Expect,
 		Actual:     actual,
 		Matched:    evalCase.Expect == actual,
-		Confidence: recorder.reportableConfidence(evalCase.Rule, cfg.MinimumConfidence()),
+		Confidence: recorder.reportableConfidence(evalCase.Rule, cfg.ConfidenceFloor(rule)),
 	}
 	return result, nil
 }
