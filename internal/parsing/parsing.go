@@ -25,6 +25,9 @@ type CodeUnit struct {
 	StartByte    uint              `json:"startByte"`
 	EndByte      uint              `json:"endByte"`
 	RelatedTypes []TypeDeclaration `json:"types,omitempty"`
+	Callees      []CalleeContext   `json:"callees,omitempty"`
+	CallRefs     []CallRef         `json:"-"`
+	Resolved     []CalleeContext   `json:"-"`
 	Regions      []Region          `json:"-"`
 }
 
@@ -229,6 +232,7 @@ type languageSpec struct {
 	functionQuery    *tree_sitter.Query
 	typeQuery        *tree_sitter.Query
 	typeContextQuery *tree_sitter.Query
+	callQuery        *tree_sitter.Query
 	regionKinds      map[string]CodeKind
 }
 
@@ -272,6 +276,7 @@ func (extractor *Extractor) Extract(path string, source []byte) ([]CodeUnit, err
 		"function",
 		CodeKindFunction,
 	)
+	attachCallRefs(spec, source, root, functions)
 	types := extractMatches(
 		spec,
 		path,
@@ -630,6 +635,14 @@ const javascriptTypeQuery = `
   name: (identifier) @name) @type
 `
 
+const javascriptCallQuery = `
+(call_expression
+  function: [
+    (identifier) @call
+    (member_expression) @call
+  ])
+`
+
 const typescriptTypeQuery = `
 (class_declaration
   name: (type_identifier) @name) @type
@@ -657,6 +670,14 @@ const pythonTypeQuery = `
   name: (identifier) @name) @type
 `
 
+const pythonCallQuery = `
+(call
+  function: [
+    (identifier) @call
+    (attribute) @call
+  ])
+`
+
 const goFunctionQuery = `
 (function_declaration
   name: (identifier) @name) @function
@@ -675,9 +696,26 @@ const goTypeQuery = `
     name: (type_identifier) @name)) @type
 `
 
+const goCallQuery = `
+(call_expression
+  function: [
+    (identifier) @call
+    (selector_expression) @call
+  ])
+`
+
 const rustFunctionQuery = `
 (function_item
   name: (identifier) @name) @function
+`
+
+const rustCallQuery = `
+(call_expression
+  function: [
+    (identifier) @call
+    (field_expression) @call
+    (scoped_identifier) @call
+  ])
 `
 
 const rustTypeQuery = `

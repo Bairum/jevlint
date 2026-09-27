@@ -68,6 +68,13 @@ func TestTypeSafeEvaluateBatchesRules(t *testing.T) {
 			if !ok || len(types) != 1 {
 				t.Errorf("state types = %#v", state["types"])
 			}
+			for _, key := range []string{
+				"startLine", "endLine", "startColumn", "endColumn", "startByte", "endByte",
+			} {
+				if _, exists := state[key]; exists {
+					t.Errorf("state includes %s = %#v", key, state[key])
+				}
+			}
 		}
 		if !strings.Contains(payload.Questions["database-joins"].Instructions, "different databases") {
 			t.Errorf("instructions = %q", payload.Questions["database-joins"].Instructions)
@@ -199,12 +206,25 @@ func TestTypeSafeCacheKeyTracksExactEvaluationInput(t *testing.T) {
 		t.Fatal("source change did not change cache key")
 	}
 
+	locationOnly := testBatch()
+	locationOnly.CodeUnit.StartLine++
+	locationOnly.CodeUnit.EndLine++
+	locationOnly.CodeUnit.StartColumn++
+	locationOnly.CodeUnit.StartByte++
+	if locationOnly.CodeUnit.RelatedTypes != nil {
+		locationOnly.CodeUnit.RelatedTypes[0].StartLine++
+	}
+	locationBody, err := client.requestBody(locationOnly)
+	if err != nil {
+		t.Fatalf("requestBody() error = %v", err)
+	}
+	if locationKey := client.cacheKey(locationBody); locationKey != key {
+		t.Fatal("span-only change changed cache key")
+	}
+
 	mutations := map[string]func(*Batch){
 		"path": func(batch *Batch) {
 			batch.CodeUnit.Path = "other.go"
-		},
-		"location": func(batch *Batch) {
-			batch.CodeUnit.StartLine++
 		},
 		"related type": func(batch *Batch) {
 			batch.CodeUnit.RelatedTypes[0].Source = "type User struct{ ID int }"
@@ -227,6 +247,15 @@ func TestTypeSafeCacheKeyTracksExactEvaluationInput(t *testing.T) {
 		},
 		"allowAbstain": func(batch *Batch) {
 			batch.Rules[0].AllowAbstain = true
+		},
+		"callee context": func(batch *Batch) {
+			batch.CodeUnit.Callees = []parsing.CalleeContext{{
+				Name:      "loadUsers",
+				Path:      "users.go",
+				Source:    "func loadUsers() {}",
+				StartLine: 20,
+				EndLine:   20,
+			}}
 		},
 	}
 	for name, mutate := range mutations {

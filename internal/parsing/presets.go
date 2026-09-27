@@ -30,6 +30,7 @@ const (
 	queryFunction queryKind = iota
 	queryType
 	queryTypeContext
+	queryCall
 )
 
 type languageQueries map[queryKind][]string
@@ -90,6 +91,9 @@ func closeLanguageQueries(specs ...languageSpec) {
 		}
 		if spec.typeContextQuery != nil {
 			spec.typeContextQuery.Close()
+		}
+		if spec.callQuery != nil {
+			spec.callQuery.Close()
 		}
 	}
 }
@@ -165,6 +169,19 @@ func configuredLanguage(
 			return languageSpec{}, nil, err
 		}
 	}
+	var callQuery *tree_sitter.Query
+	callSource := strings.Join(preset.queries[queryCall], "\n\n")
+	if callSource != "" {
+		callQuery, err = validateCallQuery(preset.name, preset.language, callSource)
+		if err != nil {
+			functionQuery.Close()
+			typeQuery.Close()
+			if typeContextQuery != nil {
+				typeContextQuery.Close()
+			}
+			return languageSpec{}, nil, err
+		}
+	}
 	return languageSpec{
 		name:             preset.name,
 		id:               languageID,
@@ -172,6 +189,7 @@ func configuredLanguage(
 		functionQuery:    functionQuery,
 		typeQuery:        typeQuery,
 		typeContextQuery: typeContextQuery,
+		callQuery:        callQuery,
 		regionKinds:      regionKinds,
 	}, extensions, nil
 }
@@ -241,6 +259,28 @@ func validateConfiguredQuery(
 	return query, nil
 }
 
+func validateCallQuery(
+	languageName string,
+	language *tree_sitter.Language,
+	source string,
+) (*tree_sitter.Query, error) {
+	query, queryError := newQuery(language, source)
+	if queryError != nil {
+		return nil, fmt.Errorf(
+			"compile %s call query: %s",
+			languageName,
+			queryError.Message,
+		)
+	}
+	for _, capture := range query.CaptureNames() {
+		if capture == "call" {
+			return query, nil
+		}
+	}
+	query.Close()
+	return nil, fmt.Errorf("%s call query must capture @call", languageName)
+}
+
 func languagePresets() map[string]languagePreset {
 	typescriptComments := []string{"comment"}
 	typescriptFields := []string{
@@ -263,6 +303,7 @@ func languagePresets() map[string]languagePreset {
 			queries: languageQueries{
 				queryFunction: []string{javascriptFunctionQuery},
 				queryType:     []string{javascriptTypeQuery},
+				queryCall:     []string{javascriptCallQuery},
 			},
 			regions: map[CodeKind][]string{
 				CodeKindComment: []string{"comment"},
@@ -283,6 +324,7 @@ func languagePresets() map[string]languagePreset {
 			queries: languageQueries{
 				queryFunction: []string{javascriptFunctionQuery},
 				queryType:     []string{typescriptTypeQuery},
+				queryCall:     []string{javascriptCallQuery},
 			},
 			regions: map[CodeKind][]string{
 				CodeKindComment:   typescriptComments,
@@ -297,6 +339,7 @@ func languagePresets() map[string]languagePreset {
 			queries: languageQueries{
 				queryFunction: []string{javascriptFunctionQuery},
 				queryType:     []string{typescriptTypeQuery},
+				queryCall:     []string{javascriptCallQuery},
 			},
 			regions: map[CodeKind][]string{
 				CodeKindComment:   typescriptComments,
@@ -311,6 +354,7 @@ func languagePresets() map[string]languagePreset {
 			queries: languageQueries{
 				queryFunction: []string{pythonFunctionQuery},
 				queryType:     []string{pythonTypeQuery},
+				queryCall:     []string{pythonCallQuery},
 			},
 			regions: map[CodeKind][]string{
 				CodeKindComment: []string{"comment"},
@@ -332,6 +376,7 @@ func languagePresets() map[string]languagePreset {
 			queries: languageQueries{
 				queryFunction: []string{goFunctionQuery},
 				queryType:     []string{goTypeQuery},
+				queryCall:     []string{goCallQuery},
 			},
 			regions: map[CodeKind][]string{
 				CodeKindComment: []string{"comment"},
@@ -357,6 +402,7 @@ func languagePresets() map[string]languagePreset {
 				queryFunction:    []string{rustFunctionQuery},
 				queryType:        []string{rustTypeQuery},
 				queryTypeContext: []string{rustImplQuery},
+				queryCall:        []string{rustCallQuery},
 			},
 			regions: map[CodeKind][]string{
 				CodeKindComment: []string{"block_comment", "line_comment"},
@@ -375,6 +421,7 @@ func languagePresets() map[string]languagePreset {
 			queries: languageQueries{
 				queryFunction: []string{javaFunctionQuery},
 				queryType:     []string{javaTypeQuery},
+				queryCall:     []string{javaCallQuery},
 			},
 			regions: map[CodeKind][]string{
 				CodeKindComment: []string{"line_comment", "block_comment"},
@@ -395,6 +442,7 @@ func languagePresets() map[string]languagePreset {
 			queries: languageQueries{
 				queryFunction: []string{csharpFunctionQuery},
 				queryType:     []string{csharpTypeQuery},
+				queryCall:     []string{csharpCallQuery},
 			},
 			regions: map[CodeKind][]string{
 				CodeKindComment: []string{"comment"},
@@ -419,6 +467,7 @@ func languagePresets() map[string]languagePreset {
 			queries: languageQueries{
 				queryFunction: []string{rubyFunctionQuery},
 				queryType:     []string{rubyTypeQuery},
+				queryCall:     []string{rubyCallQuery},
 			},
 			regions: map[CodeKind][]string{
 				CodeKindComment:   []string{"comment"},
@@ -433,6 +482,7 @@ func languagePresets() map[string]languagePreset {
 			queries: languageQueries{
 				queryFunction: []string{phpFunctionQuery},
 				queryType:     []string{phpTypeQuery},
+				queryCall:     []string{phpCallQuery},
 			},
 			regions: map[CodeKind][]string{
 				CodeKindComment: []string{"comment"},
@@ -466,6 +516,7 @@ func languagePresets() map[string]languagePreset {
 			queries: languageQueries{
 				queryFunction: []string{cFunctionQuery},
 				queryType:     []string{cTypeQuery},
+				queryCall:     []string{cCallQuery},
 			},
 			regions: map[CodeKind][]string{
 				CodeKindComment: []string{"comment"},
@@ -485,6 +536,7 @@ func languagePresets() map[string]languagePreset {
 			queries: languageQueries{
 				queryFunction: []string{cppFunctionQuery},
 				queryType:     []string{cppTypeQuery},
+				queryCall:     []string{cppCallQuery},
 			},
 			regions: map[CodeKind][]string{
 				CodeKindComment: []string{"comment"},
@@ -529,6 +581,11 @@ const javaTypeQuery = `
   name: (identifier) @name) @type
 `
 
+const javaCallQuery = `
+(method_invocation
+  name: (identifier) @call)
+`
+
 const csharpFunctionQuery = `
 (method_declaration
   name: (identifier) @name) @function
@@ -563,6 +620,14 @@ const csharpTypeQuery = `
   name: (identifier) @name) @type
 `
 
+const csharpCallQuery = `
+(invocation_expression
+  function: [
+    (identifier) @call
+    (member_access_expression) @call
+  ])
+`
+
 const rubyFunctionQuery = `
 (method
   name: (_) @name) @function
@@ -585,6 +650,11 @@ const rubyTypeQuery = `
          (scope_resolution name: (_) @name)]) @type
 `
 
+const rubyCallQuery = `
+(call
+  method: (identifier) @call)
+`
+
 const phpFunctionQuery = `
 (function_definition
   name: (name) @name) @function
@@ -605,6 +675,17 @@ const phpTypeQuery = `
 
 (enum_declaration
   name: (name) @name) @type
+`
+
+const phpCallQuery = `
+(function_call_expression
+  function: (name) @call)
+
+(scoped_call_expression
+  name: (name) @call)
+
+(member_call_expression
+  name: (name) @call)
 `
 
 const kotlinFunctionQuery = `
@@ -651,6 +732,14 @@ const cTypeQuery = `
   declarator: (type_identifier) @name) @type
 `
 
+const cCallQuery = `
+(call_expression
+  function: [
+    (identifier) @call
+    (field_expression) @call
+  ])
+`
+
 const cppFunctionQuery = `
 (function_definition
   declarator: (function_declarator
@@ -687,4 +776,13 @@ const cppTypeQuery = `
 
 (alias_declaration
   name: (type_identifier) @name) @type
+`
+
+const cppCallQuery = `
+(call_expression
+  function: [
+    (identifier) @call
+    (field_expression) @call
+    (qualified_identifier) @call
+  ])
 `

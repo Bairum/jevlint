@@ -219,71 +219,122 @@ func (runner Runner) planEvaluations(
 	files []string,
 	sourceOverlay map[string][]byte,
 ) (Report, []evaluationJob, error) {
-	report := Report{Findings: make([]Finding, 0)}
-	jobs := make([]evaluationJob, 0)
+	needCallees := rulesWantCallees(cfg.Rules)
+	extracted := make([]plannedFile, 0, len(files))
 	for _, file := range files {
 		if err := ctx.Err(); err != nil {
 			return Report{}, nil, err
 		}
-		fileJobs, codeUnits, scanned, err := runner.planFile(
+		planned, err := runner.extractFile(
 			cfg,
 			root,
 			file,
 			sourceOverlay,
+			needCallees,
 		)
 		if err != nil {
 			return Report{}, nil, err
 		}
-		if scanned {
-			report.ScannedFiles++
-			relative, relErr := relativeProjectPath(root, file)
-			if relErr != nil {
-				return Report{}, nil, relErr
-			}
-			report.SourcePaths = append(report.SourcePaths, relative)
+		if planned.relative == "" {
+			continue
 		}
-		report.CodeUnits += codeUnits
-		jobs = append(jobs, fileJobs...)
+		extracted = append(extracted, planned)
+	}
+	if needCallees {
+		parsing.ResolveCallees(functionUnits(extracted))
+	}
+
+	report := Report{Findings: make([]Finding, 0)}
+	jobs := make([]evaluationJob, 0)
+	for _, planned := range extracted {
+		if len(planned.applicable) == 0 {
+			continue
+		}
+		report.ScannedFiles++
+		report.SourcePaths = append(report.SourcePaths, planned.relative)
+		report.CodeUnits += len(planned.units)
+		jobs = append(jobs, jobsForUnits(planned.units, planned.applicable)...)
 	}
 	return report, jobs, nil
 }
 
-func (runner Runner) planFile(
+type plannedFile struct {
+	relative   string
+	units      []parsing.CodeUnit
+	applicable []config.Rule
+}
+
+func (runner Runner) extractFile(
 	cfg config.Config,
 	root string,
 	file string,
 	sourceOverlay map[string][]byte,
-) ([]evaluationJob, int, bool, error) {
+	needCallees bool,
+) (plannedFile, error) {
 	relative, err := relativeProjectPath(root, file)
 	if err != nil {
-		return nil, 0, false, err
+		return plannedFile{}, err
 	}
 	applicable := make([]config.Rule, 0, len(cfg.Rules))
 	for _, rule := range cfg.Rules {
 		applies, err := scoping.Applies(rule, relative)
 		if err != nil {
-			return nil, 0, false, err
+			return plannedFile{}, err
 		}
 		if applies {
 			applicable = append(applicable, rule)
 		}
 	}
-	if len(applicable) == 0 {
-		return nil, 0, false, nil
+	if len(applicable) == 0 && !needCallees {
+		return plannedFile{}, nil
 	}
 	source, err := readOverlayOrFile(file, relative, sourceOverlay)
 	if err != nil {
-		return nil, 0, false, err
+		if len(applicable) == 0 {
+			return plannedFile{}, nil
+		}
+		return plannedFile{}, err
 	}
 	units, err := runner.Extractor.Extract(relative, source)
 	if err != nil {
-		return nil, 0, false, err
+		if len(applicable) == 0 {
+			return plannedFile{}, nil
+		}
+		return plannedFile{}, err
 	}
-	requested := requestedRegionKinds(applicable)
-	if len(requested) > 0 {
-		units = expandUnitsWithRegions(units, selectClosestRegions(units, requested))
+	if len(applicable) > 0 {
+		requested := requestedRegionKinds(applicable)
+		if len(requested) > 0 {
+			units = expandUnitsWithRegions(units, selectClosestRegions(units, requested))
+		}
 	}
-	return jobsForUnits(units, applicable), len(units), true, nil
+	return plannedFile{
+		relative:   relative,
+		units:      units,
+		applicable: applicable,
+	}, nil
+}
+
+func functionUnits(files []plannedFile) []*parsing.CodeUnit {
+	functions := make([]*parsing.CodeUnit, 0)
+	for fileIndex := range files {
+		for unitIndex := range files[fileIndex].units {
+			unit := &files[fileIndex].units[unitIndex]
+			if unit.Kind == parsing.CodeKindFunction {
+				functions = append(functions, unit)
+			}
+		}
+	}
+	return functions
+}
+
+func rulesWantCallees(rules []config.Rule) bool {
+	for _, rule := range rules {
+		if rule.Context.Callees {
+			return true
+		}
+	}
+	return false
 }
 
 func relativeProjectPath(root string, file string) (string, error) {
@@ -316,14 +367,23 @@ func readOverlayOrFile(
 func jobsForUnits(units []parsing.CodeUnit, rules []config.Rule) []evaluationJob {
 	jobs := make([]evaluationJob, 0, len(units))
 	for _, unit := range units {
-		unitRules := make([]config.Rule, 0, len(rules))
+		ordinary := make([]config.Rule, 0, len(rules))
+		enriched := make([]config.Rule, 0, len(rules))
 		for _, rule := range rules {
-			if appliesToKind(rule, unit.Kind) {
-				unitRules = append(unitRules, rule)
+			if !appliesToKind(rule, unit.Kind) {
+				continue
 			}
+			if rule.Context.Callees {
+				enriched = append(enriched, rule)
+				continue
+			}
+			ordinary = append(ordinary, rule)
 		}
-		if len(unitRules) > 0 {
-			jobs = append(jobs, evaluationJob{rules: unitRules, unit: unit})
+		if len(ordinary) > 0 {
+			jobs = append(jobs, evaluationJob{rules: ordinary, unit: unit})
+		}
+		if len(enriched) > 0 {
+			jobs = append(jobs, evaluationJob{rules: enriched, unit: unit})
 		}
 	}
 	return jobs
@@ -556,7 +616,7 @@ func evaluateJob(
 ) (evaluationOutcome, error) {
 	results, err := evaluator.Evaluate(ctx, evaluation.Batch{
 		Rules:    job.rules,
-		CodeUnit: job.unit,
+		CodeUnit: requestUnit(job),
 	})
 	if err != nil {
 		return evaluationOutcome{}, fmt.Errorf(
@@ -634,6 +694,13 @@ func directUnitLocations(unit parsing.CodeUnit) []Location {
 	}}
 }
 
+func requestUnit(job evaluationJob) parsing.CodeUnit {
+	if rulesWantCallees(job.rules) {
+		return parsing.WithCalleeContext(job.unit)
+	}
+	return job.unit
+}
+
 func localizeFindings(
 	ctx context.Context,
 	evaluator evaluation.Evaluator,
@@ -700,6 +767,9 @@ func evaluateLocalizationJob(
 		StartByte:    job.region.StartByte,
 		EndByte:      job.region.EndByte,
 		RelatedTypes: job.parent.RelatedTypes,
+	}
+	if job.rule.Context.Callees {
+		candidate.Callees = parsing.ExpandCallees(job.parent.Resolved)
 	}
 	results, err := evaluator.Evaluate(ctx, evaluation.Batch{
 		Rules:    []config.Rule{job.rule},

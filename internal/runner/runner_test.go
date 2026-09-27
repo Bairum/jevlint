@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -901,6 +902,216 @@ func (evaluator fixedStatusEvaluator) Evaluate(
 		}
 	}
 	return results, nil
+}
+
+func TestCheckSplitsOrdinaryAndCalleeContextBatches(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "users.go"), `package sample
+
+func buildUsers() {
+	users := loadUsers()
+	accounts := loadAccounts()
+	combine(users, accounts)
+}
+
+func loadUsers() []User { return nil }
+`)
+	writeFile(t, filepath.Join(root, "accounts.go"), `package sample
+
+func loadAccounts() []Account { return nil }
+
+func combine(users []User, accounts []Account) {}
+`)
+
+	ordinary := config.Rule{
+		ID:          "naming",
+		Description: "Names describe the work.",
+		Severity:    config.SeverityWarning,
+		Kinds:       []config.TargetKind{config.TargetKindFunction},
+	}
+	enriched := config.Rule{
+		ID:          "database-joins",
+		Description: "Join records in the database.",
+		Severity:    config.SeverityError,
+		Kinds:       []config.TargetKind{config.TargetKindFunction},
+		Context:     config.RuleContext{Callees: true},
+	}
+	evaluator := &capturingEvaluator{}
+	_, err := (Runner{
+		Extractor: testGoExtractor(t),
+		Evaluator: evaluator,
+	}).Evaluate(context.Background(), config.Config{
+		Rules: []config.Rule{ordinary, enriched},
+	}, Options{Root: root, Concurrency: 1})
+	if err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+
+	ordinaryBuild, ok := batchFor(evaluator.batches, "buildUsers", "naming")
+	if !ok {
+		t.Fatalf("missing ordinary buildUsers batch: %#v", evaluator.batches)
+	}
+	if len(ordinaryBuild.CodeUnit.Callees) != 0 {
+		t.Fatalf("ordinary callees = %#v", ordinaryBuild.CodeUnit.Callees)
+	}
+	if _, hasJoins := ruleIDs(ordinaryBuild)["database-joins"]; hasJoins {
+		t.Fatal("ordinary batch included callee-context rule")
+	}
+
+	enrichedBuild, ok := batchFor(evaluator.batches, "buildUsers", "database-joins")
+	if !ok {
+		t.Fatalf("missing enriched buildUsers batch: %#v", evaluator.batches)
+	}
+	if _, hasNaming := ruleIDs(enrichedBuild)["naming"]; hasNaming {
+		t.Fatal("enriched batch included ordinary rule")
+	}
+	got := calleeNames(enrichedBuild.CodeUnit.Callees)
+	if strings.Join(got, ",") != "loadUsers,loadAccounts,combine" {
+		t.Fatalf("enriched callees = %#v", enrichedBuild.CodeUnit.Callees)
+	}
+
+	plain, err := json.Marshal(ordinaryBuild.CodeUnit)
+	if err != nil {
+		t.Fatalf("Marshal ordinary error = %v", err)
+	}
+	if strings.Contains(string(plain), `"callees"`) {
+		t.Fatalf("ordinary request included callees: %s", plain)
+	}
+	enrichedJSON, err := json.Marshal(enrichedBuild.CodeUnit)
+	if err != nil {
+		t.Fatalf("Marshal enriched error = %v", err)
+	}
+	if !strings.Contains(string(enrichedJSON), `"callees"`) {
+		t.Fatalf("enriched request missing callees: %s", enrichedJSON)
+	}
+}
+
+func TestCheckLocalizeHonorsRuleCalleeContext(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "users.go"), `package sample
+
+func buildUsers() {
+	users := loadUsers()
+	return
+}
+
+func loadUsers() {}
+`)
+
+	cfg := config.Config{Rules: []config.Rule{
+		{
+			ID:          "naming",
+			Description: "Names describe the work.",
+			Severity:    config.SeverityWarning,
+			Kinds:       []config.TargetKind{config.TargetKindFunction},
+			Localize:    []config.TargetKind{config.TargetKindStatement},
+		},
+		{
+			ID:          "database-joins",
+			Description: "Join records in the database.",
+			Severity:    config.SeverityError,
+			Kinds:       []config.TargetKind{config.TargetKindFunction},
+			Localize:    []config.TargetKind{config.TargetKindStatement},
+			Context:     config.RuleContext{Callees: true},
+		},
+	}}
+	evaluator := &capturingEvaluator{failFunctions: true}
+	_, err := (Runner{
+		Extractor: testGoExtractor(t),
+		Evaluator: evaluator,
+	}).Evaluate(context.Background(), cfg, Options{Root: root, Concurrency: 1})
+	if err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+
+	var ordinaryLocalize, enrichedLocalize evaluation.Batch
+	for _, batch := range evaluator.batches {
+		if batch.CodeUnit.Kind != parsing.CodeKindRegion {
+			continue
+		}
+		ids := ruleIDs(batch)
+		if _, ok := ids["naming"]; ok {
+			ordinaryLocalize = batch
+		}
+		if _, ok := ids["database-joins"]; ok {
+			enrichedLocalize = batch
+		}
+	}
+	if ordinaryLocalize.CodeUnit.Name == "" || enrichedLocalize.CodeUnit.Name == "" {
+		t.Fatalf("localize batches = %#v", evaluator.batches)
+	}
+	if len(ordinaryLocalize.CodeUnit.Callees) != 0 {
+		t.Fatalf("ordinary localize inherited callees: %#v", ordinaryLocalize.CodeUnit.Callees)
+	}
+	if got := calleeNames(enrichedLocalize.CodeUnit.Callees); strings.Join(got, ",") != "loadUsers" {
+		t.Fatalf("enriched localize callees = %#v", enrichedLocalize.CodeUnit.Callees)
+	}
+}
+
+type capturingEvaluator struct {
+	batches       []evaluation.Batch
+	failFunctions bool
+}
+
+func (evaluator *capturingEvaluator) Evaluate(
+	_ context.Context,
+	batch evaluation.Batch,
+) (map[string]evaluation.Result, error) {
+	evaluator.batches = append(evaluator.batches, batch)
+	results := make(map[string]evaluation.Result, len(batch.Rules))
+	status := evaluation.StatusPass
+	if evaluator.failFunctions &&
+		(batch.CodeUnit.Kind == parsing.CodeKindFunction ||
+			batch.CodeUnit.Kind == parsing.CodeKindRegion) {
+		status = evaluation.StatusFail
+	}
+	for _, rule := range batch.Rules {
+		results[rule.ID] = evaluation.Result{Status: status, Confidence: 1}
+	}
+	return results, nil
+}
+
+func writeFile(t *testing.T, path string, source string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+func batchFor(
+	batches []evaluation.Batch,
+	name string,
+	ruleID string,
+) (evaluation.Batch, bool) {
+	for _, batch := range batches {
+		if batch.CodeUnit.Name != name {
+			continue
+		}
+		if _, ok := ruleIDs(batch)[ruleID]; ok {
+			return batch, true
+		}
+	}
+	return evaluation.Batch{}, false
+}
+
+func ruleIDs(batch evaluation.Batch) map[string]struct{} {
+	ids := make(map[string]struct{}, len(batch.Rules))
+	for _, rule := range batch.Rules {
+		ids[rule.ID] = struct{}{}
+	}
+	return ids
+}
+
+func calleeNames(callees []parsing.CalleeContext) []string {
+	names := make([]string, 0, len(callees))
+	for _, callee := range callees {
+		names = append(names, callee.Name)
+	}
+	return names
 }
 
 func testGoExtractor(t *testing.T) *parsing.Extractor {
