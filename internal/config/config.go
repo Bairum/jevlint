@@ -36,6 +36,11 @@ type Rule struct {
 	MinConfidence *float64     `json:"minConfidence,omitempty"`
 	AllowSkip     bool         `json:"allowSkip,omitempty"`
 	AllowAbstain  bool         `json:"allowAbstain,omitempty"`
+	Context       RuleContext  `json:"context,omitempty"`
+}
+
+type RuleContext struct {
+	Callees bool `json:"callees,omitempty"`
 }
 
 type TargetKind int

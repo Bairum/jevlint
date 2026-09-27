@@ -99,13 +99,30 @@ customize a preset, but it cannot load an arbitrary external grammar.
   Skip is not a finding.
 - `allowAbstain`: let Jev answer `abstain` when the rule applies but there is
   not enough context to decide. Abstain is not a finding.
+- `context.callees`: include confidently resolved direct project-local callees
+  as extra state. Depth is 1 and bounded (12 callees, about 16 KiB of source).
+  Ambiguous and external calls are ignored. Useful when the target function
+  alone does not contain enough evidence. When mixed with ordinary rules on the
+  same unit, Jevlint sends a second request.
+
+```json
+{
+  "id": "database-joins",
+  "description": "Fail when related database records are joined in application code instead of in the query.",
+  "kinds": ["function"],
+  "context": {
+    "callees": true
+  }
+}
+```
 
 ## How it works
 
 - Rules can check functions, types, comments, fields, or statements.
 - Comments, fields, and statements include their nearest function or type as context.
 - Code units are checked in parallel, four at a time by default.
-- Applicable rules are batched into one request per code unit.
+- Applicable rules with the same context requirements are batched into one
+  request per code unit.
 - Failed function and type rules can set `localize` for a focused second pass.
   That pass is extra Jev evaluations and is off unless the rule lists
   categories.
@@ -194,9 +211,10 @@ JSON includes per-case confidence when a reportable fail is available.
 
 - Evaluation is scoped to the configured code-unit kinds.
 - Comments, fields, and statements receive only their nearest declaration as parent context.
-- Imports and call graphs are not followed.
+- Jevlint can optionally include bounded depth-1 project-local callee context,
+  but it does not perform recursive call-graph or cross-function data-flow
+  analysis. Imports are not followed.
 - Type context is limited to the same file.
-- Database provenance and cross-function data flow are not traced.
 - Jev returns a constrained choice, not a free-form explanation.
 
 ## Exit codes

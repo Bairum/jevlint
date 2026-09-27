@@ -30,6 +30,44 @@ func TestDecodeValidConfig(t *testing.T) {
 	if cfg.Rules[0].AllowSkip || cfg.Rules[0].AllowAbstain {
 		t.Fatalf("allow flags = %#v", cfg.Rules[0])
 	}
+	if cfg.Rules[0].Context.Callees {
+		t.Fatalf("context = %#v, want omitted", cfg.Rules[0].Context)
+	}
+}
+
+func TestDecodeRuleContext(t *testing.T) {
+	t.Parallel()
+
+	disabled, err := Decode(strings.NewReader(withGoLanguage(`{
+		"rules": [{
+			"id": "database-joins",
+			"description": "Join related database records in the database.",
+			"severity": "error",
+			"context": { "callees": false }
+		}]
+	}`)))
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if disabled.Rules[0].Context.Callees {
+		t.Fatalf("context.callees = %#v, want false", disabled.Rules[0].Context)
+	}
+
+	enabled, err := Decode(strings.NewReader(withGoLanguage(`{
+		"rules": [{
+			"id": "database-joins",
+			"description": "Join related database records in the database.",
+			"severity": "error",
+			"kinds": ["function"],
+			"context": { "callees": true }
+		}]
+	}`)))
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if !enabled.Rules[0].Context.Callees {
+		t.Fatalf("context.callees = %#v, want true", enabled.Rules[0].Context)
+	}
 }
 
 func TestDecodeAllowSkipAndAbstain(t *testing.T) {
@@ -158,6 +196,14 @@ func TestDecodeRejectsInvalidConfig(t *testing.T) {
 				"description": "A rule.",
 				"severity": "info",
 				"kinds": ["banana"]
+			}]
+		}`,
+		"unknown context field": `{
+			"rules": [{
+				"id": "one",
+				"description": "A rule.",
+				"severity": "info",
+				"context": { "graph": true }
 			}]
 		}`,
 	}

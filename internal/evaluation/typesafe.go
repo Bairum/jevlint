@@ -314,13 +314,68 @@ func (client *TypeSafe) requestBody(batch Batch) ([]byte, error) {
 	}
 	body, err := json.Marshal(systemOneRequest{
 		Model:     client.model,
-		State:     batch.CodeUnit,
+		State:     requestStateFrom(batch.CodeUnit),
 		Questions: questions,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("encode TypeSafe request: %w", err)
 	}
 	return body, nil
+}
+
+type requestState struct {
+	Kind         parsing.CodeKind       `json:"kind"`
+	Name         string                 `json:"name"`
+	Language     parsing.SourceLanguage `json:"language"`
+	Path         string                 `json:"path"`
+	Source       string                 `json:"source"`
+	ParentSource string                 `json:"parentSource,omitempty"`
+	RegionKind   parsing.NodeKind       `json:"regionKind,omitempty"`
+	RelatedTypes []requestType          `json:"types,omitempty"`
+	Callees      []requestCallee        `json:"callees,omitempty"`
+}
+
+type requestType struct {
+	Name   string `json:"name"`
+	Source string `json:"source"`
+}
+
+type requestCallee struct {
+	Name   string `json:"name"`
+	Path   string `json:"path"`
+	Source string `json:"source"`
+}
+
+func requestStateFrom(unit parsing.CodeUnit) requestState {
+	state := requestState{
+		Kind:         unit.Kind,
+		Name:         unit.Name,
+		Language:     unit.Language,
+		Path:         unit.Path,
+		Source:       unit.Source,
+		ParentSource: unit.ParentSource,
+		RegionKind:   unit.RegionKind,
+	}
+	if len(unit.RelatedTypes) > 0 {
+		state.RelatedTypes = make([]requestType, 0, len(unit.RelatedTypes))
+		for _, declaration := range unit.RelatedTypes {
+			state.RelatedTypes = append(state.RelatedTypes, requestType{
+				Name:   declaration.Name,
+				Source: declaration.Source,
+			})
+		}
+	}
+	if len(unit.Callees) > 0 {
+		state.Callees = make([]requestCallee, 0, len(unit.Callees))
+		for _, callee := range unit.Callees {
+			state.Callees = append(state.Callees, requestCallee{
+				Name:   callee.Name,
+				Path:   callee.Path,
+				Source: callee.Source,
+			})
+		}
+	}
+	return state
 }
 
 func questionsForBatch(batch Batch) (map[string]question, error) {
