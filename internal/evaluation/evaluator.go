@@ -15,6 +15,8 @@ const (
 	StatusUnknown Status = iota
 	StatusPass
 	StatusFail
+	StatusSkip
+	StatusAbstain
 )
 
 func (status Status) String() string {
@@ -23,13 +25,20 @@ func (status Status) String() string {
 		return "pass"
 	case StatusFail:
 		return "fail"
+	case StatusSkip:
+		return "skip"
+	case StatusAbstain:
+		return "abstain"
 	default:
 		return "unknown"
 	}
 }
 
 func (status Status) MarshalJSON() ([]byte, error) {
-	if status != StatusPass && status != StatusFail {
+	if status != StatusPass &&
+		status != StatusFail &&
+		status != StatusSkip &&
+		status != StatusAbstain {
 		return nil, fmt.Errorf("invalid evaluation status %d", status)
 	}
 	return json.Marshal(status.String())
@@ -54,6 +63,10 @@ func ParseStatus(value string) (Status, error) {
 		return StatusPass, nil
 	case "fail":
 		return StatusFail, nil
+	case "skip":
+		return StatusSkip, nil
+	case "abstain":
+		return StatusAbstain, nil
 	default:
 		return StatusUnknown, fmt.Errorf("invalid evaluation status %q", value)
 	}
@@ -85,7 +98,7 @@ type CacheStatsProvider interface {
 
 func (result Result) Validate() error {
 	switch result.Status {
-	case StatusPass, StatusFail:
+	case StatusPass, StatusFail, StatusSkip, StatusAbstain:
 	default:
 		return fmt.Errorf("invalid evaluation status %q", result.Status.String())
 	}

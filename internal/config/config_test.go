@@ -27,6 +27,29 @@ func TestDecodeValidConfig(t *testing.T) {
 	if cfg.MinConfidence != nil {
 		t.Fatalf("Decode() minConfidence = %#v, want omitted", cfg.MinConfidence)
 	}
+	if cfg.Rules[0].AllowSkip || cfg.Rules[0].AllowAbstain {
+		t.Fatalf("allow flags = %#v", cfg.Rules[0])
+	}
+}
+
+func TestDecodeAllowSkipAndAbstain(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := Decode(strings.NewReader(withGoLanguage(`{
+		"rules": [{
+			"id": "database-joins",
+			"description": "Join related database records in the database.",
+			"severity": "error",
+			"allowSkip": true,
+			"allowAbstain": true
+		}]
+	}`)))
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if !cfg.Rules[0].AllowSkip || !cfg.Rules[0].AllowAbstain {
+		t.Fatalf("allow flags = %#v", cfg.Rules[0])
+	}
 }
 
 func TestDecodeMinConfidence(t *testing.T) {

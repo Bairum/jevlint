@@ -22,21 +22,23 @@ import (
 )
 
 const (
-	defaultBaseURL    = "https://api.typesafe.ai"
-	defaultModel      = "jev-latest"
-	defaultTimeout    = 10 * time.Second
-	defaultMaxRetries = 2
-	maxResponseBytes  = 1 << 20
-	cacheKeyVersion      = "typesafe-evaluation-v1"
-	answerTypeChoice     = "choice"
-	httpSuccessMin       = 200
-	httpSuccessLimit     = 300
-	retryBackoffBase     = 500 * time.Millisecond
-	retryBackoffCap      = 5 * time.Second
-	retryAfterHeaderMax  = time.Minute
-	criterionPass        = "The code complies with the rule, or an explicit exception applies."
-	criterionFail        = "The code violates the rule, and no explicit exception applies."
-	minimumBatchRules    = 1
+	defaultBaseURL      = "https://api.typesafe.ai"
+	defaultModel        = "jev-latest"
+	defaultTimeout      = 10 * time.Second
+	defaultMaxRetries   = 2
+	maxResponseBytes    = 1 << 20
+	cacheKeyVersion     = "typesafe-evaluation-v1"
+	answerTypeChoice    = "choice"
+	httpSuccessMin      = 200
+	httpSuccessLimit    = 300
+	retryBackoffBase    = 500 * time.Millisecond
+	retryBackoffCap     = 5 * time.Second
+	retryAfterHeaderMax = time.Minute
+	criterionPass       = "The code complies with the rule, or an explicit exception applies."
+	criterionFail       = "The code violates the rule, and no explicit exception applies."
+	criterionSkip       = "The rule's subject is not present in this unit; the rule does not apply."
+	criterionAbstain    = "The rule is relevant, but the supplied code does not contain enough context to decide pass or fail."
+	minimumBatchRules   = 1
 )
 
 type APIKey string
@@ -103,8 +105,10 @@ func (kind *questionType) UnmarshalJSON(data []byte) error {
 }
 
 type questionCriteria struct {
-	Pass string `json:"pass"`
-	Fail string `json:"fail"`
+	Pass    string `json:"pass"`
+	Fail    string `json:"fail"`
+	Skip    string `json:"skip,omitempty"`
+	Abstain string `json:"abstain,omitempty"`
 }
 
 type question struct {
@@ -329,15 +333,26 @@ func questionsForBatch(batch Batch) (map[string]question, error) {
 			return nil, fmt.Errorf("duplicate rule id %q in evaluation batch", rule.ID)
 		}
 		questions[rule.ID] = question{
-			Type: questionTypeChoice,
+			Type:         questionTypeChoice,
 			Instructions: instructionsFor(rule, batch.CodeUnit),
-			Criteria: questionCriteria{
-				Pass: criterionPass,
-				Fail: criterionFail,
-			},
+			Criteria:     criteriaFor(rule),
 		}
 	}
 	return questions, nil
+}
+
+func criteriaFor(rule config.Rule) questionCriteria {
+	criteria := questionCriteria{
+		Pass: criterionPass,
+		Fail: criterionFail,
+	}
+	if rule.AllowSkip {
+		criteria.Skip = criterionSkip
+	}
+	if rule.AllowAbstain {
+		criteria.Abstain = criterionAbstain
+	}
+	return criteria
 }
 
 func decodeResults(
@@ -374,6 +389,18 @@ func decodeResults(
 		status, err := ParseStatus(answer.Choice)
 		if err != nil {
 			return nil, fmt.Errorf("decode TypeSafe response: rule %q: %w", rule.ID, err)
+		}
+		if status == StatusSkip && !rule.AllowSkip {
+			return nil, fmt.Errorf(
+				"decode TypeSafe response: rule %q returned skip without allowSkip",
+				rule.ID,
+			)
+		}
+		if status == StatusAbstain && !rule.AllowAbstain {
+			return nil, fmt.Errorf(
+				"decode TypeSafe response: rule %q returned abstain without allowAbstain",
+				rule.ID,
+			)
 		}
 		result := Result{
 			Status:     status,

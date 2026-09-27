@@ -591,7 +591,7 @@ func evaluateJob(
 		}
 		outcome.evaluations++
 
-		if result.Status == evaluation.StatusPass ||
+		if result.Status != evaluation.StatusFail ||
 			result.Confidence < cfg.ConfidenceFloor(rule) {
 			continue
 		}

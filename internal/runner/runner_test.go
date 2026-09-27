@@ -835,6 +835,74 @@ func TestDiscoverRejectsMissingPath(t *testing.T) {
 	}
 }
 
+func TestCheckSkipAndAbstainProduceNoFindings(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "sample.go"),
+		[]byte("package sample\n\nfunc Ready() {}\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{
+		Rules: []config.Rule{{
+			ID:           "database-joins",
+			Description:  "Join related records in the database.",
+			Severity:     config.SeverityError,
+			AllowSkip:    true,
+			AllowAbstain: true,
+		}},
+	}
+
+	for _, status := range []evaluation.Status{
+		evaluation.StatusSkip,
+		evaluation.StatusAbstain,
+	} {
+		status := status
+		report, err := (Runner{
+			Extractor: testGoExtractor(t),
+			Evaluator: fixedStatusEvaluator{status: status},
+		}).Evaluate(context.Background(), cfg, Options{Root: root, Concurrency: 1})
+		if err != nil {
+			t.Fatalf("%s: Check() error = %v", status, err)
+		}
+		if len(report.Findings) != 0 {
+			t.Fatalf("%s findings = %#v, want none", status, report.Findings)
+		}
+	}
+
+	report, err := (Runner{
+		Extractor: testGoExtractor(t),
+		Evaluator: fixedStatusEvaluator{status: evaluation.StatusFail},
+	}).Evaluate(context.Background(), cfg, Options{Root: root, Concurrency: 1})
+	if err != nil {
+		t.Fatalf("fail: Check() error = %v", err)
+	}
+	if len(report.Findings) != 1 {
+		t.Fatalf("fail findings = %#v, want one", report.Findings)
+	}
+}
+
+type fixedStatusEvaluator struct {
+	status evaluation.Status
+}
+
+func (evaluator fixedStatusEvaluator) Evaluate(
+	_ context.Context,
+	batch evaluation.Batch,
+) (map[string]evaluation.Result, error) {
+	results := make(map[string]evaluation.Result, len(batch.Rules))
+	for _, rule := range batch.Rules {
+		results[rule.ID] = evaluation.Result{
+			Status:     evaluator.status,
+			Confidence: 1,
+		}
+	}
+	return results, nil
+}
+
 func testGoExtractor(t *testing.T) *parsing.Extractor {
 	t.Helper()
 

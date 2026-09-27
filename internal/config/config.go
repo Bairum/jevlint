@@ -34,6 +34,8 @@ type Rule struct {
 	Kinds         []TargetKind `json:"kinds,omitempty"`
 	Localize      []TargetKind `json:"localize,omitempty"`
 	MinConfidence *float64     `json:"minConfidence,omitempty"`
+	AllowSkip     bool         `json:"allowSkip,omitempty"`
+	AllowAbstain  bool         `json:"allowAbstain,omitempty"`
 }
 
 type TargetKind int
