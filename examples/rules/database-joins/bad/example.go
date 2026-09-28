@@ -15,19 +15,21 @@ type UserWithTeam struct {
 	TeamName string
 }
 
-type Store interface {
-	Users() []User
-	Teams() []Team
+type Database interface {
+	Query(string) []map[string]string
 }
 
-func LoadUsersWithTeams(store Store) []UserWithTeam {
-	users := store.Users()
-	teams := store.Teams()
+func LoadUsersWithTeams(database Database) []UserWithTeam {
+	users := database.Query("SELECT name, team_id FROM users")
+	teams := database.Query("SELECT id, name FROM teams")
 	joined := make([]UserWithTeam, 0, len(users))
 	for _, user := range users {
 		for _, team := range teams {
-			if team.ID == user.TeamID {
-				joined = append(joined, UserWithTeam{UserName: user.Name, TeamName: team.Name})
+			if team["id"] == user["team_id"] {
+				joined = append(joined, UserWithTeam{
+					UserName: user["name"],
+					TeamName: team["name"],
+				})
 			}
 		}
 	}
