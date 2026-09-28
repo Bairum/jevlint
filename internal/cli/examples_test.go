@@ -104,7 +104,7 @@ func TestWriteRunTextSeparatesExpectedAndActual(t *testing.T) {
 	writeRunText(&output, outputStyle{}, report, "examples")
 	if !strings.Contains(
 		output.String(),
-		"  ✗ bad/example.go\n      expected fail\n      actual pass\n",
+		"  ✗ bad/example.go\n      expected: fail\n      actual: pass\n",
 	) {
 		t.Fatalf("output = %q", output.String())
 	}
