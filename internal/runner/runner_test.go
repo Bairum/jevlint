@@ -35,6 +35,23 @@ type failingRecordingEvaluator struct {
 	batches []evaluation.Batch
 }
 
+type scoredBooleanEvaluator struct {
+	calls            int
+	typeConfidence   float64
+	regionConfidence float64
+}
+
+type lowConfidencePassEvaluator struct{}
+
+type fixedStatusEvaluator struct {
+	status evaluation.Status
+}
+
+type capturingEvaluator struct {
+	batches       []evaluation.Batch
+	failFunctions bool
+}
+
 func (booleanFieldEvaluator) Evaluate(
 	_ context.Context,
 	batch evaluation.Batch,
@@ -492,12 +509,6 @@ func TestRunJobsCancelsPeersAfterError(t *testing.T) {
 	}
 }
 
-type scoredBooleanEvaluator struct {
-	calls            int
-	typeConfidence   float64
-	regionConfidence float64
-}
-
 func (evaluator *scoredBooleanEvaluator) Evaluate(
 	_ context.Context,
 	batch evaluation.Batch,
@@ -585,8 +596,6 @@ func TestCheckSkipsFailsBelowMinConfidence(t *testing.T) {
 		t.Fatalf("findings = %#v, want none for a low-confidence pass", report.Findings)
 	}
 }
-
-type lowConfidencePassEvaluator struct{}
 
 func (lowConfidencePassEvaluator) Evaluate(
 	_ context.Context,
@@ -886,10 +895,6 @@ func TestCheckSkipAndAbstainProduceNoFindings(t *testing.T) {
 	}
 }
 
-type fixedStatusEvaluator struct {
-	status evaluation.Status
-}
-
 func (evaluator fixedStatusEvaluator) Evaluate(
 	_ context.Context,
 	batch evaluation.Batch,
@@ -1050,11 +1055,6 @@ func loadUsers() {}
 	if got := calleeNames(enrichedLocalize.CodeUnit.Callees); strings.Join(got, ",") != "loadUsers" {
 		t.Fatalf("enriched localize callees = %#v", enrichedLocalize.CodeUnit.Callees)
 	}
-}
-
-type capturingEvaluator struct {
-	batches       []evaluation.Batch
-	failFunctions bool
 }
 
 func (evaluator *capturingEvaluator) Evaluate(

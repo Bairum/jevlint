@@ -35,6 +35,11 @@ type Options struct {
 	Concurrency int
 }
 
+type recordingEvaluator struct {
+	inner    evaluation.Evaluator
+	bestFail map[string]float64
+}
+
 func Run(
 	ctx context.Context,
 	document Document,
@@ -115,11 +120,6 @@ func evalConfig(cfg config.Config, rule config.Rule) config.Config {
 		MinConfidence: cfg.MinConfidence,
 		Rules:         []config.Rule{rule},
 	}
-}
-
-type recordingEvaluator struct {
-	inner    evaluation.Evaluator
-	bestFail map[string]float64
 }
 
 func (recorder *recordingEvaluator) Evaluate(

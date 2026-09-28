@@ -43,6 +43,65 @@ const (
 	CodeKindRegion
 )
 
+type SourceLanguage int
+
+const (
+	SourceLanguageUnknown SourceLanguage = iota
+	SourceLanguageC
+	SourceLanguageCPP
+	SourceLanguageCSharp
+	SourceLanguageGo
+	SourceLanguageJava
+	SourceLanguageJavaScript
+	SourceLanguageKotlin
+	SourceLanguagePHP
+	SourceLanguagePython
+	SourceLanguageRuby
+	SourceLanguageRust
+	SourceLanguageTSX
+	SourceLanguageTypeScript
+)
+
+type NodeKind string
+
+const maxAttachedRegions = 24
+
+type Region struct {
+	Category    CodeKind `json:"category"`
+	Kind        NodeKind `json:"kind"`
+	Source      string   `json:"source"`
+	StartLine   uint     `json:"startLine"`
+	EndLine     uint     `json:"endLine"`
+	StartColumn uint     `json:"startColumn"`
+	EndColumn   uint     `json:"endColumn"`
+	StartByte   uint     `json:"startByte"`
+	EndByte     uint     `json:"endByte"`
+}
+
+type TypeDeclaration struct {
+	Name      string `json:"name"`
+	Source    string `json:"source"`
+	StartLine uint   `json:"startLine"`
+	EndLine   uint   `json:"endLine"`
+	StartByte uint   `json:"startByte"`
+	EndByte   uint   `json:"endByte"`
+}
+
+type languageSpec struct {
+	name             string
+	id               SourceLanguage
+	language         *tree_sitter.Language
+	functionQuery    *tree_sitter.Query
+	typeQuery        *tree_sitter.Query
+	typeContextQuery *tree_sitter.Query
+	callQuery        *tree_sitter.Query
+	regionKinds      map[string]CodeKind
+}
+
+type Extractor struct {
+	byExtension map[string]languageSpec
+}
+
 func (kind CodeKind) String() string {
 	switch kind {
 	case CodeKindFunction:
@@ -97,25 +156,6 @@ func ParseCodeKind(value string) (CodeKind, bool) {
 		return CodeKindUnknown, false
 	}
 }
-
-type SourceLanguage int
-
-const (
-	SourceLanguageUnknown SourceLanguage = iota
-	SourceLanguageC
-	SourceLanguageCPP
-	SourceLanguageCSharp
-	SourceLanguageGo
-	SourceLanguageJava
-	SourceLanguageJavaScript
-	SourceLanguageKotlin
-	SourceLanguagePHP
-	SourceLanguagePython
-	SourceLanguageRuby
-	SourceLanguageRust
-	SourceLanguageTSX
-	SourceLanguageTypeScript
-)
 
 func (language SourceLanguage) String() string {
 	switch language {
@@ -198,46 +238,6 @@ func ParseSourceLanguage(value string) (SourceLanguage, bool) {
 	default:
 		return SourceLanguageUnknown, false
 	}
-}
-
-type NodeKind string
-
-const maxAttachedRegions = 24
-
-type Region struct {
-	Category    CodeKind `json:"category"`
-	Kind        NodeKind `json:"kind"`
-	Source      string   `json:"source"`
-	StartLine   uint     `json:"startLine"`
-	EndLine     uint     `json:"endLine"`
-	StartColumn uint     `json:"startColumn"`
-	EndColumn   uint     `json:"endColumn"`
-	StartByte   uint     `json:"startByte"`
-	EndByte     uint     `json:"endByte"`
-}
-
-type TypeDeclaration struct {
-	Name      string `json:"name"`
-	Source    string `json:"source"`
-	StartLine uint   `json:"startLine"`
-	EndLine   uint   `json:"endLine"`
-	StartByte uint   `json:"startByte"`
-	EndByte   uint   `json:"endByte"`
-}
-
-type languageSpec struct {
-	name             string
-	id               SourceLanguage
-	language         *tree_sitter.Language
-	functionQuery    *tree_sitter.Query
-	typeQuery        *tree_sitter.Query
-	typeContextQuery *tree_sitter.Query
-	callQuery        *tree_sitter.Query
-	regionKinds      map[string]CodeKind
-}
-
-type Extractor struct {
-	byExtension map[string]languageSpec
 }
 
 func (extractor *Extractor) Supports(path string) bool {

@@ -19,6 +19,30 @@ const (
 	StatusAbstain
 )
 
+type Batch struct {
+	Rules    []config.Rule    `json:"rules"`
+	CodeUnit parsing.CodeUnit `json:"codeUnit"`
+}
+
+type Result struct {
+	Status     Status  `json:"status"`
+	Confidence float64 `json:"confidence"`
+}
+
+type Evaluator interface {
+	Evaluate(context.Context, Batch) (map[string]Result, error)
+}
+
+type CacheStats struct {
+	Hits   uint64 `json:"hits"`
+	Misses uint64 `json:"misses"`
+	Writes uint64 `json:"writes"`
+}
+
+type CacheStatsProvider interface {
+	CacheStats() CacheStats
+}
+
 func (status Status) String() string {
 	switch status {
 	case StatusPass:
@@ -70,30 +94,6 @@ func ParseStatus(value string) (Status, error) {
 	default:
 		return StatusUnknown, fmt.Errorf("invalid evaluation status %q", value)
 	}
-}
-
-type Batch struct {
-	Rules    []config.Rule    `json:"rules"`
-	CodeUnit parsing.CodeUnit `json:"codeUnit"`
-}
-
-type Result struct {
-	Status     Status  `json:"status"`
-	Confidence float64 `json:"confidence"`
-}
-
-type Evaluator interface {
-	Evaluate(context.Context, Batch) (map[string]Result, error)
-}
-
-type CacheStats struct {
-	Hits   uint64 `json:"hits"`
-	Misses uint64 `json:"misses"`
-	Writes uint64 `json:"writes"`
-}
-
-type CacheStatsProvider interface {
-	CacheStats() CacheStats
 }
 
 func (result Result) Validate() error {
