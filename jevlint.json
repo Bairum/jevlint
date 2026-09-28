@@ -689,6 +689,14 @@
       "exceptions": [
         "The options are independent command-line flags or a CLI argument parser."
       ]
+    },
+    {
+      "id": "unnecessary-complexity",
+      "description": "The snippet of code is not unnecessarily complicated.",
+      "severity": "warning",
+      "kinds": ["function", "type"],
+      "include": ["**/*"],
+      "localize": ["statement"]
     }
   ]
 }
