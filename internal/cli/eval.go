@@ -235,20 +235,11 @@ func writeRunCase(writer io.Writer, style outputStyle, result evals.Result) {
 	if result.Name != "" {
 		label = result.Name + "  " + result.File
 	}
-	if result.Matched {
-		fmt.Fprintf(
-			writer,
-			"  %s  expected %s\n",
-			style.paint("32", "✓ "+label),
-			result.Expected,
-		)
-		return
+	mark := style.paint("32", "✓ "+label)
+	if !result.Matched {
+		mark = style.paint("31", "✗ "+label)
 	}
-	fmt.Fprintf(
-		writer,
-		"  %s  expected %s  actual %s\n",
-		style.paint("31", "✗ "+label),
-		result.Expected,
-		result.Actual,
-	)
+	fmt.Fprintf(writer, "  %s\n", mark)
+	fmt.Fprintf(writer, "    expected %s\n", result.Expected)
+	fmt.Fprintf(writer, "    actual %s\n", result.Actual)
 }

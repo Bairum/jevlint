@@ -88,6 +88,26 @@ func TestExamplesCommandScoresFixtures(t *testing.T) {
 	}
 }
 
+func TestWriteRunTextSeparatesExpectedAndActual(t *testing.T) {
+	t.Parallel()
+
+	var output bytes.Buffer
+	report := evals.Report{
+		Total: 1,
+		Cases: []evals.Result{{
+			Rule:     "database-joins",
+			File:     "bad/example.go",
+			Expected: evals.ExpectFail,
+			Actual:   evals.ExpectPass,
+		}},
+	}
+	writeRunText(&output, outputStyle{}, report, "examples")
+	if !strings.Contains(output.String(), "    expected fail\n") ||
+		!strings.Contains(output.String(), "    actual pass\n") {
+		t.Fatalf("output = %q", output.String())
+	}
+}
+
 func TestExamplesCommandReportsMismatch(t *testing.T) {
 	root := writeExamplesProject(t)
 	server := passingJevServer(t)
