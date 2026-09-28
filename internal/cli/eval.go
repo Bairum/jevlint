@@ -162,7 +162,7 @@ func executeEval(
 		fmt.Fprintf(stderr, "jevlint: write output: %v\n", err)
 		return exitUsageError
 	}
-	if report.Mismatched > 0 {
+	if report.Mismatched > 0 || report.Inconclusive > 0 {
 		return exitHasFindings
 	}
 	return exitSuccess
@@ -220,6 +220,17 @@ func writeRunText(writer io.Writer, style outputStyle, report evals.Report, labe
 	if len(report.Cases) > 0 {
 		fmt.Fprintln(writer)
 	}
+	if report.Inconclusive > 0 {
+		fmt.Fprintf(
+			writer,
+			"%d/%d %s matched expectations, %d inconclusive\n",
+			report.Matched,
+			report.Total,
+			label,
+			report.Inconclusive,
+		)
+		return
+	}
 	fmt.Fprintf(
 		writer,
 		"%d/%d %s matched expectations\n",
@@ -235,11 +246,26 @@ func writeRunCase(writer io.Writer, style outputStyle, result evals.Result) {
 	if result.Name != "" {
 		label = result.Name + "  " + result.File
 	}
-	mark := style.paint("32", "✓ "+label)
-	if !result.Matched {
-		mark = style.paint("31", "✗ "+label)
+	switch {
+	case result.Matched:
+		fmt.Fprintf(writer, "  %s\n", style.paint("32", "✓ "+label))
+	case result.Actual == evals.OutcomeInconclusive:
+		fmt.Fprintf(writer, "  %s\n", style.paint("33", "? "+label))
+	default:
+		fmt.Fprintf(writer, "  %s\n", style.paint("31", "✗ "+label))
 	}
-	fmt.Fprintf(writer, "  %s\n", mark)
 	fmt.Fprintf(writer, "      expected: %s\n", result.Expected)
 	fmt.Fprintf(writer, "      actual: %s\n", result.Actual)
+	if result.Actual == evals.OutcomeInconclusive {
+		fmt.Fprintf(
+			writer,
+			"      decisions: pass=%d fail=%d skip=%d abstain=%d reportable=%d hidden=%d\n",
+			result.Decisions.Pass,
+			result.Decisions.Fail,
+			result.Decisions.Skip,
+			result.Decisions.Abstain,
+			result.Decisions.ReportableFail,
+			result.Decisions.HiddenFail,
+		)
+	}
 }

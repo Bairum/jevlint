@@ -457,6 +457,52 @@ func setEvalEnv(t *testing.T, baseURL string) {
 	t.Setenv("TYPESAFE_DEFAULT_MODEL", "jev-test")
 }
 
+func TestEvalInconclusiveExitsOne(t *testing.T) {
+	root := writeEvalProject(t, evalProject{
+		config: `{
+			"languages": {"go": {}},
+			"rules": [{
+				"id": "database-joins",
+				"description": "Join related records in the database.",
+				"severity": "error",
+				"allowSkip": true
+			}]
+		}`,
+		source: "package sample\n\nfunc Ready() {}\n",
+		evals: `{
+			"version": 1,
+			"cases": [{"rule": "database-joins", "file": "sample.go", "expect": "pass"}]
+		}`,
+	})
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(writer, `{"answers":{"database-joins":{"type":"choice","choice":"skip","confidence":0.9}}}`)
+	}))
+	defer server.Close()
+	setEvalEnv(t, server.URL)
+
+	var stdout, stderr bytes.Buffer
+	exitCode := runCLI(
+		context.Background(),
+		[]string{"eval", "--config", filepath.Join(root, "jevlint.json"), "--format", "json"},
+		&stdout,
+		&stderr,
+	)
+	if exitCode != 1 {
+		t.Fatalf("Run() exit code = %d, want 1; stderr = %q", exitCode, stderr.String())
+	}
+	var report evals.Report
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.Inconclusive != 1 || report.Matched != 0 || report.Mismatched != 0 {
+		t.Fatalf("report = %#v", report)
+	}
+	if report.Cases[0].Actual != evals.OutcomeInconclusive {
+		t.Fatalf("actual = %v", report.Cases[0].Actual)
+	}
+}
+
 // writeExcludedExamplesProject writes a project whose only source files live
 // under examples and whose rule excludes that directory.
 func writeExcludedExamplesProject(t *testing.T) string {
@@ -526,7 +572,7 @@ func TestWriteRunTextSeparatesExpectedAndActual(t *testing.T) {
 			Rule:     "database-joins",
 			File:     "bad/example.go",
 			Expected: evals.ExpectFail,
-			Actual:   evals.ExpectPass,
+			Actual:   evals.OutcomePass,
 		}},
 	}
 	writeRunText(&output, outputStyle{}, report, "eval cases")

@@ -202,7 +202,7 @@ func TestRunEvaluatesExcludedFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	if !report.Cases[0].Matched || report.Cases[0].Actual != ExpectFail {
+	if !report.Cases[0].Matched || report.Cases[0].Actual != OutcomeFail {
 		t.Fatalf("report = %#v", report)
 	}
 }
@@ -236,7 +236,7 @@ func TestResultJSONIncludesConfidence(t *testing.T) {
 		Rule:       "database-joins",
 		File:       "sample.go",
 		Expected:   ExpectFail,
-		Actual:     ExpectFail,
+		Actual:     OutcomeFail,
 		Matched:    true,
 		Confidence: &confidence,
 	})
@@ -305,4 +305,194 @@ func validEvalsJSON(file string) string {
 			"expect": "fail"
 		}]
 	}`
+}
+
+// oneCase builds a document with a single case for sample.go.
+func oneCase(t *testing.T, expect Expect) (Document, string) {
+	t.Helper()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "sample.go")
+	if err := os.WriteFile(path, []byte("package sample\n\nfunc Ready() {}\n"), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	document := Document{Version: currentVersion, Cases: []Case{{
+		Rule:   "database-joins",
+		File:   "sample.go",
+		Expect: expect,
+		abs:    path,
+	}}}
+	return document, root
+}
+
+func TestRunClassifiesRawDecisions(t *testing.T) {
+	t.Parallel()
+
+	floor := 0.8
+	tests := []struct {
+		name         string
+		expect       Expect
+		status       evaluation.Status
+		confidence   float64
+		want         Outcome
+		matched      bool
+		inconclusive bool
+	}{
+		{"explicit pass matches pass", ExpectPass, evaluation.StatusPass, 0.9, OutcomePass, true, false},
+		{"reportable fail mismatches pass", ExpectPass, evaluation.StatusFail, 0.9, OutcomeFail, false, false},
+		{"hidden fail is inconclusive", ExpectPass, evaluation.StatusFail, 0.4, OutcomeInconclusive, false, true},
+		{"skip is inconclusive", ExpectPass, evaluation.StatusSkip, 0.9, OutcomeInconclusive, false, true},
+		{"abstain is inconclusive", ExpectPass, evaluation.StatusAbstain, 0.9, OutcomeInconclusive, false, true},
+		{"reportable fail matches fail", ExpectFail, evaluation.StatusFail, 0.9, OutcomeFail, true, false},
+		{"hidden fail cannot match fail", ExpectFail, evaluation.StatusFail, 0.4, OutcomeInconclusive, false, true},
+		{"pass mismatches fail", ExpectFail, evaluation.StatusPass, 0.9, OutcomePass, false, false},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			document, root := oneCase(t, test.expect)
+			cfg := sampleConfig(nil)
+			cfg.MinConfidence = &floor
+			report, err := Run(
+				context.Background(),
+				document,
+				cfg,
+				testExtractor(t),
+				fixedEvaluator{status: test.status, confidence: test.confidence},
+				Options{Root: root, Concurrency: 1},
+			)
+			if err != nil {
+				t.Fatalf("Run() error = %v", err)
+			}
+			result := report.Cases[0]
+			if result.Actual != test.want {
+				t.Fatalf("actual = %v, want %v", result.Actual, test.want)
+			}
+			if result.Matched != test.matched {
+				t.Fatalf("matched = %v, want %v", result.Matched, test.matched)
+			}
+			if (report.Inconclusive == 1) != test.inconclusive {
+				t.Fatalf("inconclusive = %d, want %v", report.Inconclusive, test.inconclusive)
+			}
+			if report.Matched+report.Mismatched+report.Inconclusive != report.Total {
+				t.Fatalf("report counts = %#v", report)
+			}
+		})
+	}
+}
+
+type perUnitEvaluator struct {
+	results map[string]evaluation.Result
+}
+
+func (evaluator perUnitEvaluator) Evaluate(
+	_ context.Context,
+	batch evaluation.Batch,
+) (map[string]evaluation.Result, error) {
+	results := make(map[string]evaluation.Result, len(batch.Rules))
+	for _, rule := range batch.Rules {
+		result, ok := evaluator.results[batch.CodeUnit.Name]
+		if !ok {
+			result = evaluation.Result{Status: evaluation.StatusPass, Confidence: 1}
+		}
+		results[rule.ID] = result
+	}
+	return results, nil
+}
+
+func TestRunAggregatesDecisionsAcrossCodeUnits(t *testing.T) {
+	t.Parallel()
+
+	floor := 0.8
+	tests := []struct {
+		name       string
+		alpha      evaluation.Result
+		beta       evaluation.Result
+		want       Outcome
+		pass       int
+		skip       int
+		reportable int
+		hidden     int
+	}{
+		{
+			name:  "one pass and one skip passes",
+			alpha: evaluation.Result{Status: evaluation.StatusPass, Confidence: 1},
+			beta:  evaluation.Result{Status: evaluation.StatusSkip, Confidence: 1},
+			want:  OutcomePass,
+			pass:  1,
+			skip:  1,
+		},
+		{
+			name:  "all skip is inconclusive",
+			alpha: evaluation.Result{Status: evaluation.StatusSkip, Confidence: 1},
+			beta:  evaluation.Result{Status: evaluation.StatusSkip, Confidence: 1},
+			want:  OutcomeInconclusive,
+			skip:  2,
+		},
+		{
+			name:   "hidden fail makes it inconclusive",
+			alpha:  evaluation.Result{Status: evaluation.StatusFail, Confidence: 0.4},
+			beta:   evaluation.Result{Status: evaluation.StatusPass, Confidence: 1},
+			want:   OutcomeInconclusive,
+			pass:   1,
+			hidden: 1,
+		},
+		{
+			name:       "reportable fail wins",
+			alpha:      evaluation.Result{Status: evaluation.StatusFail, Confidence: 0.9},
+			beta:       evaluation.Result{Status: evaluation.StatusPass, Confidence: 1},
+			want:       OutcomeFail,
+			pass:       1,
+			reportable: 1,
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			path := filepath.Join(root, "sample.go")
+			source := "package sample\n\nfunc Alpha() {}\n\nfunc Beta() {}\n"
+			if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			document := Document{Version: currentVersion, Cases: []Case{{
+				Rule:   "database-joins",
+				File:   "sample.go",
+				Expect: ExpectPass,
+				abs:    path,
+			}}}
+			cfg := sampleConfig(nil)
+			cfg.MinConfidence = &floor
+			report, err := Run(
+				context.Background(),
+				document,
+				cfg,
+				testExtractor(t),
+				perUnitEvaluator{results: map[string]evaluation.Result{
+					"Alpha": test.alpha,
+					"Beta":  test.beta,
+				}},
+				Options{Root: root, Concurrency: 1},
+			)
+			if err != nil {
+				t.Fatalf("Run() error = %v", err)
+			}
+			result := report.Cases[0]
+			if result.Actual != test.want {
+				t.Fatalf("actual = %v, want %v", result.Actual, test.want)
+			}
+			if result.Decisions.Pass != test.pass ||
+				result.Decisions.Skip != test.skip ||
+				result.Decisions.ReportableFail != test.reportable ||
+				result.Decisions.HiddenFail != test.hidden {
+				t.Fatalf("decisions = %#v", result.Decisions)
+			}
+		})
+	}
 }

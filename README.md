@@ -186,12 +186,35 @@ have many cases, including several for the same language.
 | `--refresh-cache` | Reevaluate code and replace matching cached results. |
 | `--rule id` | Evaluate only this rule's cases. |
 
-Text output is grouped by rule and ends with `N/M eval cases matched expectations`.
-JSON includes per-case confidence when a reportable fail is available.
+Each case evaluates the rule against every code unit in the fixture. Each
+evaluation returns one raw decision: `pass`, `fail`, `skip`, or `abstain`. A
+failure is reportable when its confidence reaches the rule's floor (its own
+`minConfidence` or the global one); reportable failures become findings.
+
+The case outcome follows from those decisions:
+
+- `fail`: at least one reportable failure.
+- `inconclusive`: no reportable failure, but there is a failure below the
+  confidence floor, or no unit returned an explicit pass (only `skip` or
+  `abstain`).
+- `pass`: otherwise, meaning at least one explicit pass and no failure.
+
+A case matches when its outcome equals `expect`, and `inconclusive` never
+matches. This keeps an expected pass from succeeding just because evaluations
+skipped, abstained, or hid a failure under the confidence floor, and it makes
+an expected fail require a reportable violation.
+
+Text output is grouped by rule and ends with
+`N/M eval cases matched expectations` plus `, K inconclusive` when any case is
+inconclusive. JSON includes per-case confidence, the raw decision counts
+(`pass`, `fail`, `skip`, `abstain`, `reportableFail`, `hiddenFail`), and the
+inconclusive total.
+
+Exit codes:
 
 - `0`: every case matched
-- `1`: at least one case missed its expectation
-- `2`: configuration or runtime error
+- `1`: at least one case was mismatched or inconclusive
+- `2`: configuration, parsing, or provider error
 
 ## Supported languages
 
