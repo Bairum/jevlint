@@ -16,11 +16,13 @@ import (
 	"jevlint/internal/parsing"
 )
 
+// evalOptions holds the settings for an eval run.
 type evalOptions struct {
 	output outputContext
 	eval   evalContext
 }
 
+// evalContext holds the settings that shape an eval.
 type evalContext struct {
 	configPath  string
 	evalsPath   string
@@ -29,6 +31,7 @@ type evalContext struct {
 	cache       cacheMode
 }
 
+// parseEvalOptions reads the eval flags.
 func parseEvalOptions(args []string, stderr io.Writer) (evalOptions, int, bool) {
 	flags := flag.NewFlagSet("eval", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -93,6 +96,7 @@ func parseEvalOptions(args []string, stderr io.Writer) (evalOptions, int, bool) 
 	}, exitSuccess, true
 }
 
+// executeEval loads the cases, runs them, and writes the report.
 func executeEval(
 	ctx context.Context,
 	options evalOptions,
@@ -164,6 +168,7 @@ func executeEval(
 	return exitSuccess
 }
 
+// loadEvalDocument loads the eval file for the project.
 func loadEvalDocument(
 	absoluteConfig string,
 	evalsPath string,
@@ -183,6 +188,7 @@ func loadEvalDocument(
 	return document, exitSuccess
 }
 
+// writeEvalReport prints the eval results in the chosen format.
 func writeEvalReport(
 	writer io.Writer,
 	report evals.Report,
@@ -198,6 +204,7 @@ func writeEvalReport(
 	return nil
 }
 
+// writeEvalText prints the eval results grouped by rule.
 func writeEvalText(writer io.Writer, style outputStyle, report evals.Report) {
 	currentRule := ""
 	for _, result := range report.Cases {
@@ -221,6 +228,7 @@ func writeEvalText(writer io.Writer, style outputStyle, report evals.Report) {
 	)
 }
 
+// writeEvalCase prints the result of one eval case.
 func writeEvalCase(writer io.Writer, style outputStyle, result evals.Result) {
 	label := result.File
 	if result.Name != "" {

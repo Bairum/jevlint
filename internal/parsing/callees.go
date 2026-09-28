@@ -11,11 +11,13 @@ const (
 	maxCalleeSourceBytes = 16 << 10
 )
 
+// CallRef is a called name as it appears in the source.
 type CallRef struct {
 	Name string
 	Path string
 }
 
+// CalleeContext is the source of a called function sent as context.
 type CalleeContext struct {
 	Name      string `json:"name"`
 	Path      string `json:"path"`
@@ -26,6 +28,7 @@ type CalleeContext struct {
 	EndByte   uint   `json:"endByte"`
 }
 
+// Spelling returns the called name with its qualifier.
 func (ref CallRef) Spelling() string {
 	if ref.Path == "" {
 		return ref.Name
@@ -33,12 +36,14 @@ func (ref CallRef) Spelling() string {
 	return ref.Path + "." + ref.Name
 }
 
+// WithCalleeContext copies a unit and adds the functions it calls.
 func WithCalleeContext(unit CodeUnit) CodeUnit {
 	clone := unit
 	clone.Callees = ExpandCallees(unit.Resolved)
 	return clone
 }
 
+// ExpandCallees keeps the callees that fit the size and count limits.
 func ExpandCallees(resolved []CalleeContext) []CalleeContext {
 	if len(resolved) == 0 {
 		return nil
@@ -62,6 +67,7 @@ func ExpandCallees(resolved []CalleeContext) []CalleeContext {
 	return callees
 }
 
+// ResolveCallees links each function to the functions it calls.
 func ResolveCallees(functions []*CodeUnit) {
 	index := make(map[string][]*CodeUnit)
 	for _, function := range functions {
@@ -78,6 +84,7 @@ func ResolveCallees(functions []*CodeUnit) {
 	}
 }
 
+// resolveFunctionCallees finds the functions called by one function.
 func resolveFunctionCallees(
 	function CodeUnit,
 	index map[string][]*CodeUnit,
@@ -105,6 +112,7 @@ func resolveFunctionCallees(
 	return resolved
 }
 
+// resolveCallRef finds the one function a call can mean, or nothing when unsure.
 func resolveCallRef(
 	ref CallRef,
 	caller CodeUnit,
@@ -133,6 +141,7 @@ func resolveCallRef(
 	return nil
 }
 
+// calleeIdentity returns a value that identifies a callee.
 func calleeIdentity(unit CodeUnit) string {
 	return strings.Join([]string{
 		unit.Path,
@@ -141,6 +150,7 @@ func calleeIdentity(unit CodeUnit) string {
 	}, "\x00")
 }
 
+// calleeContextFrom builds the sent context for a called function.
 func calleeContextFrom(unit CodeUnit) CalleeContext {
 	return CalleeContext{
 		Name:      unit.Name,
@@ -153,6 +163,7 @@ func calleeContextFrom(unit CodeUnit) CalleeContext {
 	}
 }
 
+// attachCallRefs records the calls made inside each function.
 func attachCallRefs(
 	spec languageSpec,
 	source []byte,
@@ -223,6 +234,7 @@ func attachCallRefs(
 	}
 }
 
+// enclosedByInnerFunction reports whether a call sits inside a nested function.
 func enclosedByInnerFunction(
 	start uint,
 	end uint,
@@ -245,6 +257,7 @@ func enclosedByInnerFunction(
 	return false
 }
 
+// parseCallSpelling splits a called name into its qualifier and name.
 func parseCallSpelling(text string) CallRef {
 	spelling := strings.TrimSpace(text)
 	if spelling == "" {
@@ -260,6 +273,7 @@ func parseCallSpelling(text string) CallRef {
 	}
 }
 
+// namedCaptureIndex returns the position of a named capture in a query.
 func namedCaptureIndex(query *tree_sitter.Query, name string) (uint32, bool) {
 	for index, capture := range query.CaptureNames() {
 		if capture == name {

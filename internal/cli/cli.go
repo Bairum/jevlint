@@ -62,6 +62,7 @@ const (
 	exitUsageError  = 2
 )
 
+// cliCommand names a top level command the tool accepts.
 type cliCommand int
 
 const (
@@ -71,6 +72,7 @@ const (
 	commandHelp
 )
 
+// outputFormat selects text or json output.
 type outputFormat int
 
 const (
@@ -79,6 +81,7 @@ const (
 	formatJSON
 )
 
+// colorMode controls when colored output is used.
 type colorMode int
 
 const (
@@ -88,11 +91,13 @@ const (
 	colorNever
 )
 
+// terminalHints records what the environment says about the terminal.
 type terminalHints struct {
 	plainOutput  bool
 	dumbTerminal bool
 }
 
+// cacheMode says how saved results are used on a run.
 type cacheMode int
 
 const (
@@ -102,18 +107,21 @@ const (
 	cacheClearAndRefresh
 )
 
+// runOptions holds the settings for a check run.
 type runOptions struct {
 	paths  []string
 	output outputContext
 	check  checkContext
 }
 
+// outputContext holds how results are printed.
 type outputContext struct {
 	format outputFormat
 	color  colorMode
 	hints  terminalHints
 }
 
+// checkContext holds the settings that shape a check.
 type checkContext struct {
 	configPath  string
 	concurrency int
@@ -121,6 +129,7 @@ type checkContext struct {
 	cache       cacheMode
 }
 
+// loadedRun holds the config, parser, and client for a check.
 type loadedRun struct {
 	options        runOptions
 	absoluteConfig string
@@ -129,15 +138,18 @@ type loadedRun struct {
 	evaluator      evaluation.Evaluator
 }
 
+// commandDispatch reports whether a command was handled early.
 type commandDispatch struct {
 	exitCode int
 	handled  bool
 }
 
+// outputStyle paints text when color is enabled.
 type outputStyle struct {
 	color bool
 }
 
+// parseCLICommand turns a command name into a command value.
 func parseCLICommand(name string) cliCommand {
 	switch name {
 	case "check":
@@ -151,6 +163,7 @@ func parseCLICommand(name string) cliCommand {
 	}
 }
 
+// String returns the command name.
 func (command cliCommand) String() string {
 	switch command {
 	case commandCheck:
@@ -164,6 +177,7 @@ func (command cliCommand) String() string {
 	}
 }
 
+// parseOutputFormat turns a format name into a format value.
 func parseOutputFormat(value string) (outputFormat, bool) {
 	switch value {
 	case "text":
@@ -175,6 +189,7 @@ func parseOutputFormat(value string) (outputFormat, bool) {
 	}
 }
 
+// parseColorMode turns a color name into a color mode.
 func parseColorMode(value string) (colorMode, bool) {
 	switch value {
 	case "auto":
@@ -188,6 +203,7 @@ func parseColorMode(value string) (colorMode, bool) {
 	}
 }
 
+// readTerminalHints reads what the environment says about the terminal.
 func readTerminalHints(getenv func(string) string) terminalHints {
 	return terminalHints{
 		plainOutput:  getenv("NO_COLOR") != "",
@@ -195,6 +211,7 @@ func readTerminalHints(getenv func(string) string) terminalHints {
 	}
 }
 
+// Run reads the arguments, runs the requested command, and returns an exit code.
 func Run(
 	ctx context.Context,
 	args []string,
@@ -226,14 +243,17 @@ func Run(
 	return executeRun(ctx, options, stdout, stderr, os.UserCacheDir)
 }
 
+// shouldClear reports whether the saved results should be removed.
 func (mode cacheMode) shouldClear() bool {
 	return mode == cacheClear || mode == cacheClearAndRefresh
 }
 
+// shouldRefresh reports whether saved results should be replaced.
 func (mode cacheMode) shouldRefresh() bool {
 	return mode == cacheRefresh || mode == cacheClearAndRefresh
 }
 
+// handleSpecialCommand prints help or an error for commands that do not run.
 func handleSpecialCommand(
 	command string,
 	stderr io.Writer,
@@ -250,6 +270,7 @@ func handleSpecialCommand(
 	}
 }
 
+// newRunFlagSet builds the flag set shared by the check options.
 func newRunFlagSet(command cliCommand, stderr io.Writer) *flag.FlagSet {
 	flags := flag.NewFlagSet(command.String(), flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -259,6 +280,7 @@ func newRunFlagSet(command cliCommand, stderr io.Writer) *flag.FlagSet {
 	return flags
 }
 
+// parseRunOptions reads the check flags and the paths.
 func parseRunOptions(
 	command cliCommand,
 	args []string,
@@ -323,6 +345,7 @@ const (
 	defaultCheckConcurrency = 4
 )
 
+// parseOutputOptions checks the format, color, and concurrency values.
 func parseOutputOptions(
 	format string,
 	color string,
@@ -346,6 +369,7 @@ func parseOutputOptions(
 	return parsedFormat, parsedColor, exitSuccess, true
 }
 
+// executeRun narrows the run to changed files and runs a check.
 func executeRun(
 	ctx context.Context,
 	options runOptions,
@@ -372,6 +396,7 @@ func executeRun(
 	return runLoaded(ctx, loaded, stdout, stderr)
 }
 
+// applyChangedFilter narrows the run to the files git reports as changed.
 func applyChangedFilter(
 	options runOptions,
 	stderr io.Writer,
@@ -399,6 +424,7 @@ func applyChangedFilter(
 	return options, 0, true
 }
 
+// loadRun loads the config and opens the client and the cache.
 func loadRun(
 	options runOptions,
 	stderr io.Writer,
@@ -437,6 +463,7 @@ func loadRun(
 	}, exitSuccess
 }
 
+// loadProject loads the config and builds the parser.
 func loadProject(
 	configPath string,
 	stderr io.Writer,
@@ -459,6 +486,7 @@ func loadProject(
 	return absoluteConfig, cfg, extractor, exitSuccess
 }
 
+// openResultCache opens the saved results and clears them when asked.
 func openResultCache(
 	projectRoot string,
 	mode cacheMode,
@@ -478,6 +506,7 @@ func openResultCache(
 	return cache, exitSuccess
 }
 
+// handleCacheOpenError decides whether a cache problem stops the run.
 func handleCacheOpenError(
 	cacheErr error,
 	clearCache bool,
@@ -491,6 +520,7 @@ func handleCacheOpenError(
 	return nil, exitSuccess
 }
 
+// runLoaded runs the check and writes the report.
 func runLoaded(
 	ctx context.Context,
 	loaded loadedRun,
@@ -523,6 +553,7 @@ func runLoaded(
 	return exitSuccess
 }
 
+// writeReportOrFail writes the report and reports a write error.
 func writeReportOrFail(
 	stdout io.Writer,
 	stderr io.Writer,
@@ -536,6 +567,7 @@ func writeReportOrFail(
 	return exitSuccess
 }
 
+// writeReport prints the findings and the totals in the chosen format.
 func writeReport(
 	writer io.Writer,
 	report runner.Report,
@@ -555,6 +587,7 @@ func writeReport(
 	return nil
 }
 
+// writeFinding prints one finding with its code frame.
 func writeFinding(writer io.Writer, style outputStyle, finding runner.Finding) {
 	severity := strings.ToUpper(finding.Severity.String())
 	fmt.Fprintln(
@@ -582,6 +615,7 @@ func writeFinding(writer io.Writer, style outputStyle, finding runner.Finding) {
 	fmt.Fprintln(writer)
 }
 
+// writeSummary prints the counts of the findings.
 func writeSummary(writer io.Writer, style outputStyle, findings []runner.Finding) {
 	if len(findings) == 0 {
 		fmt.Fprintln(writer, style.paint("1;32", "✓ No findings"))
@@ -619,6 +653,7 @@ func writeSummary(writer io.Writer, style outputStyle, findings []runner.Finding
 	fmt.Fprintln(writer)
 }
 
+// writeReportTotals prints the file, unit, evaluation, and cache counts.
 func writeReportTotals(writer io.Writer, report runner.Report) {
 	fmt.Fprintf(
 		writer,
@@ -638,6 +673,7 @@ func writeReportTotals(writer io.Writer, report runner.Report) {
 	}
 }
 
+// paint wraps text in a color code when color is enabled.
 func (style outputStyle) paint(code string, text string) string {
 	if !style.color {
 		return text
@@ -645,6 +681,7 @@ func (style outputStyle) paint(code string, text string) string {
 	return "\x1b[" + code + "m" + text + "\x1b[0m"
 }
 
+// severity paints text with the color for a finding level.
 func (style outputStyle) severity(severity config.Severity, text string) string {
 	switch severity {
 	case config.SeverityError:
@@ -656,6 +693,7 @@ func (style outputStyle) severity(severity config.Severity, text string) string 
 	}
 }
 
+// shouldUseColor reports whether colored output should be used.
 func shouldUseColor(mode colorMode, writer io.Writer, hints terminalHints) bool {
 	switch mode {
 	case colorAlways:
@@ -674,6 +712,7 @@ func shouldUseColor(mode colorMode, writer io.Writer, hints terminalHints) bool 
 	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
+// findingCounts counts the findings by level.
 func findingCounts(findings []runner.Finding) (int, int, int) {
 	var errors, warnings, information int
 	for _, finding := range findings {
@@ -689,6 +728,7 @@ func findingCounts(findings []runner.Finding) (int, int, int) {
 	return errors, warnings, information
 }
 
+// countLabel prints a count with the right singular or plural word.
 func countLabel(count int, singular string, plural string) string {
 	label := plural
 	if count == 1 {
@@ -697,6 +737,7 @@ func countLabel(count int, singular string, plural string) string {
 	return fmt.Sprintf("%d %s", count, label)
 }
 
+// wrapText breaks text into lines no wider than the limit.
 func wrapText(text string, width int) []string {
 	words := strings.Fields(text)
 	if len(words) == 0 {
@@ -719,6 +760,7 @@ func wrapText(text string, width int) []string {
 	return append(lines, line)
 }
 
+// splitFlagsAndPaths separates flags from path arguments.
 func splitFlagsAndPaths(set *flag.FlagSet, args []string) ([]string, []string, error) {
 	flagArgs := make([]string, 0, len(args))
 	paths := make([]string, 0)
@@ -742,10 +784,12 @@ func splitFlagsAndPaths(set *flag.FlagSet, args []string) ([]string, []string, e
 	return flagArgs, paths, nil
 }
 
+// isPathArg reports whether an argument is a path rather than a flag.
 func isPathArg(arg string) bool {
 	return arg == "-" || !strings.HasPrefix(arg, "-")
 }
 
+// consumeFlagArg returns a flag and its value when the flag takes one.
 func consumeFlagArg(
 	set *flag.FlagSet,
 	args []string,
@@ -769,6 +813,7 @@ func consumeFlagArg(
 	return []string{arg, args[index+1]}, index + 1, nil
 }
 
+// flagName returns the flag name and whether its value was written inline.
 func flagName(arg string) (string, bool) {
 	name := strings.TrimLeft(arg, "-")
 	inline := strings.Contains(name, "=")

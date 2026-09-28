@@ -9,6 +9,7 @@ import (
 	"jevlint/internal/parsing"
 )
 
+// Status is the answer for one rule on one piece of code.
 type Status int
 
 const (
@@ -19,30 +20,36 @@ const (
 	StatusAbstain
 )
 
+// Batch is one piece of code and the rules to check against it.
 type Batch struct {
 	Rules    []config.Rule    `json:"rules"`
 	CodeUnit parsing.CodeUnit `json:"codeUnit"`
 }
 
+// Result is the answer and confidence for one rule.
 type Result struct {
 	Status     Status  `json:"status"`
 	Confidence float64 `json:"confidence"`
 }
 
+// Evaluator answers a batch of rules for a piece of code.
 type Evaluator interface {
 	Evaluate(context.Context, Batch) (map[string]Result, error)
 }
 
+// CacheStats counts cache hits, misses, and writes.
 type CacheStats struct {
 	Hits   uint64 `json:"hits"`
 	Misses uint64 `json:"misses"`
 	Writes uint64 `json:"writes"`
 }
 
+// CacheStatsProvider exposes cache counts.
 type CacheStatsProvider interface {
 	CacheStats() CacheStats
 }
 
+// String returns the status name.
 func (status Status) String() string {
 	switch status {
 	case StatusPass:
@@ -58,6 +65,7 @@ func (status Status) String() string {
 	}
 }
 
+// MarshalJSON writes the status as its name.
 func (status Status) MarshalJSON() ([]byte, error) {
 	if status != StatusPass &&
 		status != StatusFail &&
@@ -68,6 +76,7 @@ func (status Status) MarshalJSON() ([]byte, error) {
 	return json.Marshal(status.String())
 }
 
+// UnmarshalJSON reads a status from its name.
 func (status *Status) UnmarshalJSON(data []byte) error {
 	var value string
 	if err := json.Unmarshal(data, &value); err != nil {
@@ -81,6 +90,7 @@ func (status *Status) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// ParseStatus turns a status name into a status value.
 func ParseStatus(value string) (Status, error) {
 	switch value {
 	case "pass":
@@ -96,6 +106,7 @@ func ParseStatus(value string) (Status, error) {
 	}
 }
 
+// Validate checks that a result has a known status and a valid confidence.
 func (result Result) Validate() error {
 	switch result.Status {
 	case StatusPass, StatusFail, StatusSkip, StatusAbstain:

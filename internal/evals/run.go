@@ -13,6 +13,7 @@ import (
 
 var ErrNoApplicableUnits = errors.New("no applicable code units")
 
+// Result is the outcome of scoring one eval case.
 type Result struct {
 	Rule       string   `json:"rule"`
 	Name       string   `json:"name,omitempty"`
@@ -23,6 +24,7 @@ type Result struct {
 	Confidence *float64 `json:"confidence,omitempty"`
 }
 
+// Report is the outcome of scoring every case.
 type Report struct {
 	Total      int      `json:"total"`
 	Matched    int      `json:"matched"`
@@ -30,16 +32,19 @@ type Report struct {
 	Cases      []Result `json:"cases"`
 }
 
+// Options holds the settings for an eval run.
 type Options struct {
 	Root        string
 	Concurrency int
 }
 
+// recordingEvaluator wraps a client and remembers its strongest fail scores.
 type recordingEvaluator struct {
 	inner    evaluation.Evaluator
 	bestFail map[string]float64
 }
 
+// Run scores every case and returns the report.
 func Run(
 	ctx context.Context,
 	document Document,
@@ -68,6 +73,7 @@ func Run(
 	return report, nil
 }
 
+// runCase scores one case.
 func runCase(
 	ctx context.Context,
 	evalCase Case,
@@ -112,6 +118,7 @@ func runCase(
 	return result, nil
 }
 
+// evalConfig builds a config with a single rule and no file filters.
 func evalConfig(cfg config.Config, rule config.Rule) config.Config {
 	rule.Include = nil
 	rule.Exclude = nil
@@ -122,6 +129,7 @@ func evalConfig(cfg config.Config, rule config.Rule) config.Config {
 	}
 }
 
+// Evaluate runs the batch and records the strongest fail score per rule.
 func (recorder *recordingEvaluator) Evaluate(
 	ctx context.Context,
 	batch evaluation.Batch,
@@ -145,6 +153,7 @@ func (recorder *recordingEvaluator) Evaluate(
 	return results, nil
 }
 
+// CacheStats returns the cache counts from the wrapped client.
 func (recorder *recordingEvaluator) CacheStats() evaluation.CacheStats {
 	provider, ok := recorder.inner.(evaluation.CacheStatsProvider)
 	if !ok {
@@ -153,6 +162,7 @@ func (recorder *recordingEvaluator) CacheStats() evaluation.CacheStats {
 	return provider.CacheStats()
 }
 
+// reportableConfidence returns the fail score when it reaches the floor.
 func (recorder *recordingEvaluator) reportableConfidence(
 	ruleID string,
 	floor float64,

@@ -41,9 +41,13 @@ const (
 	minimumBatchRules   = 1
 )
 
+// APIKey is the credential sent to the service.
 type APIKey string
+
+// ServiceURL is the base address of the service.
 type ServiceURL string
 
+// TypeSafeOptions holds the settings for a client.
 type TypeSafeOptions struct {
 	APIKey     APIKey
 	BaseURL    ServiceURL
@@ -54,6 +58,7 @@ type TypeSafeOptions struct {
 	Refresh    bool
 }
 
+// TypeSafe is a client for the Jev service.
 type TypeSafe struct {
 	apiKey      string
 	baseURL     string
@@ -70,12 +75,14 @@ type TypeSafe struct {
 	cacheWrites atomic.Uint64
 }
 
+// systemOneRequest is the body sent to the service.
 type systemOneRequest struct {
 	Model     string              `json:"model"`
 	State     any                 `json:"state"`
 	Questions map[string]question `json:"questions"`
 }
 
+// questionType names the kind of question sent to the service.
 type questionType int
 
 const (
@@ -83,6 +90,7 @@ const (
 	questionTypeChoice
 )
 
+// questionCriteria holds the wording for each possible answer.
 type questionCriteria struct {
 	Pass    string `json:"pass"`
 	Fail    string `json:"fail"`
@@ -90,28 +98,33 @@ type questionCriteria struct {
 	Abstain string `json:"abstain,omitempty"`
 }
 
+// question is one rule sent to the service.
 type question struct {
 	Type         questionType     `json:"type"`
 	Instructions string           `json:"instructions"`
 	Criteria     questionCriteria `json:"criteria"`
 }
 
+// systemOneResponse is the body returned by the service.
 type systemOneResponse struct {
 	Answers map[string]choiceAnswer `json:"answers"`
 }
 
+// choiceAnswer is the service answer for one rule.
 type choiceAnswer struct {
 	Type       questionType `json:"type"`
 	Choice     string       `json:"choice"`
 	Confidence *float64     `json:"confidence"`
 }
 
+// evaluationCall tracks one running request that callers share.
 type evaluationCall struct {
 	done    chan struct{}
 	results map[string]Result
 	err     error
 }
 
+// requestState is the code and context sent about one piece of code.
 type requestState struct {
 	Kind         parsing.CodeKind       `json:"kind"`
 	Name         string                 `json:"name"`
@@ -124,17 +137,20 @@ type requestState struct {
 	Callees      []requestCallee        `json:"callees,omitempty"`
 }
 
+// requestType is a related type sent as context.
 type requestType struct {
 	Name   string `json:"name"`
 	Source string `json:"source"`
 }
 
+// requestCallee is a called function sent as context.
 type requestCallee struct {
 	Name   string `json:"name"`
 	Path   string `json:"path"`
 	Source string `json:"source"`
 }
 
+// MarshalJSON writes the question kind as its name.
 func (kind questionType) MarshalJSON() ([]byte, error) {
 	switch kind {
 	case questionTypeChoice:
@@ -144,6 +160,7 @@ func (kind questionType) MarshalJSON() ([]byte, error) {
 	}
 }
 
+// UnmarshalJSON reads a question kind from its name.
 func (kind *questionType) UnmarshalJSON(data []byte) error {
 	var value string
 	if err := json.Unmarshal(data, &value); err != nil {
@@ -156,6 +173,7 @@ func (kind *questionType) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// NewTypeSafeFromEnvWithOptions reads the environment and builds a client.
 func NewTypeSafeFromEnvWithOptions(
 	options TypeSafeOptions,
 	getenv func(string) string,
@@ -180,6 +198,7 @@ func NewTypeSafeFromEnvWithOptions(
 	return client, nil
 }
 
+// NewTypeSafe builds a client from the given settings.
 func NewTypeSafe(options TypeSafeOptions) (*TypeSafe, error) {
 	apiKey := strings.TrimSpace(string(options.APIKey))
 	if apiKey == "" {
@@ -228,6 +247,7 @@ func NewTypeSafe(options TypeSafeOptions) (*TypeSafe, error) {
 	}, nil
 }
 
+// Evaluate answers the rules in a batch for one piece of code.
 func (client *TypeSafe) Evaluate(ctx context.Context, batch Batch) (map[string]Result, error) {
 	body, err := client.requestBody(batch)
 	if err != nil {
@@ -265,6 +285,7 @@ func (client *TypeSafe) Evaluate(ctx context.Context, batch Batch) (map[string]R
 	})
 }
 
+// hitCache returns cached results for a request when they are usable.
 func (client *TypeSafe) hitCache(key string, rules []config.Rule) (map[string]Result, bool) {
 	if client.refresh {
 		return nil, false
@@ -277,6 +298,7 @@ func (client *TypeSafe) hitCache(key string, rules []config.Rule) (map[string]Re
 	return results, true
 }
 
+// cachedResults reads and checks the cached results for a request.
 func (client *TypeSafe) cachedResults(
 	key string,
 	rules []config.Rule,
@@ -294,6 +316,7 @@ func (client *TypeSafe) cachedResults(
 	return results, true
 }
 
+// evaluateOnce runs a request once and shares the answer with waiting callers.
 func (client *TypeSafe) evaluateOnce(
 	ctx context.Context,
 	key string,
@@ -322,6 +345,7 @@ func (client *TypeSafe) evaluateOnce(
 	return cloneResults(call.results), call.err
 }
 
+// CacheStats returns the cache counts for this client.
 func (client *TypeSafe) CacheStats() CacheStats {
 	return CacheStats{
 		Hits:   client.cacheHits.Load(),
@@ -330,6 +354,7 @@ func (client *TypeSafe) CacheStats() CacheStats {
 	}
 }
 
+// requestBody builds the body sent to the service.
 func (client *TypeSafe) requestBody(batch Batch) ([]byte, error) {
 	questions, err := questionsForBatch(batch)
 	if err != nil {
@@ -346,6 +371,7 @@ func (client *TypeSafe) requestBody(batch Batch) ([]byte, error) {
 	return body, nil
 }
 
+// requestStateFrom builds the sent state from a piece of code.
 func requestStateFrom(unit parsing.CodeUnit) requestState {
 	state := requestState{
 		Kind:         unit.Kind,
@@ -378,6 +404,7 @@ func requestStateFrom(unit parsing.CodeUnit) requestState {
 	return state
 }
 
+// questionsForBatch builds the questions for a batch.
 func questionsForBatch(batch Batch) (map[string]question, error) {
 	if len(batch.Rules) < minimumBatchRules {
 		return nil, errors.New("at least one rule is required")
@@ -396,6 +423,7 @@ func questionsForBatch(batch Batch) (map[string]question, error) {
 	return questions, nil
 }
 
+// criteriaFor builds the answer wording for a rule.
 func criteriaFor(rule config.Rule) questionCriteria {
 	criteria := questionCriteria{
 		Pass: criterionPass,
@@ -410,6 +438,7 @@ func criteriaFor(rule config.Rule) questionCriteria {
 	return criteria
 }
 
+// decodeResults reads and checks the answers from the service.
 func decodeResults(
 	responseBody []byte,
 	rules []config.Rule,
@@ -469,6 +498,7 @@ func decodeResults(
 	return results, nil
 }
 
+// cacheKey returns the key that identifies a request.
 func (client *TypeSafe) cacheKey(body []byte) string {
 	credential := sha256.Sum256([]byte(client.apiKey))
 	hash := sha256.New()
@@ -485,6 +515,7 @@ func (client *TypeSafe) cacheKey(body []byte) string {
 	return fmt.Sprintf("%x", hash.Sum(nil))
 }
 
+// perform sends a request and retries when the service asks for it.
 func (client *TypeSafe) perform(ctx context.Context, body []byte) ([]byte, error) {
 	for attempt := 0; ; attempt++ {
 		request, err := client.newRequest(ctx, body, attempt)
@@ -520,6 +551,7 @@ func (client *TypeSafe) perform(ctx context.Context, body []byte) ([]byte, error
 	}
 }
 
+// newRequest builds one request to the service.
 func (client *TypeSafe) newRequest(
 	ctx context.Context,
 	body []byte,
@@ -546,6 +578,7 @@ func (client *TypeSafe) newRequest(
 	return request, nil
 }
 
+// readResponse reads and closes a response body.
 func readResponse(response *http.Response) ([]byte, error) {
 	body, readErr := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes))
 	closeErr := response.Body.Close()
@@ -558,6 +591,7 @@ func readResponse(response *http.Response) ([]byte, error) {
 	return body, nil
 }
 
+// instructionsFor builds the question text for a rule.
 func instructionsFor(
 	rule config.Rule,
 	unit parsing.CodeUnit,
@@ -582,12 +616,14 @@ func instructionsFor(
 	return builder.String()
 }
 
+// retryableStatus reports whether a response code should be tried again.
 func retryableStatus(status int) bool {
 	return status == http.StatusRequestTimeout ||
 		status == http.StatusTooManyRequests ||
 		status >= 500
 }
 
+// retryDelay picks how long to wait before the next try.
 func retryDelay(attempt int, headers http.Header) time.Duration {
 	if headers != nil {
 		if raw := headers.Get("retry-after-ms"); raw != "" {
@@ -615,6 +651,7 @@ func retryDelay(attempt int, headers http.Header) time.Duration {
 	return delay
 }
 
+// sleepContext waits for a duration or until the context ends.
 func sleepContext(ctx context.Context, duration time.Duration) error {
 	timer := time.NewTimer(duration)
 	defer timer.Stop()
@@ -626,6 +663,7 @@ func sleepContext(ctx context.Context, duration time.Duration) error {
 	}
 }
 
+// responseError builds an error from a failed response.
 func responseError(status int, headers http.Header, body []byte) error {
 	message := strings.TrimSpace(string(body))
 	var payload struct {

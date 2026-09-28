@@ -24,6 +24,7 @@ import (
 
 var newQuery = tree_sitter.NewQuery
 
+// queryKind names one of the queries used to read a language.
 type queryKind int
 
 const (
@@ -33,8 +34,10 @@ const (
 	queryCall
 )
 
+// languageQueries holds the queries for one language by kind.
 type languageQueries map[queryKind][]string
 
+// languagePreset holds the grammar, queries, and regions for one language.
 type languagePreset struct {
 	name       string
 	language   *tree_sitter.Language
@@ -43,6 +46,7 @@ type languagePreset struct {
 	regions    map[CodeKind][]string
 }
 
+// NewExtractor builds a parser for the enabled languages.
 func NewExtractor(enabled map[string]config.Language) (*Extractor, error) {
 	presets := languagePresets()
 	ids := make([]string, 0, len(enabled))
@@ -81,6 +85,7 @@ func NewExtractor(enabled map[string]config.Language) (*Extractor, error) {
 	return extractor, nil
 }
 
+// closeLanguageQueries frees the compiled queries.
 func closeLanguageQueries(specs ...languageSpec) {
 	for _, spec := range specs {
 		if spec.functionQuery != nil {
@@ -98,6 +103,7 @@ func closeLanguageQueries(specs ...languageSpec) {
 	}
 }
 
+// configuredLanguage applies the config on top of a built in preset.
 func configuredLanguage(
 	preset languagePreset,
 	override config.Language,
@@ -194,6 +200,7 @@ func configuredLanguage(
 	}, extensions, nil
 }
 
+// mergeRegions combines the preset regions with the config overrides.
 func mergeRegions(
 	defaults map[string][]string,
 	override map[string][]string,
@@ -208,6 +215,7 @@ func mergeRegions(
 	return result
 }
 
+// categorizeRegions maps each grammar node name to a kind.
 func categorizeRegions(regions map[string][]string) (map[string]CodeKind, error) {
 	result := make(map[string]CodeKind)
 	for category, kinds := range regions {
@@ -222,6 +230,7 @@ func categorizeRegions(regions map[string][]string) (map[string]CodeKind, error)
 	return result, nil
 }
 
+// validateConfiguredQuery compiles a query and checks its captures.
 func validateConfiguredQuery(
 	languageName string,
 	queryName string,
@@ -259,6 +268,7 @@ func validateConfiguredQuery(
 	return query, nil
 }
 
+// validateCallQuery compiles a call query and checks its capture.
 func validateCallQuery(
 	languageName string,
 	language *tree_sitter.Language,
@@ -281,6 +291,7 @@ func validateCallQuery(
 	return nil, fmt.Errorf("%s call query must capture @call", languageName)
 }
 
+// languagePresets returns the built in settings for each language.
 func languagePresets() map[string]languagePreset {
 	typescriptComments := []string{"comment"}
 	typescriptFields := []string{

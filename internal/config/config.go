@@ -10,12 +10,14 @@ import (
 	"strings"
 )
 
+// Config is the rule file loaded from disk.
 type Config struct {
 	Languages     map[string]Language `json:"languages"`
 	MinConfidence *float64            `json:"minConfidence,omitempty"`
 	Rules         []Rule              `json:"rules"`
 }
 
+// Language customizes a built in language preset.
 type Language struct {
 	Extensions         []string            `json:"extensions,omitempty"`
 	FunctionQueries    []string            `json:"functionQueries,omitempty"`
@@ -24,6 +26,7 @@ type Language struct {
 	Regions            map[string][]string `json:"regions,omitempty"`
 }
 
+// Rule describes one check, the code it covers, and how it is reported.
 type Rule struct {
 	ID            string       `json:"id"`
 	Description   string       `json:"description"`
@@ -39,10 +42,12 @@ type Rule struct {
 	Context       RuleContext  `json:"context,omitempty"`
 }
 
+// RuleContext asks for extra material to send with a rule.
 type RuleContext struct {
 	Callees bool `json:"callees,omitempty"`
 }
 
+// TargetKind names the kind of code a rule can check.
 type TargetKind int
 
 const (
@@ -54,6 +59,7 @@ const (
 	TargetKindType
 )
 
+// Severity says how serious a finding is.
 type Severity int
 
 const (
@@ -63,6 +69,7 @@ const (
 	SeverityError
 )
 
+// String returns the kind name.
 func (kind TargetKind) String() string {
 	switch kind {
 	case TargetKindComment:
@@ -80,6 +87,7 @@ func (kind TargetKind) String() string {
 	}
 }
 
+// MarshalJSON writes the kind as its name.
 func (kind TargetKind) MarshalJSON() ([]byte, error) {
 	if kind == TargetKindUnknown {
 		return nil, fmt.Errorf("invalid kind %d", kind)
@@ -87,6 +95,7 @@ func (kind TargetKind) MarshalJSON() ([]byte, error) {
 	return json.Marshal(kind.String())
 }
 
+// UnmarshalJSON reads a kind from its name.
 func (kind *TargetKind) UnmarshalJSON(data []byte) error {
 	var value string
 	if err := json.Unmarshal(data, &value); err != nil {
@@ -100,6 +109,7 @@ func (kind *TargetKind) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// ParseTargetKind turns a kind name into a kind value.
 func ParseTargetKind(value string) (TargetKind, bool) {
 	switch value {
 	case KindComment:
@@ -117,6 +127,7 @@ func ParseTargetKind(value string) (TargetKind, bool) {
 	}
 }
 
+// String returns the severity name.
 func (severity Severity) String() string {
 	switch severity {
 	case SeverityInfo:
@@ -130,6 +141,7 @@ func (severity Severity) String() string {
 	}
 }
 
+// MarshalJSON writes the severity as its name.
 func (severity Severity) MarshalJSON() ([]byte, error) {
 	if severity == SeverityUnknown {
 		return nil, fmt.Errorf("invalid severity %d", severity)
@@ -137,6 +149,7 @@ func (severity Severity) MarshalJSON() ([]byte, error) {
 	return json.Marshal(severity.String())
 }
 
+// UnmarshalJSON reads a severity from its name.
 func (severity *Severity) UnmarshalJSON(data []byte) error {
 	var value string
 	if err := json.Unmarshal(data, &value); err != nil {
@@ -171,6 +184,7 @@ var languagePresets = map[string]struct{}{
 	"typescript": {},
 }
 
+// Load reads and checks the rule file at a path.
 func Load(path string) (Config, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -181,6 +195,7 @@ func Load(path string) (Config, error) {
 	return Decode(file)
 }
 
+// Decode reads and checks the rule file from a reader.
 func Decode(reader io.Reader) (Config, error) {
 	var cfg Config
 	decoder := json.NewDecoder(reader)
@@ -204,6 +219,7 @@ func Decode(reader io.Reader) (Config, error) {
 	return cfg, nil
 }
 
+// MinimumConfidence returns the global confidence floor, or zero when unset.
 func (cfg Config) MinimumConfidence() float64 {
 	if cfg.MinConfidence == nil {
 		return 0
@@ -211,6 +227,7 @@ func (cfg Config) MinimumConfidence() float64 {
 	return *cfg.MinConfidence
 }
 
+// ConfidenceFloor returns the confidence floor for a rule.
 func (cfg Config) ConfidenceFloor(rule Rule) float64 {
 	if rule.MinConfidence != nil {
 		return *rule.MinConfidence
@@ -218,6 +235,7 @@ func (cfg Config) ConfidenceFloor(rule Rule) float64 {
 	return cfg.MinimumConfidence()
 }
 
+// Validate checks the config for mistakes.
 func (cfg Config) Validate() error {
 	if err := validateLanguages(cfg.Languages); err != nil {
 		return err
@@ -262,6 +280,7 @@ func (cfg Config) Validate() error {
 	return nil
 }
 
+// validateMinConfidence checks that a confidence floor is between zero and one.
 func validateMinConfidence(value *float64) error {
 	if value == nil {
 		return nil
@@ -272,6 +291,7 @@ func validateMinConfidence(value *float64) error {
 	return nil
 }
 
+// validateLanguages checks the enabled languages and their settings.
 func validateLanguages(languages map[string]Language) error {
 	if len(languages) == 0 {
 		return errors.New("config must enable at least one language")
@@ -312,6 +332,7 @@ func validateLanguages(languages map[string]Language) error {
 	return nil
 }
 
+// validateLanguageExtensions checks the file extensions for one language.
 func validateLanguageExtensions(
 	id string,
 	values []string,
@@ -344,6 +365,7 @@ func validateLanguageExtensions(
 	return nil
 }
 
+// validateQueryOverride checks the custom parser queries for one language.
 func validateQueryOverride(id string, field string, values []string) error {
 	if values == nil {
 		return nil
@@ -359,6 +381,7 @@ func validateQueryOverride(id string, field string, values []string) error {
 	return nil
 }
 
+// validateRegionOverrides checks the custom region settings for one language.
 func validateRegionOverrides(id string, regions map[string][]string) error {
 	if regions == nil {
 		return nil
@@ -393,6 +416,7 @@ func validateRegionOverrides(id string, regions map[string][]string) error {
 	return nil
 }
 
+// validateRuleID checks that a rule has an id.
 func validateRuleID(rule Rule, prefix string) error {
 	if strings.TrimSpace(rule.ID) == "" {
 		return fmt.Errorf("%s.id is required", prefix)
@@ -400,6 +424,7 @@ func validateRuleID(rule Rule, prefix string) error {
 	return nil
 }
 
+// validateRuleDescription checks that a rule has a description.
 func validateRuleDescription(rule Rule, prefix string) error {
 	if strings.TrimSpace(rule.Description) == "" {
 		return fmt.Errorf("%s.description is required", prefix)
@@ -407,6 +432,7 @@ func validateRuleDescription(rule Rule, prefix string) error {
 	return nil
 }
 
+// validateRuleSeverity checks that a rule has a known severity.
 func validateRuleSeverity(rule Rule, prefix string) error {
 	switch rule.Severity {
 	case SeverityInfo, SeverityWarning, SeverityError:
@@ -416,6 +442,7 @@ func validateRuleSeverity(rule Rule, prefix string) error {
 	}
 }
 
+// validateRulePatterns checks that the rule file patterns are not empty.
 func validateRulePatterns(rule Rule, prefix string) error {
 	patterns := append(append([]string{}, rule.Include...), rule.Exclude...)
 	for _, pattern := range patterns {
@@ -434,6 +461,7 @@ const (
 	KindType      = "type"
 )
 
+// validateRuleLocalization checks the places a rule can point at.
 func validateRuleLocalization(rule Rule, prefix string) error {
 	for _, category := range rule.Localize {
 		switch category {
@@ -449,6 +477,7 @@ func validateRuleLocalization(rule Rule, prefix string) error {
 	return nil
 }
 
+// validateRuleKinds checks the code kinds a rule can check.
 func validateRuleKinds(rule Rule, prefix string) error {
 	for _, kind := range rule.Kinds {
 		if kind == TargetKindUnknown {

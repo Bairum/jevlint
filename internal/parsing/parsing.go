@@ -10,6 +10,7 @@ import (
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
+// CodeUnit is one function or type read from a source file.
 type CodeUnit struct {
 	Kind         CodeKind          `json:"kind"`
 	Name         string            `json:"name"`
@@ -31,6 +32,7 @@ type CodeUnit struct {
 	Regions      []Region          `json:"-"`
 }
 
+// CodeKind names the kind of a code unit.
 type CodeKind int
 
 const (
@@ -43,6 +45,7 @@ const (
 	CodeKindRegion
 )
 
+// SourceLanguage names a language the parser supports.
 type SourceLanguage int
 
 const (
@@ -62,10 +65,12 @@ const (
 	SourceLanguageTypeScript
 )
 
+// NodeKind is a grammar node name.
 type NodeKind string
 
 const maxAttachedRegions = 24
 
+// Region is a smaller piece of a code unit, such as a comment or statement.
 type Region struct {
 	Category    CodeKind `json:"category"`
 	Kind        NodeKind `json:"kind"`
@@ -78,6 +83,7 @@ type Region struct {
 	EndByte     uint     `json:"endByte"`
 }
 
+// TypeDeclaration is a type found in a source file.
 type TypeDeclaration struct {
 	Name      string `json:"name"`
 	Source    string `json:"source"`
@@ -87,6 +93,7 @@ type TypeDeclaration struct {
 	EndByte   uint   `json:"endByte"`
 }
 
+// languageSpec holds the grammar and queries for one language.
 type languageSpec struct {
 	name             string
 	id               SourceLanguage
@@ -98,10 +105,12 @@ type languageSpec struct {
 	regionKinds      map[string]CodeKind
 }
 
+// Extractor reads code units from source files.
 type Extractor struct {
 	byExtension map[string]languageSpec
 }
 
+// String returns the kind name.
 func (kind CodeKind) String() string {
 	switch kind {
 	case CodeKindFunction:
@@ -121,10 +130,12 @@ func (kind CodeKind) String() string {
 	}
 }
 
+// MarshalJSON writes the kind as its name.
 func (kind CodeKind) MarshalJSON() ([]byte, error) {
 	return json.Marshal(kind.String())
 }
 
+// UnmarshalJSON reads a kind from its name.
 func (kind *CodeKind) UnmarshalJSON(data []byte) error {
 	var value string
 	if err := json.Unmarshal(data, &value); err != nil {
@@ -138,6 +149,7 @@ func (kind *CodeKind) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// ParseCodeKind turns a kind name into a kind value.
 func ParseCodeKind(value string) (CodeKind, bool) {
 	switch value {
 	case "function":
@@ -157,6 +169,7 @@ func ParseCodeKind(value string) (CodeKind, bool) {
 	}
 }
 
+// String returns the language name.
 func (language SourceLanguage) String() string {
 	switch language {
 	case SourceLanguageC:
@@ -190,10 +203,12 @@ func (language SourceLanguage) String() string {
 	}
 }
 
+// MarshalJSON writes the language as its name.
 func (language SourceLanguage) MarshalJSON() ([]byte, error) {
 	return json.Marshal(language.String())
 }
 
+// UnmarshalJSON reads a language from its name.
 func (language *SourceLanguage) UnmarshalJSON(data []byte) error {
 	var value string
 	if err := json.Unmarshal(data, &value); err != nil {
@@ -207,6 +222,7 @@ func (language *SourceLanguage) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// ParseSourceLanguage turns a language name into a language value.
 func ParseSourceLanguage(value string) (SourceLanguage, bool) {
 	switch value {
 	case "c":
@@ -240,11 +256,13 @@ func ParseSourceLanguage(value string) (SourceLanguage, bool) {
 	}
 }
 
+// Supports reports whether a file extension has a language.
 func (extractor *Extractor) Supports(path string) bool {
 	_, ok := extractor.byExtension[strings.ToLower(filepath.Ext(path))]
 	return ok
 }
 
+// Extensions returns the file extensions the parser knows.
 func (extractor *Extractor) Extensions() []string {
 	extensions := make([]string, 0, len(extractor.byExtension))
 	for extension := range extractor.byExtension {
@@ -254,6 +272,7 @@ func (extractor *Extractor) Extensions() []string {
 	return extensions
 }
 
+// Extract reads the code units from one source file.
 func (extractor *Extractor) Extract(path string, source []byte) ([]CodeUnit, error) {
 	spec, ok := extractor.byExtension[strings.ToLower(filepath.Ext(path))]
 	if !ok {
@@ -295,6 +314,7 @@ func (extractor *Extractor) Extract(path string, source []byte) ([]CodeUnit, err
 	return units, nil
 }
 
+// parseSource builds a syntax tree and rejects files with syntax errors.
 func parseSource(
 	spec languageSpec,
 	path string,
@@ -318,6 +338,7 @@ func parseSource(
 	return tree, nil
 }
 
+// extractTypeDeclarations lists the types found in a file.
 func extractTypeDeclarations(
 	spec languageSpec,
 	path string,
@@ -360,6 +381,7 @@ func extractTypeDeclarations(
 	return declarations
 }
 
+// attachRelatedTypes adds the types that a function mentions.
 func attachRelatedTypes(functions []CodeUnit, declarations []TypeDeclaration) {
 	for index := range functions {
 		for _, declaration := range declarations {
@@ -374,6 +396,7 @@ func attachRelatedTypes(functions []CodeUnit, declarations []TypeDeclaration) {
 	}
 }
 
+// attachRegions adds the smaller pieces found inside each code unit.
 func attachRegions(units []CodeUnit, regions []Region) {
 	for index := range units {
 		for _, region := range regions {
@@ -389,6 +412,7 @@ func attachRegions(units []CodeUnit, regions []Region) {
 	}
 }
 
+// sortCodeUnits orders code units by where they start.
 func sortCodeUnits(units []CodeUnit) {
 	sort.SliceStable(units, func(i, j int) bool {
 		if units[i].StartByte == units[j].StartByte {
@@ -398,6 +422,7 @@ func sortCodeUnits(units []CodeUnit) {
 	})
 }
 
+// extractMatches runs one query and builds a code unit for each match.
 func extractMatches(
 	spec languageSpec,
 	path string,
@@ -440,6 +465,7 @@ func extractMatches(
 
 const identifierCapture = "name"
 
+// captureIndexes finds the positions of the captures a query needs.
 func captureIndexes(query *tree_sitter.Query, unitCapture string) (uint32, uint32, bool) {
 	var unitIndex, nameIndex uint32
 	var haveUnit, haveName bool
@@ -457,6 +483,7 @@ func captureIndexes(query *tree_sitter.Query, unitCapture string) (uint32, uint3
 	return unitIndex, nameIndex, haveUnit && haveName
 }
 
+// capturePair pulls the unit and name nodes from one match.
 func capturePair(
 	match *tree_sitter.QueryMatch,
 	unitIndex uint32,
@@ -476,6 +503,7 @@ func capturePair(
 	return unitNode, nameNode
 }
 
+// codeUnitFromNodes builds a code unit from its grammar nodes.
 func codeUnitFromNodes(
 	spec languageSpec,
 	path string,
@@ -502,6 +530,7 @@ func codeUnitFromNodes(
 	}
 }
 
+// extractRegions walks the tree and collects the smaller pieces it finds.
 func extractRegions(
 	root *tree_sitter.Node,
 	source []byte,
@@ -542,6 +571,7 @@ func extractRegions(
 	return regions
 }
 
+// documentationAnchor returns the node that should carry a doc comment.
 func documentationAnchor(node *tree_sitter.Node) *tree_sitter.Node {
 	parent := node.Parent()
 	if parent != nil && parent.Kind() == "decorated_definition" {
@@ -550,6 +580,7 @@ func documentationAnchor(node *tree_sitter.Node) *tree_sitter.Node {
 	return node
 }
 
+// leadingCommentStart walks back over the comments that belong to a node.
 func leadingCommentStart(
 	node *tree_sitter.Node,
 	source []byte,
@@ -569,6 +600,7 @@ func leadingCommentStart(
 	return startByte, startPosition
 }
 
+// isAdjacentCommentGap reports whether one line separates a comment from code.
 func isAdjacentCommentGap(gap []byte) bool {
 	newlines := 0
 	for _, value := range gap {
@@ -586,10 +618,12 @@ func isAdjacentCommentGap(gap []byte) bool {
 	return true
 }
 
+// declarationContains reports whether a type holds a code unit.
 func declarationContains(declaration TypeDeclaration, unit CodeUnit) bool {
 	return declaration.StartByte <= unit.StartByte && declaration.EndByte >= unit.EndByte
 }
 
+// containsIdentifier reports whether a name appears as a whole word.
 func containsIdentifier(source string, identifier string) bool {
 	for index := 0; index < len(source); {
 		start := strings.Index(source[index:], identifier)
@@ -608,6 +642,7 @@ func containsIdentifier(source string, identifier string) bool {
 	return false
 }
 
+// isIdentifierByte reports whether a byte can be part of a name.
 func isIdentifierByte(value byte) bool {
 	return value == '_' ||
 		value >= 'a' && value <= 'z' ||
