@@ -240,6 +240,6 @@ func writeRunCase(writer io.Writer, style outputStyle, result evals.Result) {
 		mark = style.paint("31", "✗ "+label)
 	}
 	fmt.Fprintf(writer, "  %s\n", mark)
-	fmt.Fprintf(writer, "    expected %s\n", result.Expected)
-	fmt.Fprintf(writer, "    actual %s\n", result.Actual)
+	fmt.Fprintf(writer, "      expected %s\n", result.Expected)
+	fmt.Fprintf(writer, "      actual %s\n", result.Actual)
 }
