@@ -100,6 +100,31 @@
       ]
     },
     {
+      "id": "accurate-doc-comments",
+      "description": "The doc comment accurately describes what the code does. Code with no doc comment passes. Fail when the comment claims behavior the code does not have, promises results the code does not produce, or describes a different purpose.",
+      "severity": "warning",
+      "kinds": ["function", "type"],
+      "include": ["**/*"],
+      "exclude": [
+        "**/test/**",
+        "**/tests/**",
+        "**/testdata/**",
+        "**/__tests__/**",
+        "**/*_test.go",
+        "**/*.test.js",
+        "**/*.test.jsx",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.js",
+        "**/*.spec.jsx",
+        "**/*.spec.ts",
+        "**/*.spec.tsx",
+        "**/test_*.py",
+        "**/*_test.py"
+      ],
+      "localize": ["comment"]
+    },
+    {
       "id": "redundant-if-statements",
       "description": "Fail conditionals whose branches unnecessarily convert a condition directly into a boolean value, duplicate the same outcome, or perform logic that can be expressed more clearly without branching. Examples include returning true or false solely based on an existing boolean condition, or branches that return or assign identical values. Do not fail conditionals with meaningful side effects, distinct error handling, or cases where removing the branch would make the code harder to understand.",
       "severity": "warning",
