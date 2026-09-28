@@ -21,8 +21,6 @@ go run ./cmd/jevlint check --concurrency 8 src
 go run ./cmd/jevlint check --refresh-cache .
 go run ./cmd/jevlint eval
 go run ./cmd/jevlint eval --rule database-joins --format json
-go run ./cmd/jevlint examples
-go run ./cmd/jevlint examples --rule accurate-doc-comments
 ```
 
 | Flag | Description |
@@ -159,14 +157,18 @@ Eval evaluates only that rule. It clears the rule's include and exclude so
 fixtures still run, and keeps kinds, exceptions, localize, and minConfidence.
 A case must evaluate at least one applicable code unit or eval exits `2`.
 
+The repository ships its own cases in `jevlint-evals.json` covering the
+fixtures under `examples/rules`. Folder names such as `good` and `bad` are
+organizational only; the case's `expect` value decides the outcome. A rule can
+have many cases, including several for the same language.
+
 ```json
 {
   "version": 1,
   "cases": [
     {
-      "name": "join-in-code",
       "rule": "database-joins",
-      "file": "fixtures/orm.go",
+      "file": "examples/rules/database-joins/bad/example.go",
       "expect": "fail"
     }
   ]
@@ -190,34 +192,6 @@ JSON includes per-case confidence when a reportable fail is available.
 - `0`: every case matched
 - `1`: at least one case missed its expectation
 - `2`: configuration or runtime error
-
-## Examples
-
-`jevlint examples` scores the fixtures kept under `examples/rules`. Each rule
-has a `good` directory, whose files must pass, and a `bad` directory, whose
-files must fail.
-
-```
-examples/rules/
-  accurate-doc-comments/
-    good/example.go
-    bad/example.go
-```
-
-| Flag | Description |
-| --- | --- |
-| `--clear-cache` | Clear this project's cached evaluations before evaluating. |
-| `--color auto\|always\|never` | Control colored text output. Defaults to `auto`. |
-| `--config path` | Use a different rule file. Its directory becomes the project root. |
-| `--concurrency number` | Set the maximum number of concurrent Jev requests. Defaults to `4`. |
-| `--examples path` | Use a different examples directory. Defaults to `examples` next to `--config`. |
-| `--format text\|json` | Select human-readable or machine-readable output. Defaults to `text`. |
-| `--refresh-cache` | Reevaluate code and replace matching cached results. |
-| `--rule id` | Evaluate only this rule's examples. |
-
-Only rules enabled in the config are scored. Text output is grouped by rule and
-ends with `N/M examples matched expectations`. Exit codes match `eval`. Use
-`exclude` to keep `examples` out of regular `check` runs.
 
 ## Supported languages
 
