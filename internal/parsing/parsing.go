@@ -30,6 +30,10 @@ type CodeUnit struct {
 	CallRefs     []CallRef         `json:"-"`
 	Resolved     []CalleeContext   `json:"-"`
 	Regions      []Region          `json:"-"`
+
+	// docStart is where the declaration itself starts, after any leading
+	// comment. It is zero for units that are not functions or types.
+	docStart uint
 }
 
 // CodeKind names the kind of a code unit.
@@ -40,6 +44,7 @@ const (
 	CodeKindFunction
 	CodeKindType
 	CodeKindComment
+	CodeKindDocComment
 	CodeKindField
 	CodeKindStatement
 	CodeKindRegion
@@ -119,6 +124,8 @@ func (kind CodeKind) String() string {
 		return "type"
 	case CodeKindComment:
 		return "comment"
+	case CodeKindDocComment:
+		return "docComment"
 	case CodeKindField:
 		return "field"
 	case CodeKindStatement:
@@ -158,6 +165,8 @@ func ParseCodeKind(value string) (CodeKind, bool) {
 		return CodeKindType, true
 	case "comment":
 		return CodeKindComment, true
+	case "docComment":
+		return CodeKindDocComment, true
 	case "field":
 		return CodeKindField, true
 	case "statement":
@@ -309,9 +318,34 @@ func (extractor *Extractor) Extract(path string, source []byte) ([]CodeUnit, err
 	attachRelatedTypes(functions, declarations)
 
 	units := append(functions, types...)
-	attachRegions(units, extractRegions(root, source, spec.regionKinds))
+	regions := extractRegions(root, source, spec.regionKinds)
+	markDocComments(units, regions)
+	attachRegions(units, regions)
 	sortCodeUnits(units)
 	return units, nil
+}
+
+// markDocComments marks the leading comments of a function or type as doc
+// comments, so rules can tell them apart from other comments.
+func markDocComments(units []CodeUnit, regions []Region) {
+	for index := range regions {
+		if regions[index].Category != CodeKindComment {
+			continue
+		}
+		for _, unit := range units {
+			if unit.Kind != CodeKindFunction && unit.Kind != CodeKindType {
+				continue
+			}
+			if unit.docStart <= unit.StartByte {
+				continue
+			}
+			if regions[index].StartByte >= unit.StartByte &&
+				regions[index].EndByte <= unit.docStart {
+				regions[index].Category = CodeKindDocComment
+				break
+			}
+		}
+	}
 }
 
 // parseSource builds a syntax tree and rejects files with syntax errors.
@@ -527,6 +561,7 @@ func codeUnitFromNodes(
 		EndColumn:   end.Column,
 		StartByte:   sourceStartByte,
 		EndByte:     unitNode.EndByte(),
+		docStart:    sourceNode.StartByte(),
 	}
 }
 

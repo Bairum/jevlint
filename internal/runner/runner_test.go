@@ -383,6 +383,69 @@ func TestCheckEvaluatesRequestedRegionsDirectly(t *testing.T) {
 	}
 }
 
+func TestCheckEvaluatesDocCommentsSeparatelyFromComments(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	source := "package sample\n\n" +
+		"// FeatureFlags controls behavior.\n" +
+		"type FeatureFlags struct {\n" +
+		"\t// Enabled controls it.\n" +
+		"\tEnabled bool\n" +
+		"}\n"
+	if err := os.WriteFile(
+		filepath.Join(root, "flags.go"),
+		[]byte(source),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{Rules: []config.Rule{
+		{
+			ID:          "doc-comments",
+			Description: "Doc comments are accurate.",
+			Severity:    config.SeverityWarning,
+			Kinds:       []config.TargetKind{config.TargetKindDocComment},
+		},
+		{
+			ID:          "comments",
+			Description: "Comments are clear.",
+			Severity:    config.SeverityWarning,
+			Kinds:       []config.TargetKind{config.TargetKindComment},
+		},
+	}}
+	evaluator := &capturingEvaluator{}
+	report, err := (Runner{
+		Extractor: testGoExtractor(t),
+		Evaluator: evaluator,
+	}).Evaluate(context.Background(), cfg, Options{Root: root, Concurrency: 1})
+	if err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+	if report.Evaluations != 2 || len(evaluator.batches) != 2 {
+		t.Fatalf("evaluations = %d, batches = %#v", report.Evaluations, evaluator.batches)
+	}
+	byKind := map[parsing.CodeKind]evaluation.Batch{}
+	for _, batch := range evaluator.batches {
+		byKind[batch.CodeUnit.Kind] = batch
+	}
+	doc, ok := byKind[parsing.CodeKindDocComment]
+	if !ok {
+		t.Fatalf("missing docComment batch: %#v", evaluator.batches)
+	}
+	if !strings.Contains(doc.CodeUnit.Source, "FeatureFlags controls") ||
+		!strings.Contains(doc.CodeUnit.ParentSource, "type FeatureFlags") {
+		t.Fatalf("docComment batch = %#v", doc.CodeUnit)
+	}
+	plain, ok := byKind[parsing.CodeKindComment]
+	if !ok {
+		t.Fatalf("missing comment batch: %#v", evaluator.batches)
+	}
+	if !strings.Contains(plain.CodeUnit.Source, "Enabled controls") {
+		t.Fatalf("comment batch = %#v", plain.CodeUnit)
+	}
+}
+
 func TestUnitsForRulesDeduplicatesRegionsUsingClosestParent(t *testing.T) {
 	region := parsing.Region{
 		Category:  parsing.CodeKindComment,

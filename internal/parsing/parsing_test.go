@@ -584,10 +584,10 @@ func TestExtractIncludesBoundedLocalizationRegions(t *testing.T) {
 		t.Fatalf("regions = %#v, want comment and two fields", unit.Regions)
 	}
 	if unit.Regions[0].Kind != "comment" ||
-		unit.Regions[0].Category != CodeKindComment ||
+		unit.Regions[0].Category != CodeKindDocComment ||
 		unit.Regions[0].StartLine != 3 ||
 		unit.Regions[0].StartColumn != 0 {
-		t.Fatalf("comment region = %#v", unit.Regions[0])
+		t.Fatalf("doc comment region = %#v", unit.Regions[0])
 	}
 	if unit.Regions[1].Kind != "field_declaration" ||
 		unit.Regions[1].Category != CodeKindField ||
@@ -595,6 +595,55 @@ func TestExtractIncludesBoundedLocalizationRegions(t *testing.T) {
 		unit.Regions[1].StartLine != 5 ||
 		unit.Regions[1].StartColumn != 1 {
 		t.Fatalf("field region = %#v", unit.Regions[1])
+	}
+}
+
+func TestExtractSeparatesDocCommentsFromRegularComments(t *testing.T) {
+	t.Parallel()
+
+	source := "package sample\n\n" +
+		"// User stores identity.\n" +
+		"type User struct {\n" +
+		"\t// ID is unique.\n" +
+		"\tID int\n" +
+		"}\n\n" +
+		"// Read loads a user.\n" +
+		"func Read() {\n" +
+		"\t// Keep the id.\n" +
+		"\tprintln(ID(1))\n" +
+		"}\n\n" +
+		"func ID(value int) int { return value }\n"
+	units, err := testExtractor(t, "go").Extract("sample.go", []byte(source))
+	if err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+
+	user := findUnit(units, CodeKindType, "User")
+	if user == nil {
+		t.Fatal("type User not found")
+	}
+	if user.Regions[0].Category != CodeKindDocComment {
+		t.Fatalf("leading type comment = %v, want docComment", user.Regions[0].Category)
+	}
+	if user.Regions[0].Source != "// User stores identity." {
+		t.Fatalf("leading type comment source = %q", user.Regions[0].Source)
+	}
+
+	read := findUnit(units, CodeKindFunction, "Read")
+	if read == nil {
+		t.Fatal("function Read not found")
+	}
+	var docs, plain int
+	for _, region := range read.Regions {
+		switch region.Category {
+		case CodeKindDocComment:
+			docs++
+		case CodeKindComment:
+			plain++
+		}
+	}
+	if docs != 1 || plain != 1 {
+		t.Fatalf("Read regions = %#v, want one docComment and one comment", read.Regions)
 	}
 }
 
@@ -693,7 +742,7 @@ func TestNewLanguagePresetsCategorizeRegions(t *testing.T) {
 					categories[region.Category] = true
 				}
 			}
-			for _, category := range []CodeKind{CodeKindComment, CodeKindField, CodeKindStatement} {
+			for _, category := range []CodeKind{CodeKindField, CodeKindStatement} {
 				if !categories[category] {
 					t.Errorf(
 						"Extract() region categories = %v, missing %q",
@@ -701,6 +750,12 @@ func TestNewLanguagePresetsCategorizeRegions(t *testing.T) {
 						category.String(),
 					)
 				}
+			}
+			if !categories[CodeKindComment] && !categories[CodeKindDocComment] {
+				t.Errorf(
+					"Extract() region categories = %v, missing a comment category",
+					categories,
+				)
 			}
 		})
 	}

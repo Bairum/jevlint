@@ -483,10 +483,11 @@ func codeUnitLess(left parsing.CodeUnit, right parsing.CodeUnit) bool {
 		return left.StartByte < right.StartByte
 	}
 	rank := map[parsing.CodeKind]int{
-		parsing.CodeKindType:     codeUnitRankType,
-		parsing.CodeKindFunction: codeUnitRankFunction,
-		parsing.CodeKindComment:  codeUnitRankComment,
-		parsing.CodeKindField:    codeUnitRankField,
+		parsing.CodeKindType:       codeUnitRankType,
+		parsing.CodeKindFunction:   codeUnitRankFunction,
+		parsing.CodeKindComment:    codeUnitRankComment,
+		parsing.CodeKindDocComment: codeUnitRankComment,
+		parsing.CodeKindField:      codeUnitRankField,
 	}
 	leftRank, rightRank := codeUnitRankOther, codeUnitRankOther
 	if value, ok := rank[left.Kind]; ok {
@@ -508,7 +509,8 @@ func requestedRegionKinds(rules []config.Rule) map[parsing.CodeKind]parsing.Code
 				continue
 			}
 			switch parsed {
-			case parsing.CodeKindComment, parsing.CodeKindField, parsing.CodeKindStatement:
+			case parsing.CodeKindComment, parsing.CodeKindDocComment,
+				parsing.CodeKindField, parsing.CodeKindStatement:
 				requested[parsed] = parsed
 			}
 		}

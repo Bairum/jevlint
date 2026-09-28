@@ -103,7 +103,7 @@
       "id": "accurate-doc-comments",
       "description": "The doc comment accurately describes what the code does. Code with no doc comment passes. Fail when the comment claims behavior the code does not have, promises results the code does not produce, or describes a different purpose.",
       "severity": "warning",
-      "kinds": ["function", "type"],
+      "kinds": ["docComment"],
       "include": ["**/*"],
       "exclude": [
         "**/test/**",
@@ -121,8 +121,7 @@
         "**/*.spec.tsx",
         "**/test_*.py",
         "**/*_test.py"
-      ],
-      "localize": ["comment"]
+      ]
     },
     {
       "id": "redundant-if-statements",
