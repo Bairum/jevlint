@@ -15,6 +15,13 @@ const (
 	currentVersion = 1
 	expectPassName = "pass"
 	expectFailName = "fail"
+
+	// DefaultExamplesDir is the directory next to the config that holds one
+	// fixture directory per rule.
+	DefaultExamplesDir = "examples"
+	examplesRulesDir   = "rules"
+	examplesGoodDir    = "good"
+	examplesBadDir     = "bad"
 )
 
 // Expect is the outcome an eval case wants to see.
@@ -133,6 +140,89 @@ func Load(
 		if err := prepareCase(&document.Cases[index], root, cfg, extractor, seen); err != nil {
 			return Document{}, err
 		}
+	}
+	return document, nil
+}
+
+// LoadExamples builds a document from an examples directory. The directory
+// holds one subdirectory per rule under "rules", and each rule directory has
+// a "good" and a "bad" directory. Files under "good" must pass the rule and
+// files under "bad" must fail it.
+func LoadExamples(
+	dir string,
+	cfg config.Config,
+	extractor *parsing.Extractor,
+) (Document, error) {
+	absolute, err := filepath.Abs(dir)
+	if err != nil {
+		return Document{}, fmt.Errorf("resolve examples dir: %w", err)
+	}
+	rulesRoot := filepath.Join(absolute, examplesRulesDir)
+	if _, err := os.Stat(rulesRoot); err != nil {
+		return Document{}, fmt.Errorf("open examples %q: %w", dir, err)
+	}
+
+	document := Document{Version: currentVersion}
+	seen := make(map[caseIdentity]struct{})
+	groups := []struct {
+		name   string
+		expect Expect
+	}{
+		{examplesGoodDir, ExpectPass},
+		{examplesBadDir, ExpectFail},
+	}
+	for _, rule := range cfg.Rules {
+		ruleDir := filepath.Join(rulesRoot, rule.ID)
+		info, err := os.Stat(ruleDir)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return Document{}, fmt.Errorf("open examples %q: %w", rule.ID, err)
+		}
+		if !info.IsDir() {
+			continue
+		}
+		for _, group := range groups {
+			groupDir := filepath.Join(ruleDir, group.name)
+			entries, err := os.ReadDir(groupDir)
+			if err != nil {
+				if os.IsNotExist(err) {
+					continue
+				}
+				return Document{}, fmt.Errorf("open examples %q: %w", groupDir, err)
+			}
+			for _, entry := range entries {
+				if entry.IsDir() {
+					continue
+				}
+				file := filepath.Join(groupDir, entry.Name())
+				if !extractor.Supports(file) {
+					return Document{}, fmt.Errorf(
+						"example %q has an unsupported language",
+						filepath.ToSlash(filepath.Join(rule.ID, group.name, entry.Name())),
+					)
+				}
+				identity := caseIdentity{rule: rule.ID, file: file}
+				if _, exists := seen[identity]; exists {
+					return Document{}, fmt.Errorf(
+						"duplicate example for rule %q and file %q",
+						rule.ID,
+						entry.Name(),
+					)
+				}
+				seen[identity] = struct{}{}
+				document.Cases = append(document.Cases, Case{
+					Rule:   rule.ID,
+					File:   filepath.ToSlash(filepath.Join(group.name, entry.Name())),
+					Expect: group.expect,
+					abs:    file,
+				})
+			}
+		}
+	}
+	if len(document.Cases) == 0 {
+		return Document{}, fmt.Errorf("examples %q has no cases", dir)
 	}
 	return document, nil
 }

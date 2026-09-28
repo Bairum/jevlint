@@ -16,50 +16,50 @@ import (
 	"jevlint/internal/parsing"
 )
 
-// evalOptions holds the settings for an eval run.
-type evalOptions struct {
-	output outputContext
-	eval   evalContext
+// examplesOptions holds the settings for an examples run.
+type examplesOptions struct {
+	output   outputContext
+	examples examplesContext
 }
 
-// evalContext holds the settings that shape an eval.
-type evalContext struct {
-	configPath  string
-	evalsPath   string
-	ruleID      string
-	concurrency int
-	cache       cacheMode
+// examplesContext holds the settings that shape an examples run.
+type examplesContext struct {
+	configPath   string
+	examplesPath string
+	ruleID       string
+	concurrency  int
+	cache        cacheMode
 }
 
-// parseEvalOptions reads the eval flags.
-func parseEvalOptions(args []string, stderr io.Writer) (evalOptions, int, bool) {
-	flags := flag.NewFlagSet("eval", flag.ContinueOnError)
+// parseExamplesOptions reads the examples flags.
+func parseExamplesOptions(args []string, stderr io.Writer) (examplesOptions, int, bool) {
+	flags := flag.NewFlagSet("examples", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
-		fmt.Fprint(stderr, evalUsage)
+		fmt.Fprint(stderr, examplesUsage)
 	}
 	clearCache := flags.Bool("clear-cache", false, "clear cached evaluations")
 	color := flags.String("color", "auto", "color output")
 	configPath := flags.String("config", defaultConfigFile, "rule configuration")
 	concurrency := flags.Int("concurrency", defaultCheckConcurrency, "maximum concurrent Jev requests")
-	evalsPath := flags.String("evals", "", "eval cases")
+	examplesPath := flags.String("examples", "", "examples directory")
 	format := flags.String("format", "text", "output format")
 	refreshCache := flags.Bool("refresh-cache", false, "refresh cached evaluations")
 	ruleID := flags.String("rule", "", "evaluate only this rule")
 	flagArgs, leftover, err := splitFlagsAndPaths(flags, args)
 	if err != nil {
 		fmt.Fprintf(stderr, "jevlint: %v\n", err)
-		return evalOptions{}, exitUsageError, false
+		return examplesOptions{}, exitUsageError, false
 	}
 	if err := flags.Parse(flagArgs); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			return evalOptions{}, exitSuccess, false
+			return examplesOptions{}, exitSuccess, false
 		}
-		return evalOptions{}, exitUsageError, false
+		return examplesOptions{}, exitUsageError, false
 	}
 	if len(leftover) > 0 {
-		fmt.Fprintf(stderr, "jevlint: eval does not take path arguments\n")
-		return evalOptions{}, exitUsageError, false
+		fmt.Fprintf(stderr, "jevlint: examples does not take path arguments\n")
+		return examplesOptions{}, exitUsageError, false
 	}
 	parsedFormat, parsedColor, exitCode, valid := parseOutputOptions(
 		*format,
@@ -68,7 +68,7 @@ func parseEvalOptions(args []string, stderr io.Writer) (evalOptions, int, bool) 
 		stderr,
 	)
 	if !valid {
-		return evalOptions{}, exitCode, false
+		return examplesOptions{}, exitCode, false
 	}
 	var mode cacheMode
 	switch {
@@ -81,36 +81,36 @@ func parseEvalOptions(args []string, stderr io.Writer) (evalOptions, int, bool) 
 	default:
 		mode = cacheReadWrite
 	}
-	return evalOptions{
+	return examplesOptions{
 		output: outputContext{
 			format: parsedFormat,
 			color:  parsedColor,
 		},
-		eval: evalContext{
-			configPath:  *configPath,
-			evalsPath:   *evalsPath,
-			ruleID:      *ruleID,
-			concurrency: *concurrency,
-			cache:       mode,
+		examples: examplesContext{
+			configPath:   *configPath,
+			examplesPath: *examplesPath,
+			ruleID:       *ruleID,
+			concurrency:  *concurrency,
+			cache:        mode,
 		},
 	}, exitSuccess, true
 }
 
-// executeEval loads the cases, runs them, and writes the report.
-func executeEval(
+// executeExamples loads the examples, runs them, and writes the report.
+func executeExamples(
 	ctx context.Context,
-	options evalOptions,
+	options examplesOptions,
 	stdout io.Writer,
 	stderr io.Writer,
 	userCacheDir func() (string, error),
 ) int {
-	absoluteConfig, cfg, extractor, exitCode := loadProject(options.eval.configPath, stderr)
+	absoluteConfig, cfg, extractor, exitCode := loadProject(options.examples.configPath, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	document, exitCode := loadEvalDocument(
+	document, exitCode := loadExamplesDocument(
 		absoluteConfig,
-		options.eval.evalsPath,
+		options.examples.examplesPath,
 		cfg,
 		extractor,
 		stderr,
@@ -118,14 +118,14 @@ func executeEval(
 	if exitCode != 0 {
 		return exitCode
 	}
-	document, err := document.FilterRule(options.eval.ruleID)
+	document, err := document.FilterRule(options.examples.ruleID)
 	if err != nil {
 		fmt.Fprintf(stderr, "jevlint: %v\n", err)
 		return exitUsageError
 	}
 	resultCache, exitCode := openResultCache(
 		filepath.Dir(absoluteConfig),
-		options.eval.cache,
+		options.examples.cache,
 		stderr,
 		userCacheDir,
 	)
@@ -135,7 +135,7 @@ func executeEval(
 	evaluator, err := evaluation.NewTypeSafeFromEnvWithOptions(
 		evaluation.TypeSafeOptions{
 			Cache:   resultCache,
-			Refresh: options.eval.cache.shouldRefresh(),
+			Refresh: options.examples.cache.shouldRefresh(),
 		},
 		os.Getenv,
 	)
@@ -151,14 +151,14 @@ func executeEval(
 		evaluator,
 		evals.Options{
 			Root:        filepath.Dir(absoluteConfig),
-			Concurrency: options.eval.concurrency,
+			Concurrency: options.examples.concurrency,
 		},
 	)
 	if err != nil {
 		fmt.Fprintf(stderr, "jevlint: %v\n", err)
 		return exitUsageError
 	}
-	if err := writeEvalReport(stdout, report, options.output); err != nil {
+	if err := writeExamplesReport(stdout, report, options.output); err != nil {
 		fmt.Fprintf(stderr, "jevlint: write output: %v\n", err)
 		return exitUsageError
 	}
@@ -168,19 +168,19 @@ func executeEval(
 	return exitSuccess
 }
 
-// loadEvalDocument loads the eval file for the project.
-func loadEvalDocument(
+// loadExamplesDocument loads the examples directory for the project.
+func loadExamplesDocument(
 	absoluteConfig string,
-	evalsPath string,
+	examplesPath string,
 	cfg config.Config,
 	extractor *parsing.Extractor,
 	stderr io.Writer,
 ) (evals.Document, int) {
-	path := evalsPath
+	path := examplesPath
 	if path == "" {
-		path = filepath.Join(filepath.Dir(absoluteConfig), evals.DefaultFile)
+		path = filepath.Join(filepath.Dir(absoluteConfig), evals.DefaultExamplesDir)
 	}
-	document, err := evals.Load(path, cfg, extractor)
+	document, err := evals.LoadExamples(path, cfg, extractor)
 	if err != nil {
 		fmt.Fprintf(stderr, "jevlint: %v\n", err)
 		return evals.Document{}, exitUsageError
@@ -188,8 +188,8 @@ func loadEvalDocument(
 	return document, exitSuccess
 }
 
-// writeEvalReport prints the eval results in the chosen format.
-func writeEvalReport(
+// writeExamplesReport prints the example results in the chosen format.
+func writeExamplesReport(
 	writer io.Writer,
 	report evals.Report,
 	output outputContext,
@@ -200,55 +200,6 @@ func writeEvalReport(
 		return encoder.Encode(report)
 	}
 	style := outputStyle{color: shouldUseColor(output.color, writer, output.hints)}
-	writeRunText(writer, style, report, "eval cases")
+	writeRunText(writer, style, report, "examples")
 	return nil
-}
-
-// writeRunText prints case results grouped by rule.
-func writeRunText(writer io.Writer, style outputStyle, report evals.Report, label string) {
-	currentRule := ""
-	for _, result := range report.Cases {
-		if result.Rule != currentRule {
-			if currentRule != "" {
-				fmt.Fprintln(writer)
-			}
-			fmt.Fprintln(writer, style.paint("1", result.Rule))
-			currentRule = result.Rule
-		}
-		writeRunCase(writer, style, result)
-	}
-	if len(report.Cases) > 0 {
-		fmt.Fprintln(writer)
-	}
-	fmt.Fprintf(
-		writer,
-		"%d/%d %s matched expectations\n",
-		report.Matched,
-		report.Total,
-		label,
-	)
-}
-
-// writeRunCase prints the result of one case.
-func writeRunCase(writer io.Writer, style outputStyle, result evals.Result) {
-	label := result.File
-	if result.Name != "" {
-		label = result.Name + "  " + result.File
-	}
-	if result.Matched {
-		fmt.Fprintf(
-			writer,
-			"  %s  expected %s\n",
-			style.paint("32", "✓ "+label),
-			result.Expected,
-		)
-		return
-	}
-	fmt.Fprintf(
-		writer,
-		"  %s  expected %s  actual %s\n",
-		style.paint("31", "✗ "+label),
-		result.Expected,
-		result.Actual,
-	)
 }

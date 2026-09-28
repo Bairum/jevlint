@@ -306,3 +306,74 @@ func validEvalsJSON(file string) string {
 		}]
 	}`
 }
+
+func TestLoadExamplesBuildsCasesFromDirectories(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeExample(t, root, "database-joins", "good", "sample.go", "package good\n\nfunc Good() {}\n")
+	writeExample(t, root, "database-joins", "bad", "sample.go", "package bad\n\nfunc Bad() {}\n")
+
+	document, err := LoadExamples(root, sampleConfig(nil), testExtractor(t))
+	if err != nil {
+		t.Fatalf("LoadExamples() error = %v", err)
+	}
+	if len(document.Cases) != 2 {
+		t.Fatalf("cases = %#v", document.Cases)
+	}
+	if document.Cases[0].Rule != "database-joins" ||
+		document.Cases[0].Expect != ExpectPass ||
+		document.Cases[0].File != "good/sample.go" {
+		t.Fatalf("good case = %#v", document.Cases[0])
+	}
+	if document.Cases[1].Expect != ExpectFail ||
+		document.Cases[1].File != "bad/sample.go" {
+		t.Fatalf("bad case = %#v", document.Cases[1])
+	}
+	if _, err := os.Stat(document.Cases[0].AbsolutePath()); err != nil {
+		t.Fatalf("absolute path: %v", err)
+	}
+}
+
+func TestLoadExamplesRejectsProblems(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]func(t *testing.T, root string){
+		"missing directory": func(t *testing.T, root string) {},
+		"unknown rule": func(t *testing.T, root string) {
+			writeExample(t, root, "missing-rule", "good", "sample.go", "package good\n")
+		},
+		"unsupported language": func(t *testing.T, root string) {
+			writeExample(t, root, "database-joins", "good", "notes.txt", "notes\n")
+		},
+		"no cases": func(t *testing.T, root string) {
+			if err := os.MkdirAll(filepath.Join(root, "rules"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+		},
+	}
+
+	for name, setup := range tests {
+		setup := setup
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			setup(t, root)
+			if _, err := LoadExamples(root, sampleConfig(nil), testExtractor(t)); err == nil {
+				t.Fatal("LoadExamples() error = nil")
+			}
+		})
+	}
+}
+
+func writeExample(t *testing.T, root string, rule string, group string, name string, source string) {
+	t.Helper()
+
+	dir := filepath.Join(root, "rules", rule, group)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("create example dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(source), 0o600); err != nil {
+		t.Fatalf("write example: %v", err)
+	}
+}

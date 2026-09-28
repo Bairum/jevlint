@@ -1,0 +1,6 @@
+package good
+
+// Add returns the sum of a and b.
+func Add(a int, b int) int {
+	return a + b
+}

@@ -21,6 +21,8 @@ go run ./cmd/jevlint check --concurrency 8 src
 go run ./cmd/jevlint check --refresh-cache .
 go run ./cmd/jevlint eval
 go run ./cmd/jevlint eval --rule database-joins --format json
+go run ./cmd/jevlint examples
+go run ./cmd/jevlint examples --rule accurate-doc-comments
 ```
 
 | Flag | Description |
@@ -87,11 +89,11 @@ customize a preset, but it cannot load an arbitrary external grammar.
 
 - `severity`: `info`, `warning`, or `error`
 - `include` and `exclude`: doublestar file patterns
-- `kinds`: `comment`, `field`, `function`, `statement`, or `type`
+- `kinds`: `comment`, `docComment`, `field`, `function`, `statement`, or `type`
 - `exceptions`: cases that should pass
-- `localize`: `comment`, `field`, or `statement`. Omit the key or use `[]` to
-  skip the second pass. Each matching region is another Jev request on a fail,
-  up to 24 regions per function or type.
+- `localize`: `comment`, `docComment`, `field`, or `statement`. Omit the key
+  or use `[]` to skip the second pass. Each matching region is another Jev
+  request on a fail, up to 24 regions per function or type.
 - `minConfidence`: optional `0`–`1`. Omit or `0` uses every Jev result. Failures
   below the minimum are not reported. A rule `minConfidence` overrides the
   global value when set.
@@ -188,6 +190,34 @@ JSON includes per-case confidence when a reportable fail is available.
 - `0`: every case matched
 - `1`: at least one case missed its expectation
 - `2`: configuration or runtime error
+
+## Examples
+
+`jevlint examples` scores the fixtures kept under `examples/rules`. Each rule
+has a `good` directory, whose files must pass, and a `bad` directory, whose
+files must fail.
+
+```
+examples/rules/
+  accurate-doc-comments/
+    good/example.go
+    bad/example.go
+```
+
+| Flag | Description |
+| --- | --- |
+| `--clear-cache` | Clear this project's cached evaluations before evaluating. |
+| `--color auto\|always\|never` | Control colored text output. Defaults to `auto`. |
+| `--config path` | Use a different rule file. Its directory becomes the project root. |
+| `--concurrency number` | Set the maximum number of concurrent Jev requests. Defaults to `4`. |
+| `--examples path` | Use a different examples directory. Defaults to `examples` next to `--config`. |
+| `--format text\|json` | Select human-readable or machine-readable output. Defaults to `text`. |
+| `--refresh-cache` | Reevaluate code and replace matching cached results. |
+| `--rule id` | Evaluate only this rule's examples. |
+
+Only rules enabled in the config are scored. Text output is grouped by rule and
+ends with `N/M examples matched expectations`. Exit codes match `eval`. Use
+`exclude` to keep `examples` out of regular `check` runs.
 
 ## Supported languages
 

@@ -21,6 +21,7 @@ import (
 const usage = `Usage:
   jevlint check [flags] [paths...]
   jevlint eval [flags]
+  jevlint examples [flags]
 
 Check flags:
   --changed             check only git-modified files
@@ -56,6 +57,20 @@ Flags:
   --rule id             evaluate only this rule's cases
 `
 
+const examplesUsage = `Usage:
+  jevlint examples [flags]
+
+Flags:
+  --clear-cache         clear this project's cached evaluations before evaluating
+  --color mode          color output: auto, always, or never (default "auto")
+  --config path         rule configuration (default "jevlint.json")
+  --concurrency number  maximum concurrent Jev requests (default 4)
+  --examples path       examples directory (default "examples" next to --config)
+  --format text|json    output format (default "text")
+  --refresh-cache       reevaluate and replace current cached results
+  --rule id             evaluate only this rule's examples
+`
+
 const (
 	exitSuccess     = 0
 	exitHasFindings = 1
@@ -69,6 +84,7 @@ const (
 	commandUnknown cliCommand = iota
 	commandCheck
 	commandEval
+	commandExamples
 	commandHelp
 )
 
@@ -156,6 +172,8 @@ func parseCLICommand(name string) cliCommand {
 		return commandCheck
 	case "eval":
 		return commandEval
+	case "examples":
+		return commandExamples
 	case "-h", "--help":
 		return commandHelp
 	default:
@@ -170,6 +188,8 @@ func (command cliCommand) String() string {
 		return "check"
 	case commandEval:
 		return "eval"
+	case commandExamples:
+		return "examples"
 	case commandHelp:
 		return "help"
 	default:
@@ -235,6 +255,14 @@ func Run(
 		options.output.hints = readTerminalHints(getenv)
 		return executeEval(ctx, options, stdout, stderr, os.UserCacheDir)
 	}
+	if command == commandExamples {
+		options, exitCode, ready := parseExamplesOptions(args[1:], stderr)
+		if !ready {
+			return exitCode
+		}
+		options.output.hints = readTerminalHints(getenv)
+		return executeExamples(ctx, options, stdout, stderr, os.UserCacheDir)
+	}
 	options, exitCode, ready := parseRunOptions(command, args[1:], stderr)
 	if !ready {
 		return exitCode
@@ -262,7 +290,7 @@ func handleSpecialCommand(
 	case commandHelp:
 		fmt.Fprint(stderr, usage)
 		return commandDispatch{exitCode: exitSuccess, handled: true}
-	case commandCheck, commandEval:
+	case commandCheck, commandEval, commandExamples:
 		return commandDispatch{exitCode: exitSuccess, handled: false}
 	default:
 		fmt.Fprintf(stderr, "jevlint: unknown command %q\n\n%s", command, usage)
