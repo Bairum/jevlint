@@ -1,0 +1,11 @@
+fn max_value(a: i32, b: i32) -> i32 {
+	if a > b {
+		a
+	} else {
+		if b > a {
+			b
+		} else {
+			a
+		}
+	}
+}
