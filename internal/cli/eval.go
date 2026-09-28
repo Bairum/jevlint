@@ -200,12 +200,12 @@ func writeEvalReport(
 		return encoder.Encode(report)
 	}
 	style := outputStyle{color: shouldUseColor(output.color, writer, output.hints)}
-	writeEvalText(writer, style, report)
+	writeRunText(writer, style, report, "eval cases")
 	return nil
 }
 
-// writeEvalText prints the eval results grouped by rule.
-func writeEvalText(writer io.Writer, style outputStyle, report evals.Report) {
+// writeRunText prints case results grouped by rule.
+func writeRunText(writer io.Writer, style outputStyle, report evals.Report, label string) {
 	currentRule := ""
 	for _, result := range report.Cases {
 		if result.Rule != currentRule {
@@ -215,39 +215,31 @@ func writeEvalText(writer io.Writer, style outputStyle, report evals.Report) {
 			fmt.Fprintln(writer, style.paint("1", result.Rule))
 			currentRule = result.Rule
 		}
-		writeEvalCase(writer, style, result)
+		writeRunCase(writer, style, result)
 	}
 	if len(report.Cases) > 0 {
 		fmt.Fprintln(writer)
 	}
 	fmt.Fprintf(
 		writer,
-		"%d/%d eval cases matched expectations\n",
+		"%d/%d %s matched expectations\n",
 		report.Matched,
 		report.Total,
+		label,
 	)
 }
 
-// writeEvalCase prints the result of one eval case.
-func writeEvalCase(writer io.Writer, style outputStyle, result evals.Result) {
+// writeRunCase prints the result of one case.
+func writeRunCase(writer io.Writer, style outputStyle, result evals.Result) {
 	label := result.File
 	if result.Name != "" {
 		label = result.Name + "  " + result.File
 	}
-	if result.Matched {
-		fmt.Fprintf(
-			writer,
-			"  %s  expected %s\n",
-			style.paint("32", "✓ "+label),
-			result.Expected,
-		)
-		return
+	mark := style.paint("32", "✓ "+label)
+	if !result.Matched {
+		mark = style.paint("31", "✗ "+label)
 	}
-	fmt.Fprintf(
-		writer,
-		"  %s  expected %s  actual %s\n",
-		style.paint("31", "✗ "+label),
-		result.Expected,
-		result.Actual,
-	)
+	fmt.Fprintf(writer, "  %s\n", mark)
+	fmt.Fprintf(writer, "      expected: %s\n", result.Expected)
+	fmt.Fprintf(writer, "      actual: %s\n", result.Actual)
 }
