@@ -456,3 +456,84 @@ func setEvalEnv(t *testing.T, baseURL string) {
 	t.Setenv("TYPESAFE_BASE_URL", baseURL)
 	t.Setenv("TYPESAFE_DEFAULT_MODEL", "jev-test")
 }
+
+// writeExcludedExamplesProject writes a project whose only source files live
+// under examples and whose rule excludes that directory.
+func writeExcludedExamplesProject(t *testing.T) string {
+	t.Helper()
+
+	root := t.TempDir()
+	config := `{
+		"languages": {"go": {}},
+		"rules": [{
+			"id": "database-joins",
+			"description": "Join related records in the database.",
+			"severity": "error",
+			"include": ["**/*.go"],
+			"exclude": ["**/examples/**"],
+			"localize": ["statement"]
+		}]
+	}`
+	if err := os.WriteFile(filepath.Join(root, "jevlint.json"), []byte(config), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	writeProjectFile(t, root, "examples/rules/database-joins/good/sample.go",
+		"package good\n\nfunc Good() {}\n")
+	writeProjectFile(t, root, "examples/rules/database-joins/bad/sample.go",
+		"package bad\n\nfunc Bad() {}\n")
+	return root
+}
+
+func TestCheckSkipsExamplesDirectory(t *testing.T) {
+	root := writeExcludedExamplesProject(t)
+	server := passingJevServer(t)
+	defer server.Close()
+	setEvalEnv(t, server.URL)
+
+	var stdout, stderr bytes.Buffer
+	exitCode := runCLI(
+		context.Background(),
+		[]string{
+			"check",
+			"--config", filepath.Join(root, "jevlint.json"),
+			"--format", "json",
+			".",
+		},
+		&stdout,
+		&stderr,
+	)
+	if exitCode != 0 {
+		t.Fatalf("Run() exit code = %d; stderr = %q", exitCode, stderr.String())
+	}
+	var report struct {
+		ScannedFiles int `json:"scannedFiles"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.ScannedFiles != 0 {
+		t.Fatalf("scannedFiles = %d, want 0 (examples are excluded)", report.ScannedFiles)
+	}
+}
+
+func TestWriteRunTextSeparatesExpectedAndActual(t *testing.T) {
+	t.Parallel()
+
+	var output bytes.Buffer
+	report := evals.Report{
+		Total: 1,
+		Cases: []evals.Result{{
+			Rule:     "database-joins",
+			File:     "bad/example.go",
+			Expected: evals.ExpectFail,
+			Actual:   evals.ExpectPass,
+		}},
+	}
+	writeRunText(&output, outputStyle{}, report, "eval cases")
+	if !strings.Contains(
+		output.String(),
+		"  ✗ bad/example.go\n      expected: fail\n      actual: pass\n",
+	) {
+		t.Fatalf("output = %q", output.String())
+	}
+}
