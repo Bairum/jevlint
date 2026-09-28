@@ -14,8 +14,8 @@ func TestDecodeValidConfig(t *testing.T) {
 			"description": "Join related database records in the database.",
 			"severity": "error",
 			"include": ["**/*.go"],
-			"kinds": ["comment", "field", "function", "statement", "type"],
-			"localize": ["statement"]
+			"kinds": ["comment", "docComment", "field", "function", "statement", "type"],
+			"localize": ["docComment", "statement"]
 		}]
 	}`)))
 	if err != nil {

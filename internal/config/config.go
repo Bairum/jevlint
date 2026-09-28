@@ -53,6 +53,7 @@ type TargetKind int
 const (
 	TargetKindUnknown TargetKind = iota
 	TargetKindComment
+	TargetKindDocComment
 	TargetKindField
 	TargetKindFunction
 	TargetKindStatement
@@ -74,6 +75,8 @@ func (kind TargetKind) String() string {
 	switch kind {
 	case TargetKindComment:
 		return KindComment
+	case TargetKindDocComment:
+		return KindDocComment
 	case TargetKindField:
 		return KindField
 	case TargetKindFunction:
@@ -114,6 +117,8 @@ func ParseTargetKind(value string) (TargetKind, bool) {
 	switch value {
 	case KindComment:
 		return TargetKindComment, true
+	case KindDocComment:
+		return TargetKindDocComment, true
 	case KindField:
 		return TargetKindField, true
 	case KindFunction:
@@ -388,7 +393,7 @@ func validateRegionOverrides(id string, regions map[string][]string) error {
 	}
 	for category, kinds := range regions {
 		switch category {
-		case KindComment, KindField, KindStatement:
+		case KindComment, KindDocComment, KindField, KindStatement:
 		default:
 			return fmt.Errorf(
 				"languages.%s.regions contains invalid category %q",
@@ -454,21 +459,22 @@ func validateRulePatterns(rule Rule, prefix string) error {
 }
 
 const (
-	KindComment   = "comment"
-	KindField     = "field"
-	KindFunction  = "function"
-	KindStatement = "statement"
-	KindType      = "type"
+	KindComment    = "comment"
+	KindDocComment = "docComment"
+	KindField      = "field"
+	KindFunction   = "function"
+	KindStatement  = "statement"
+	KindType       = "type"
 )
 
 // validateRuleLocalization checks the places a rule can point at.
 func validateRuleLocalization(rule Rule, prefix string) error {
 	for _, category := range rule.Localize {
 		switch category {
-		case TargetKindComment, TargetKindField, TargetKindStatement:
+		case TargetKindComment, TargetKindDocComment, TargetKindField, TargetKindStatement:
 		default:
 			return fmt.Errorf(
-				"%s.localize contains invalid category %q; want comment, field, or statement",
+				"%s.localize contains invalid category %q; want comment, docComment, field, or statement",
 				prefix,
 				category,
 			)
