@@ -54,6 +54,15 @@ const (
 	TargetKindType
 )
 
+type Severity int
+
+const (
+	SeverityUnknown Severity = iota
+	SeverityInfo
+	SeverityWarning
+	SeverityError
+)
+
 func (kind TargetKind) String() string {
 	switch kind {
 	case TargetKindComment:
@@ -107,15 +116,6 @@ func ParseTargetKind(value string) (TargetKind, bool) {
 		return TargetKindUnknown, false
 	}
 }
-
-type Severity int
-
-const (
-	SeverityUnknown Severity = iota
-	SeverityInfo
-	SeverityWarning
-	SeverityError
-)
 
 func (severity Severity) String() string {
 	switch severity {

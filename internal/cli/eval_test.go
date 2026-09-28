@@ -16,6 +16,13 @@ import (
 	"jevlint/internal/evals"
 )
 
+type evalProject struct {
+	config     string
+	source     string
+	evals      string
+	extraFiles map[string]string
+}
+
 func TestEvalReportsJSONWithConfidence(t *testing.T) {
 	root := writeEvalProject(t, evalProject{
 		source: "package sample\n\nfunc JoinInCode() {\n\tprintln(\"join\")\n}\n",
@@ -404,13 +411,6 @@ func TestEvalRejectsChangedFlag(t *testing.T) {
 	if exitCode != 2 {
 		t.Fatalf("Run() exit code = %d, want 2", exitCode)
 	}
-}
-
-type evalProject struct {
-	config     string
-	source     string
-	evals      string
-	extraFiles map[string]string
 }
 
 func writeEvalProject(t *testing.T, project evalProject) string {

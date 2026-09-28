@@ -25,6 +25,24 @@ const (
 	ExpectFail
 )
 
+type Case struct {
+	Name   string `json:"name,omitempty"`
+	Rule   string `json:"rule"`
+	File   string `json:"file"`
+	Expect Expect `json:"expect"`
+	abs    string
+}
+
+type Document struct {
+	Version int    `json:"version"`
+	Cases   []Case `json:"cases"`
+}
+
+type caseIdentity struct {
+	rule string
+	file string
+}
+
 func (expect Expect) String() string {
 	switch expect {
 	case ExpectPass:
@@ -64,21 +82,8 @@ func (expect Expect) MarshalJSON() ([]byte, error) {
 	return json.Marshal(expect.String())
 }
 
-type Case struct {
-	Name   string `json:"name,omitempty"`
-	Rule   string `json:"rule"`
-	File   string `json:"file"`
-	Expect Expect `json:"expect"`
-	abs    string
-}
-
 func (evalCase Case) AbsolutePath() string {
 	return evalCase.abs
-}
-
-type Document struct {
-	Version int    `json:"version"`
-	Cases   []Case `json:"cases"`
 }
 
 func Load(
@@ -136,11 +141,6 @@ func (document Document) FilterRule(ruleID string) (Document, error) {
 		return Document{}, fmt.Errorf("no eval cases for rule %q", ruleID)
 	}
 	return filtered, nil
-}
-
-type caseIdentity struct {
-	rule string
-	file string
 }
 
 func prepareCase(

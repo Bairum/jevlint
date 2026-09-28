@@ -83,27 +83,6 @@ const (
 	questionTypeChoice
 )
 
-func (kind questionType) MarshalJSON() ([]byte, error) {
-	switch kind {
-	case questionTypeChoice:
-		return json.Marshal(answerTypeChoice)
-	default:
-		return nil, fmt.Errorf("unsupported question type")
-	}
-}
-
-func (kind *questionType) UnmarshalJSON(data []byte) error {
-	var value string
-	if err := json.Unmarshal(data, &value); err != nil {
-		return err
-	}
-	if value != answerTypeChoice {
-		return fmt.Errorf("unsupported question type %q", value)
-	}
-	*kind = questionTypeChoice
-	return nil
-}
-
 type questionCriteria struct {
 	Pass    string `json:"pass"`
 	Fail    string `json:"fail"`
@@ -131,6 +110,50 @@ type evaluationCall struct {
 	done    chan struct{}
 	results map[string]Result
 	err     error
+}
+
+type requestState struct {
+	Kind         parsing.CodeKind       `json:"kind"`
+	Name         string                 `json:"name"`
+	Language     parsing.SourceLanguage `json:"language"`
+	Path         string                 `json:"path"`
+	Source       string                 `json:"source"`
+	ParentSource string                 `json:"parentSource,omitempty"`
+	RegionKind   parsing.NodeKind       `json:"regionKind,omitempty"`
+	RelatedTypes []requestType          `json:"types,omitempty"`
+	Callees      []requestCallee        `json:"callees,omitempty"`
+}
+
+type requestType struct {
+	Name   string `json:"name"`
+	Source string `json:"source"`
+}
+
+type requestCallee struct {
+	Name   string `json:"name"`
+	Path   string `json:"path"`
+	Source string `json:"source"`
+}
+
+func (kind questionType) MarshalJSON() ([]byte, error) {
+	switch kind {
+	case questionTypeChoice:
+		return json.Marshal(answerTypeChoice)
+	default:
+		return nil, fmt.Errorf("unsupported question type")
+	}
+}
+
+func (kind *questionType) UnmarshalJSON(data []byte) error {
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	if value != answerTypeChoice {
+		return fmt.Errorf("unsupported question type %q", value)
+	}
+	*kind = questionTypeChoice
+	return nil
 }
 
 func NewTypeSafeFromEnvWithOptions(
@@ -321,29 +344,6 @@ func (client *TypeSafe) requestBody(batch Batch) ([]byte, error) {
 		return nil, fmt.Errorf("encode TypeSafe request: %w", err)
 	}
 	return body, nil
-}
-
-type requestState struct {
-	Kind         parsing.CodeKind       `json:"kind"`
-	Name         string                 `json:"name"`
-	Language     parsing.SourceLanguage `json:"language"`
-	Path         string                 `json:"path"`
-	Source       string                 `json:"source"`
-	ParentSource string                 `json:"parentSource,omitempty"`
-	RegionKind   parsing.NodeKind       `json:"regionKind,omitempty"`
-	RelatedTypes []requestType          `json:"types,omitempty"`
-	Callees      []requestCallee        `json:"callees,omitempty"`
-}
-
-type requestType struct {
-	Name   string `json:"name"`
-	Source string `json:"source"`
-}
-
-type requestCallee struct {
-	Name   string `json:"name"`
-	Path   string `json:"path"`
-	Source string `json:"source"`
 }
 
 func requestStateFrom(unit parsing.CodeUnit) requestState {

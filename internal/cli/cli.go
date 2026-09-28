@@ -71,6 +71,73 @@ const (
 	commandHelp
 )
 
+type outputFormat int
+
+const (
+	formatUnknown outputFormat = iota
+	formatText
+	formatJSON
+)
+
+type colorMode int
+
+const (
+	colorUnknown colorMode = iota
+	colorAuto
+	colorAlways
+	colorNever
+)
+
+type terminalHints struct {
+	plainOutput  bool
+	dumbTerminal bool
+}
+
+type cacheMode int
+
+const (
+	cacheReadWrite cacheMode = iota
+	cacheRefresh
+	cacheClear
+	cacheClearAndRefresh
+)
+
+type runOptions struct {
+	paths  []string
+	output outputContext
+	check  checkContext
+}
+
+type outputContext struct {
+	format outputFormat
+	color  colorMode
+	hints  terminalHints
+}
+
+type checkContext struct {
+	configPath  string
+	concurrency int
+	changed     bool
+	cache       cacheMode
+}
+
+type loadedRun struct {
+	options        runOptions
+	absoluteConfig string
+	cfg            config.Config
+	extractor      *parsing.Extractor
+	evaluator      evaluation.Evaluator
+}
+
+type commandDispatch struct {
+	exitCode int
+	handled  bool
+}
+
+type outputStyle struct {
+	color bool
+}
+
 func parseCLICommand(name string) cliCommand {
 	switch name {
 	case "check":
@@ -97,14 +164,6 @@ func (command cliCommand) String() string {
 	}
 }
 
-type outputFormat int
-
-const (
-	formatUnknown outputFormat = iota
-	formatText
-	formatJSON
-)
-
 func parseOutputFormat(value string) (outputFormat, bool) {
 	switch value {
 	case "text":
@@ -115,15 +174,6 @@ func parseOutputFormat(value string) (outputFormat, bool) {
 		return formatUnknown, false
 	}
 }
-
-type colorMode int
-
-const (
-	colorUnknown colorMode = iota
-	colorAuto
-	colorAlways
-	colorNever
-)
 
 func parseColorMode(value string) (colorMode, bool) {
 	switch value {
@@ -136,11 +186,6 @@ func parseColorMode(value string) (colorMode, bool) {
 	default:
 		return colorUnknown, false
 	}
-}
-
-type terminalHints struct {
-	plainOutput  bool
-	dumbTerminal bool
 }
 
 func readTerminalHints(getenv func(string) string) terminalHints {
@@ -181,53 +226,12 @@ func Run(
 	return executeRun(ctx, options, stdout, stderr, os.UserCacheDir)
 }
 
-type cacheMode int
-
-const (
-	cacheReadWrite cacheMode = iota
-	cacheRefresh
-	cacheClear
-	cacheClearAndRefresh
-)
-
 func (mode cacheMode) shouldClear() bool {
 	return mode == cacheClear || mode == cacheClearAndRefresh
 }
 
 func (mode cacheMode) shouldRefresh() bool {
 	return mode == cacheRefresh || mode == cacheClearAndRefresh
-}
-
-type runOptions struct {
-	paths  []string
-	output outputContext
-	check  checkContext
-}
-
-type outputContext struct {
-	format outputFormat
-	color  colorMode
-	hints  terminalHints
-}
-
-type checkContext struct {
-	configPath  string
-	concurrency int
-	changed     bool
-	cache       cacheMode
-}
-
-type loadedRun struct {
-	options        runOptions
-	absoluteConfig string
-	cfg            config.Config
-	extractor      *parsing.Extractor
-	evaluator      evaluation.Evaluator
-}
-
-type commandDispatch struct {
-	exitCode int
-	handled  bool
 }
 
 func handleSpecialCommand(
@@ -632,10 +636,6 @@ func writeReportTotals(writer io.Writer, report runner.Report) {
 			report.Cache.Writes,
 		)
 	}
-}
-
-type outputStyle struct {
-	color bool
 }
 
 func (style outputStyle) paint(code string, text string) string {

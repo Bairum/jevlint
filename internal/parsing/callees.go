@@ -16,13 +16,6 @@ type CallRef struct {
 	Path string
 }
 
-func (ref CallRef) Spelling() string {
-	if ref.Path == "" {
-		return ref.Name
-	}
-	return ref.Path + "." + ref.Name
-}
-
 type CalleeContext struct {
 	Name      string `json:"name"`
 	Path      string `json:"path"`
@@ -31,6 +24,13 @@ type CalleeContext struct {
 	EndLine   uint   `json:"endLine"`
 	StartByte uint   `json:"startByte"`
 	EndByte   uint   `json:"endByte"`
+}
+
+func (ref CallRef) Spelling() string {
+	if ref.Path == "" {
+		return ref.Name
+	}
+	return ref.Path + "." + ref.Name
 }
 
 func WithCalleeContext(unit CodeUnit) CodeUnit {

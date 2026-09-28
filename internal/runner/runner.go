@@ -108,6 +108,22 @@ type checkSetup struct {
 	sourceOverlay map[string][]byte
 }
 
+type plannedFile struct {
+	relative   string
+	units      []parsing.CodeUnit
+	applicable []config.Rule
+}
+
+type selectedRegion struct {
+	unit       parsing.CodeUnit
+	parentSpan uint
+}
+
+type scheduledWork[Job any, Outcome any] struct {
+	job     Job
+	outcome Outcome
+}
+
 func (runner Runner) Evaluate(ctx context.Context, cfg config.Config, options Options) (Report, error) {
 	cacheBefore, hasCacheStats := evaluation.CacheStats{}, false
 	if provider, ok := runner.Evaluator.(evaluation.CacheStatsProvider); ok {
@@ -258,12 +274,6 @@ func (runner Runner) planEvaluations(
 	return report, jobs, nil
 }
 
-type plannedFile struct {
-	relative   string
-	units      []parsing.CodeUnit
-	applicable []config.Rule
-}
-
 func (runner Runner) extractFile(
 	cfg config.Config,
 	root string,
@@ -387,11 +397,6 @@ func jobsForUnits(units []parsing.CodeUnit, rules []config.Rule) []evaluationJob
 		}
 	}
 	return jobs
-}
-
-type selectedRegion struct {
-	unit       parsing.CodeUnit
-	parentSpan uint
 }
 
 func selectClosestRegions(
@@ -565,11 +570,6 @@ func runJobs[Job any, Outcome any](
 		outcomes[index] = item.outcome
 	}
 	return outcomes, nil
-}
-
-type scheduledWork[Job any, Outcome any] struct {
-	job     Job
-	outcome Outcome
 }
 
 func runWorkers[Job any, Outcome any](

@@ -14,6 +14,11 @@ import (
 	"jevlint/internal/parsing"
 )
 
+type fixedEvaluator struct {
+	status     evaluation.Status
+	confidence float64
+}
+
 func TestLoadRejectsUnknownRule(t *testing.T) {
 	t.Parallel()
 
@@ -241,11 +246,6 @@ func TestResultJSONIncludesConfidence(t *testing.T) {
 	if !strings.Contains(string(data), `"confidence":0.88`) {
 		t.Fatalf("json = %s", data)
 	}
-}
-
-type fixedEvaluator struct {
-	status     evaluation.Status
-	confidence float64
 }
 
 func (evaluator fixedEvaluator) Evaluate(
