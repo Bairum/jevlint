@@ -17,6 +17,7 @@ const (
 	expectFailName = "fail"
 )
 
+// Expect is the outcome an eval case wants to see.
 type Expect int
 
 const (
@@ -25,6 +26,7 @@ const (
 	ExpectFail
 )
 
+// Case is one rule and fixture pairing to score.
 type Case struct {
 	Name   string `json:"name,omitempty"`
 	Rule   string `json:"rule"`
@@ -33,16 +35,19 @@ type Case struct {
 	abs    string
 }
 
+// Document is the set of eval cases loaded from a file.
 type Document struct {
 	Version int    `json:"version"`
 	Cases   []Case `json:"cases"`
 }
 
+// caseIdentity is the rule and file pair used to spot duplicates.
 type caseIdentity struct {
 	rule string
 	file string
 }
 
+// String returns the name of the expected outcome.
 func (expect Expect) String() string {
 	switch expect {
 	case ExpectPass:
@@ -54,6 +59,7 @@ func (expect Expect) String() string {
 	}
 }
 
+// parseExpect turns an outcome name into an outcome value.
 func parseExpect(value string) (Expect, bool) {
 	switch value {
 	case expectPassName:
@@ -65,6 +71,7 @@ func parseExpect(value string) (Expect, bool) {
 	}
 }
 
+// UnmarshalJSON reads an outcome from its name.
 func (expect *Expect) UnmarshalJSON(data []byte) error {
 	var value string
 	if err := json.Unmarshal(data, &value); err != nil {
@@ -78,14 +85,17 @@ func (expect *Expect) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// MarshalJSON writes the outcome as its name.
 func (expect Expect) MarshalJSON() ([]byte, error) {
 	return json.Marshal(expect.String())
 }
 
+// AbsolutePath returns the full path of the case fixture.
 func (evalCase Case) AbsolutePath() string {
 	return evalCase.abs
 }
 
+// Load reads the eval file and checks each case.
 func Load(
 	path string,
 	cfg config.Config,
@@ -127,6 +137,7 @@ func Load(
 	return document, nil
 }
 
+// FilterRule keeps only the cases for one rule.
 func (document Document) FilterRule(ruleID string) (Document, error) {
 	if ruleID == "" {
 		return document, nil
@@ -143,6 +154,7 @@ func (document Document) FilterRule(ruleID string) (Document, error) {
 	return filtered, nil
 }
 
+// prepareCase checks one case and records the full path of its fixture.
 func prepareCase(
 	evalCase *Case,
 	root string,
@@ -193,6 +205,7 @@ func prepareCase(
 	return nil
 }
 
+// ruleByID finds a rule by id.
 func ruleByID(cfg config.Config, id string) (config.Rule, bool) {
 	for _, rule := range cfg.Rules {
 		if rule.ID == id {
@@ -202,6 +215,7 @@ func ruleByID(cfg config.Config, id string) (config.Rule, bool) {
 	return config.Rule{}, false
 }
 
+// caseLabel returns a short name for a case.
 func caseLabel(evalCase Case) string {
 	if evalCase.Name != "" {
 		return evalCase.Name

@@ -15,6 +15,7 @@ import (
 
 const frameTabWidth = 4
 
+// writeCodeFrame prints the source of a finding with line numbers and pointers.
 func writeCodeFrame(writer io.Writer, style outputStyle, finding runner.Finding) {
 	lineNumberWidth := len(strconv.FormatUint(uint64(finding.EndLine), 10))
 	for index, raw := range strings.Split(finding.Snippet, "\n") {
@@ -39,6 +40,7 @@ func writeCodeFrame(writer io.Writer, style outputStyle, finding runner.Finding)
 	}
 }
 
+// writeCodeFrameLine prints one numbered source line.
 func writeCodeFrameLine(
 	writer io.Writer,
 	style outputStyle,
@@ -56,6 +58,7 @@ func writeCodeFrameLine(
 	)
 }
 
+// writeCodeFramePointer prints a caret line under the marked columns.
 func writeCodeFramePointer(
 	writer io.Writer,
 	style outputStyle,
@@ -88,6 +91,7 @@ func writeCodeFramePointer(
 	)
 }
 
+// displayLocation shifts a place into the coordinates of the shown snippet.
 func displayLocation(
 	finding runner.Finding,
 	location runner.Location,
@@ -105,6 +109,7 @@ func displayLocation(
 	return location
 }
 
+// highlightedLines splits source into lines and adds syntax colors when enabled.
 func highlightedLines(source string, language string, color bool) []string {
 	if !color {
 		return strings.Split(source, "\n")
@@ -130,6 +135,7 @@ func highlightedLines(source string, language string, color bool) []string {
 	return strings.Split(output, "\n")
 }
 
+// pointerForLine works out the caret start and length for one line.
 func pointerForLine(
 	rawLine string,
 	lineNumber uint,
@@ -166,6 +172,7 @@ func pointerForLine(
 	return start, end - start, true
 }
 
+// expandTabs replaces tabs with spaces up to the next tab stop.
 func expandTabs(line string, tabSize int) string {
 	var builder strings.Builder
 	column := 0
@@ -182,6 +189,7 @@ func expandTabs(line string, tabSize int) string {
 	return builder.String()
 }
 
+// visualColumn counts the shown columns before a byte position.
 func visualColumn(line string, byteColumn int, tabSize int) int {
 	if byteColumn > len(line) {
 		byteColumn = len(line)

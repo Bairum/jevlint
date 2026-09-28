@@ -10,6 +10,7 @@ import (
 	"jevlint/internal/config"
 )
 
+// Applies reports whether a rule covers a file path.
 func Applies(rule config.Rule, path string) (bool, error) {
 	path = filepath.ToSlash(filepath.Clean(path))
 	path = strings.TrimPrefix(path, "./")

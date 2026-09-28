@@ -28,6 +28,7 @@ func Files(projectRoot string) ([]string, error) {
 	return existingProjectFiles(root, gitRoot, parsePorcelain(porcelain))
 }
 
+// gitDirtyListing finds the repository root and the changed paths git reports.
 func gitDirtyListing(root string) ([]byte, []byte, error) {
 	if _, err := exec.LookPath("git"); err != nil {
 		return nil, nil, fmt.Errorf("git is required for --changed")
@@ -43,6 +44,7 @@ func gitDirtyListing(root string) ([]byte, []byte, error) {
 	return gitRoot, porcelain, nil
 }
 
+// existingProjectFiles keeps the changed files that still exist under the project root.
 func existingProjectFiles(root string, gitRoot []byte, gitPaths []string) ([]string, error) {
 	seen := make(map[string]struct{})
 	files := make([]string, 0)
@@ -72,6 +74,7 @@ func existingProjectFiles(root string, gitRoot []byte, gitPaths []string) ([]str
 	return files, nil
 }
 
+// Relativize turns the requested paths into paths relative to the project root.
 func Relativize(projectRoot string, requested []string) ([]string, error) {
 	root, err := filepath.Abs(projectRoot)
 	if err != nil {
@@ -92,6 +95,7 @@ func Relativize(projectRoot string, requested []string) ([]string, error) {
 	return paths, nil
 }
 
+// Intersect keeps the files that fall under one of the requested paths.
 func Intersect(files []string, requested []string) []string {
 	if len(requested) == 0 {
 		return files
@@ -105,6 +109,7 @@ func Intersect(files []string, requested []string) []string {
 	return matched
 }
 
+// matchesRequested reports whether a file is the requested path or sits under it.
 func matchesRequested(file string, requested []string) bool {
 	cleaned := filepath.Clean(file)
 	for _, request := range requested {
@@ -120,6 +125,7 @@ func matchesRequested(file string, requested []string) bool {
 	return false
 }
 
+// underRoot returns a path relative to the root when it is inside the root.
 func underRoot(root string, absolute string) (string, bool) {
 	relative, err := filepath.Rel(root, absolute)
 	if err != nil {
@@ -139,6 +145,7 @@ const (
 	porcelainCopyStatus   = 'C'
 )
 
+// parsePorcelain reads the changed paths from git status output.
 func parsePorcelain(data []byte) []string {
 	fields := bytes.Split(data, []byte{porcelainNUL})
 	paths := make([]string, 0)
@@ -160,6 +167,7 @@ func parsePorcelain(data []byte) []string {
 	return paths
 }
 
+// isRenameOrCopy reports whether a git status code marks a rename or a copy.
 func isRenameOrCopy(xy []byte) bool {
 	return xy[0] == porcelainRenameStatus ||
 		xy[0] == porcelainCopyStatus ||
@@ -167,6 +175,7 @@ func isRenameOrCopy(xy []byte) bool {
 		xy[1] == porcelainCopyStatus
 }
 
+// gitOutput runs a git command in a directory and returns its output.
 func gitOutput(dir string, args ...string) ([]byte, error) {
 	command := exec.Command("git", args...)
 	command.Dir = dir
@@ -191,6 +200,7 @@ func gitOutput(dir string, args ...string) ([]byte, error) {
 	return output, nil
 }
 
+// wrapGitError turns a missing git program into a clear message.
 func wrapGitError(err error) error {
 	if errors.Is(err, exec.ErrNotFound) {
 		return fmt.Errorf("git is required for --changed")

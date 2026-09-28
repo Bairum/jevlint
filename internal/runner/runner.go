@@ -25,11 +25,13 @@ const (
 	codeUnitRankOther
 )
 
+// Runner reads code and asks the evaluator about it.
 type Runner struct {
 	Extractor *parsing.Extractor
 	Evaluator evaluation.Evaluator
 }
 
+// Options holds the settings for a run.
 type Options struct {
 	Root          string
 	Paths         []string
@@ -37,6 +39,7 @@ type Options struct {
 	SourceOverlay map[string][]byte
 }
 
+// Report is the outcome of a run.
 type Report struct {
 	ScannedFiles int                    `json:"scannedFiles"`
 	CodeUnits    int                    `json:"codeUnits"`
@@ -46,6 +49,7 @@ type Report struct {
 	SourcePaths  []string               `json:"-"`
 }
 
+// Finding is one rule failure for one piece of code.
 type Finding struct {
 	RuleID      string            `json:"ruleId"`
 	Description string            `json:"description"`
@@ -63,6 +67,7 @@ type Finding struct {
 	Locations   []Location        `json:"locations,omitempty"`
 }
 
+// Location is a smaller place inside a finding.
 type Location struct {
 	Category    string `json:"category"`
 	Kind        string `json:"kind"`
@@ -73,22 +78,26 @@ type Location struct {
 	EndColumn   uint   `json:"endColumn"`
 }
 
+// evaluationJob is one piece of code and the rules to check against it.
 type evaluationJob struct {
 	rules []config.Rule
 	unit  parsing.CodeUnit
 }
 
+// evaluationOutcome is the result of one job.
 type evaluationOutcome struct {
 	evaluations int
 	findings    []pendingFinding
 }
 
+// pendingFinding is a finding that may still gain a location.
 type pendingFinding struct {
 	finding Finding
 	rule    config.Rule
 	unit    parsing.CodeUnit
 }
 
+// localizationJob is one attempt to point at the exact place that failed.
 type localizationJob struct {
 	findingIndex int
 	rule         config.Rule
@@ -96,11 +105,13 @@ type localizationJob struct {
 	region       parsing.Region
 }
 
+// localizationOutcome is the place found for one finding.
 type localizationOutcome struct {
 	findingIndex int
 	location     *Location
 }
 
+// checkSetup holds the resolved settings for a run.
 type checkSetup struct {
 	root          string
 	paths         []string
@@ -108,22 +119,26 @@ type checkSetup struct {
 	sourceOverlay map[string][]byte
 }
 
+// plannedFile is a source file and the work it produced.
 type plannedFile struct {
 	relative   string
 	units      []parsing.CodeUnit
 	applicable []config.Rule
 }
 
+// selectedRegion is a region and the size of the unit that holds it.
 type selectedRegion struct {
 	unit       parsing.CodeUnit
 	parentSpan uint
 }
 
+// scheduledWork pairs a job with its outcome.
 type scheduledWork[Job any, Outcome any] struct {
 	job     Job
 	outcome Outcome
 }
 
+// Evaluate reads the files and returns the findings.
 func (runner Runner) Evaluate(ctx context.Context, cfg config.Config, options Options) (Report, error) {
 	cacheBefore, hasCacheStats := evaluation.CacheStats{}, false
 	if provider, ok := runner.Evaluator.(evaluation.CacheStatsProvider); ok {
@@ -186,6 +201,7 @@ func (runner Runner) Evaluate(ctx context.Context, cfg config.Config, options Op
 	return report, nil
 }
 
+// subtractCacheStats returns the cache counts added during a run.
 func subtractCacheStats(
 	after evaluation.CacheStats,
 	before evaluation.CacheStats,
@@ -197,6 +213,7 @@ func subtractCacheStats(
 	}
 }
 
+// prepareCheck checks the settings and resolves the project root.
 func (runner Runner) prepareCheck(options Options) (checkSetup, error) {
 	if runner.Extractor == nil {
 		return checkSetup{}, fmt.Errorf("extractor is required")
@@ -228,6 +245,7 @@ func (runner Runner) prepareCheck(options Options) (checkSetup, error) {
 	}, nil
 }
 
+// planEvaluations reads the files and builds the work for each one.
 func (runner Runner) planEvaluations(
 	ctx context.Context,
 	cfg config.Config,
@@ -274,6 +292,7 @@ func (runner Runner) planEvaluations(
 	return report, jobs, nil
 }
 
+// extractFile reads one file and records the rules that apply to it.
 func (runner Runner) extractFile(
 	cfg config.Config,
 	root string,
@@ -325,6 +344,7 @@ func (runner Runner) extractFile(
 	}, nil
 }
 
+// functionUnits collects the function units from the planned files.
 func functionUnits(files []plannedFile) []*parsing.CodeUnit {
 	functions := make([]*parsing.CodeUnit, 0)
 	for fileIndex := range files {
@@ -338,6 +358,7 @@ func functionUnits(files []plannedFile) []*parsing.CodeUnit {
 	return functions
 }
 
+// rulesWantCallees reports whether any rule asks for the called functions.
 func rulesWantCallees(rules []config.Rule) bool {
 	for _, rule := range rules {
 		if rule.Context.Callees {
@@ -347,6 +368,7 @@ func rulesWantCallees(rules []config.Rule) bool {
 	return false
 }
 
+// relativeProjectPath returns a path relative to the project root.
 func relativeProjectPath(root string, file string) (string, error) {
 	relative, err := filepath.Rel(root, file)
 	if err != nil {
@@ -359,6 +381,7 @@ func relativeProjectPath(root string, file string) (string, error) {
 	return filepath.ToSlash(relative), nil
 }
 
+// readOverlayOrFile reads a file from the given source or from disk.
 func readOverlayOrFile(
 	file string,
 	relative string,
@@ -374,6 +397,7 @@ func readOverlayOrFile(
 	return source, nil
 }
 
+// jobsForUnits builds the work for each code unit and its rules.
 func jobsForUnits(units []parsing.CodeUnit, rules []config.Rule) []evaluationJob {
 	jobs := make([]evaluationJob, 0, len(units))
 	for _, unit := range units {
@@ -399,6 +423,7 @@ func jobsForUnits(units []parsing.CodeUnit, rules []config.Rule) []evaluationJob
 	return jobs
 }
 
+// selectClosestRegions picks each wanted region once, from its closest parent.
 func selectClosestRegions(
 	units []parsing.CodeUnit,
 	requested map[parsing.CodeKind]parsing.CodeKind,
@@ -417,6 +442,7 @@ func selectClosestRegions(
 	return regions
 }
 
+// rememberClosestRegion keeps a region when it has a closer parent.
 func rememberClosestRegion(
 	selected map[parsing.Region]selectedRegion,
 	parent parsing.CodeUnit,
@@ -438,6 +464,7 @@ func rememberClosestRegion(
 	}
 }
 
+// expandUnitsWithRegions adds the wanted regions to the list of units.
 func expandUnitsWithRegions(
 	units []parsing.CodeUnit,
 	regions []parsing.CodeUnit,
@@ -450,6 +477,7 @@ func expandUnitsWithRegions(
 	return expanded
 }
 
+// codeUnitLess orders code units that start at the same place.
 func codeUnitLess(left parsing.CodeUnit, right parsing.CodeUnit) bool {
 	if left.StartByte != right.StartByte {
 		return left.StartByte < right.StartByte
@@ -470,6 +498,7 @@ func codeUnitLess(left parsing.CodeUnit, right parsing.CodeUnit) bool {
 	return leftRank < rightRank
 }
 
+// requestedRegionKinds returns the region kinds the rules ask for.
 func requestedRegionKinds(rules []config.Rule) map[parsing.CodeKind]parsing.CodeKind {
 	requested := make(map[parsing.CodeKind]parsing.CodeKind)
 	for _, rule := range rules {
@@ -487,6 +516,7 @@ func requestedRegionKinds(rules []config.Rule) map[parsing.CodeKind]parsing.Code
 	return requested
 }
 
+// regionCodeUnit builds a code unit for a region inside a parent.
 func regionCodeUnit(
 	parent parsing.CodeUnit,
 	region parsing.Region,
@@ -510,6 +540,7 @@ func regionCodeUnit(
 	}
 }
 
+// collectOutcomes gathers the findings and counts from the jobs.
 func collectOutcomes(
 	report *Report,
 	outcomes []evaluationOutcome,
@@ -522,6 +553,7 @@ func collectOutcomes(
 	return pending
 }
 
+// appliesToKind reports whether a rule checks a given kind.
 func appliesToKind(rule config.Rule, kind parsing.CodeKind) bool {
 	if len(rule.Kinds) == 0 {
 		return kind == parsing.CodeKindFunction || kind == parsing.CodeKindType
@@ -535,6 +567,7 @@ func appliesToKind(rule config.Rule, kind parsing.CodeKind) bool {
 	return false
 }
 
+// runJobs runs the jobs with the given number of workers and keeps their order.
 func runJobs[Job any, Outcome any](
 	ctx context.Context,
 	jobs []Job,
@@ -572,6 +605,7 @@ func runJobs[Job any, Outcome any](
 	return outcomes, nil
 }
 
+// runWorkers runs the jobs and stops the others when one fails.
 func runWorkers[Job any, Outcome any](
 	ctx context.Context,
 	cancel context.CancelFunc,
@@ -608,6 +642,7 @@ func runWorkers[Job any, Outcome any](
 	return firstError
 }
 
+// evaluateJob asks the evaluator about one job and builds its findings.
 func evaluateJob(
 	ctx context.Context,
 	evaluator evaluation.Evaluator,
@@ -679,6 +714,7 @@ func evaluateJob(
 	return outcome, nil
 }
 
+// directUnitLocations returns the place of a region that is checked on its own.
 func directUnitLocations(unit parsing.CodeUnit) []Location {
 	if unit.RegionKind == "" {
 		return nil
@@ -694,6 +730,7 @@ func directUnitLocations(unit parsing.CodeUnit) []Location {
 	}}
 }
 
+// requestUnit adds the called functions when the rules ask for them.
 func requestUnit(job evaluationJob) parsing.CodeUnit {
 	if rulesWantCallees(job.rules) {
 		return parsing.WithCalleeContext(job.unit)
@@ -701,6 +738,7 @@ func requestUnit(job evaluationJob) parsing.CodeUnit {
 	return job.unit
 }
 
+// localizeFindings points at the exact places inside failed units.
 func localizeFindings(
 	ctx context.Context,
 	evaluator evaluation.Evaluator,
@@ -729,6 +767,7 @@ func localizeFindings(
 	return len(jobs), nil
 }
 
+// localizationJobs builds one job for each place a rule wants to point at.
 func localizationJobs(findings []pendingFinding) []localizationJob {
 	jobs := make([]localizationJob, 0)
 	for findingIndex, item := range findings {
@@ -747,6 +786,7 @@ func localizationJobs(findings []pendingFinding) []localizationJob {
 	return jobs
 }
 
+// evaluateLocalizationJob checks one place and returns it when it failed.
 func evaluateLocalizationJob(
 	ctx context.Context,
 	evaluator evaluation.Evaluator,
@@ -819,6 +859,7 @@ func evaluateLocalizationJob(
 	return outcome, nil
 }
 
+// localizesTo reports whether a rule can point at a given kind of region.
 func localizesTo(rule config.Rule, category parsing.CodeKind) bool {
 	for _, allowed := range rule.Localize {
 		parsed, ok := parsing.ParseCodeKind(allowed.String())
@@ -829,6 +870,7 @@ func localizesTo(rule config.Rule, category parsing.CodeKind) bool {
 	return false
 }
 
+// HasFailures reports whether the report has any failures.
 func (report Report) HasFailures() bool {
 	for _, finding := range report.Findings {
 		if finding.Status == evaluation.StatusFail {
@@ -838,6 +880,7 @@ func (report Report) HasFailures() bool {
 	return false
 }
 
+// discover lists the supported files under the requested paths.
 func discover(root string, requested []string, extractor *parsing.Extractor) ([]string, error) {
 	seen := make(map[string]struct{})
 	for _, requestedPath := range requested {
@@ -853,6 +896,7 @@ func discover(root string, requested []string, extractor *parsing.Extractor) ([]
 	return sortedDiscoveredFiles(seen), nil
 }
 
+// discoverRequestedPath lists the supported files under one path.
 func discoverRequestedPath(
 	root string,
 	requestedPath string,
@@ -882,6 +926,7 @@ func discoverRequestedPath(
 	return nil
 }
 
+// resolveRequestedPath turns a requested path into a full path.
 func resolveRequestedPath(root string, requestedPath string) string {
 	if filepath.IsAbs(requestedPath) {
 		return filepath.Clean(requestedPath)
@@ -889,6 +934,7 @@ func resolveRequestedPath(root string, requestedPath string) string {
 	return filepath.Clean(filepath.Join(root, requestedPath))
 }
 
+// collectWalkEntry adds a file from a directory walk and skips ignored folders.
 func collectWalkEntry(
 	root string,
 	candidate string,
@@ -914,6 +960,7 @@ func collectWalkEntry(
 	return nil
 }
 
+// sortedDiscoveredFiles returns the found files in a stable order.
 func sortedDiscoveredFiles(seen map[string]struct{}) []string {
 	files := make([]string, 0, len(seen))
 	for file := range seen {

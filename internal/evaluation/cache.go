@@ -14,22 +14,26 @@ const (
 	cacheEntryExtension = ".json"
 )
 
+// ResultCache stores results under string keys.
 type ResultCache interface {
 	Get(string) (map[string]Result, bool)
 	Put(string, map[string]Result) bool
 	Clear() error
 }
 
+// FileCache stores results in files under one directory.
 type FileCache struct {
 	root string
 }
 
+// cacheEntry is the stored form of one set of results.
 type cacheEntry struct {
 	Version   int               `json:"version"`
 	CreatedAt time.Time         `json:"createdAt"`
 	Results   map[string]Result `json:"results"`
 }
 
+// NewFileCache builds a cache for a project under the user cache directory.
 func NewFileCache(
 	projectRoot string,
 	userCacheDir func() (string, error),
@@ -51,6 +55,7 @@ func NewFileCache(
 	))
 }
 
+// newFileCacheAt builds a cache that stores files under a directory.
 func newFileCacheAt(root string) (*FileCache, error) {
 	cache := &FileCache{root: root}
 	if err := cache.ensureRoot(); err != nil {
@@ -59,6 +64,7 @@ func newFileCacheAt(root string) (*FileCache, error) {
 	return cache, nil
 }
 
+// Get reads the results stored under a key.
 func (cache *FileCache) Get(key string) (map[string]Result, bool) {
 	path := filepath.Join(cache.root, key+cacheEntryExtension)
 	data, err := os.ReadFile(path)
@@ -75,6 +81,7 @@ func (cache *FileCache) Get(key string) (map[string]Result, bool) {
 	return cloneResults(entry.Results), true
 }
 
+// decodeCacheEntry reads and checks one stored entry.
 func decodeCacheEntry(data []byte) (cacheEntry, error) {
 	var entry cacheEntry
 	if err := json.Unmarshal(data, &entry); err != nil {
@@ -94,6 +101,7 @@ func decodeCacheEntry(data []byte) (cacheEntry, error) {
 	return entry, nil
 }
 
+// Put writes the results under a key.
 func (cache *FileCache) Put(key string, results map[string]Result) bool {
 	if len(results) == 0 {
 		return false
@@ -121,6 +129,7 @@ func (cache *FileCache) Put(key string, results map[string]Result) bool {
 	) == nil
 }
 
+// writeAtomicCacheFile writes a file by writing a temporary file and renaming it.
 func writeAtomicCacheFile(directory string, destination string, data []byte) error {
 	temporary, err := os.CreateTemp(directory, ".write-*")
 	if err != nil {
@@ -153,6 +162,7 @@ func writeAtomicCacheFile(directory string, destination string, data []byte) err
 	return nil
 }
 
+// Clear removes all stored results and recreates the directory.
 func (cache *FileCache) Clear() error {
 	if err := os.RemoveAll(cache.root); err != nil {
 		return fmt.Errorf("clear evaluation cache: %w", err)
@@ -160,6 +170,7 @@ func (cache *FileCache) Clear() error {
 	return cache.ensureRoot()
 }
 
+// ensureRoot creates the cache directory with private permissions.
 func (cache *FileCache) ensureRoot() error {
 	if err := os.MkdirAll(cache.root, 0o700); err != nil {
 		return fmt.Errorf("create evaluation cache: %w", err)
@@ -170,6 +181,7 @@ func (cache *FileCache) ensureRoot() error {
 	return nil
 }
 
+// cloneResults copies a result map so callers cannot change the stored one.
 func cloneResults(results map[string]Result) map[string]Result {
 	cloned := make(map[string]Result, len(results))
 	for ruleID, result := range results {
