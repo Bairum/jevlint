@@ -51,6 +51,71 @@ func TestPluginInstallWritesPin(t *testing.T) {
 	}
 }
 
+func TestPluginUpdateRejectsChangedPackID(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is required for plugin update tests")
+	}
+
+	packRepo := writeGitPack(t)
+	root := t.TempDir()
+	writeBareProject(t, root)
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	configPath := filepath.Join(root, "jevlint.json")
+
+	var stdout, stderr bytes.Buffer
+	if code := runCLI(
+		context.Background(),
+		[]string{"plugin", "install", "--config", configPath, packRepo},
+		&stdout,
+		&stderr,
+	); code != 0 {
+		t.Fatalf("install exit = %d; stderr = %q", code, stderr.String())
+	}
+	before, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(before.Packs) != 1 {
+		t.Fatalf("packs = %#v", before.Packs)
+	}
+	oldSHA := before.Packs[0].SHA
+
+	if err := os.WriteFile(filepath.Join(packRepo, "pack.json"), []byte(`{
+		"version": 1,
+		"id": "sql-database-joins",
+		"languages": ["go"]
+	}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, packRepo, "add", ".")
+	runGit(t, packRepo, "commit", "-m", "rename pack")
+
+	stdout.Reset()
+	stderr.Reset()
+	code := runCLI(
+		context.Background(),
+		[]string{"plugin", "update", "--config", configPath},
+		&stdout,
+		&stderr,
+	)
+	if code == 0 {
+		t.Fatalf("update exit = 0, want failure; stdout = %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "changed its id") {
+		t.Fatalf("stderr = %q, want a pack id change error", stderr.String())
+	}
+
+	after, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after.Packs) != 1 ||
+		after.Packs[0].ID != "database-joins" ||
+		after.Packs[0].SHA != oldSHA {
+		t.Fatalf("config changed: %#v", after.Packs)
+	}
+}
+
 func TestCheckUsesPackRuleAndIgnoresPackEvals(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git is required for plugin install tests")
