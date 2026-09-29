@@ -179,6 +179,9 @@ func trimNewline(value []byte) []byte {
 }
 
 func replaceDir(dest string, source string) error {
+	if err := rejectSymlinks(source); err != nil {
+		return err
+	}
 	if err := os.RemoveAll(dest); err != nil {
 		return fmt.Errorf("clear pack cache: %w", err)
 	}
@@ -202,6 +205,9 @@ func copyDir(source string, dest string) error {
 				return filepath.SkipDir
 			}
 			return nil
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("pack contains a symbolic link %q", relative)
 		}
 		target := filepath.Join(dest, relative)
 		if entry.IsDir() {

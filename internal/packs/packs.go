@@ -38,7 +38,14 @@ func (loaded Loaded) EvalPath() (string, error) {
 	if name == "" {
 		name = evals.DefaultFile
 	}
-	return safeJoin(loaded.Dir, name)
+	path, err := safeJoin(loaded.Dir, name)
+	if err != nil {
+		return "", err
+	}
+	if info, statErr := os.Lstat(path); statErr == nil && info.Mode()&os.ModeSymlink != 0 {
+		return "", fmt.Errorf("pack eval file %q is a symbolic link", name)
+	}
+	return path, nil
 }
 
 // CacheDir returns the cache location for one pinned pack. The sha and id come
@@ -66,6 +73,9 @@ func LoadDir(dir string) (Loaded, error) {
 	absolute, err := filepath.Abs(dir)
 	if err != nil {
 		return Loaded{}, fmt.Errorf("resolve pack dir: %w", err)
+	}
+	if err := rejectSymlinks(absolute); err != nil {
+		return Loaded{}, err
 	}
 	manifest, err := loadManifest(filepath.Join(absolute, ManifestFile))
 	if err != nil {

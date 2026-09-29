@@ -2,6 +2,7 @@ package packs
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -53,4 +54,27 @@ func safeJoin(root string, relative string) (string, error) {
 		return "", fmt.Errorf("path %q escapes its directory", relative)
 	}
 	return joined, nil
+}
+
+// rejectSymlinks fails when root or any entry below it is a symbolic link.
+// Packs are plain files; following a link would let a pack read or copy files
+// outside its checkout even though the link path itself is lexically contained.
+// The ".git" directory is skipped because it is never copied into the cache.
+func rejectSymlinks(root string) error {
+	return filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			relative, err := filepath.Rel(root, path)
+			if err != nil {
+				return fmt.Errorf("pack contains an unsafe symbolic link: %w", err)
+			}
+			return fmt.Errorf("pack contains a symbolic link %q", relative)
+		}
+		if path != root && entry.IsDir() && entry.Name() == ".git" {
+			return filepath.SkipDir
+		}
+		return nil
+	})
 }
