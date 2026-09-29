@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -263,16 +264,61 @@ func (cfg Config) ConfidenceFloor(rule Rule) float64 {
 }
 
 func Write(path string, cfg Config) error {
-	file, err := os.Create(path)
+	data, err := encodeConfig(cfg)
 	if err != nil {
+		return err
+	}
+	if err := writeFileAtomic(path, data); err != nil {
 		return fmt.Errorf("write config: %w", err)
 	}
-	defer file.Close()
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(cfg); err != nil {
-		return fmt.Errorf("encode config: %w", err)
+	return nil
+}
+
+// encodeConfig renders the config as formatted JSON.
+func encodeConfig(cfg Config) ([]byte, error) {
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("encode config: %w", err)
 	}
+	return append(data, '\n'), nil
+}
+
+// writeFileAtomic writes data to path by renaming a temporary file over it, so
+// an interrupted or failed write never truncates the existing config.
+func writeFileAtomic(path string, data []byte) error {
+	directory := filepath.Dir(path)
+	mode := os.FileMode(0o644)
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode().Perm()
+	}
+	temporary, err := os.CreateTemp(directory, ".jevlint-config-*")
+	if err != nil {
+		return err
+	}
+	temporaryPath := temporary.Name()
+	succeeded := false
+	defer func() {
+		_ = temporary.Close()
+		if !succeeded {
+			_ = os.Remove(temporaryPath)
+		}
+	}()
+	if err := temporary.Chmod(mode); err != nil {
+		return err
+	}
+	if _, err := temporary.Write(data); err != nil {
+		return err
+	}
+	if err := temporary.Sync(); err != nil {
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(temporaryPath, path); err != nil {
+		return err
+	}
+	succeeded = true
 	return nil
 }
 

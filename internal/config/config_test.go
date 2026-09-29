@@ -227,6 +227,103 @@ func TestWritePartialOverlayRoundTrips(t *testing.T) {
 	}
 }
 
+func TestWritePreservesModeAndFormatting(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "jevlint.json")
+	if err := os.WriteFile(path, []byte("original\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{
+		Languages: map[string]Language{"go": {}},
+		Rules: []Rule{{
+			ID:          "one",
+			Description: "A rule.",
+			Severity:    SeverityError,
+		}},
+	}
+	if err := Write(path, cfg); err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o640 {
+		t.Fatalf("mode = %v, want 0640", info.Mode().Perm())
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "\n  \"languages\"") {
+		t.Fatalf("config is not indented: %s", data)
+	}
+	if _, err := Decode(strings.NewReader(string(data))); err != nil {
+		t.Fatalf("written config does not decode: %v", err)
+	}
+}
+
+func TestWriteFailureLeavesExistingConfigIntact(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "jevlint.json")
+	original := "{\n  \"keep\": true\n}\n"
+	if err := os.WriteFile(path, []byte(original), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{
+		Languages: map[string]Language{"go": {}},
+		Rules: []Rule{{
+			ID:          "one",
+			Description: "A rule.",
+			Severity:    SeverityError,
+			Kinds:       []TargetKind{TargetKindUnknown},
+		}},
+	}
+	if err := Write(path, cfg); err == nil {
+		t.Fatal("Write() error = nil, want a failure")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != original {
+		t.Fatalf("config was modified: %q, want %q", data, original)
+	}
+}
+
+func TestWriteFailureRemovesTemporaryFile(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	target := filepath.Join(dir, "jevlint.json")
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{
+		Languages: map[string]Language{"go": {}},
+		Rules: []Rule{{
+			ID:          "one",
+			Description: "A rule.",
+			Severity:    SeverityError,
+		}},
+	}
+	if err := Write(target, cfg); err == nil {
+		t.Fatal("Write() error = nil, want a failure")
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".jevlint-config-") {
+			t.Fatalf("left temporary file %q", entry.Name())
+		}
+	}
+}
 func TestConfidenceFloorPrefersRuleWhenSet(t *testing.T) {
 	t.Parallel()
 
