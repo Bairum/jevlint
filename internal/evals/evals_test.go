@@ -339,11 +339,11 @@ func TestRunClassifiesRawDecisions(t *testing.T) {
 		inconclusive bool
 	}{
 		{"explicit pass matches pass", ExpectPass, evaluation.StatusPass, 0.9, OutcomePass, true, false},
-		{"reportable fail mismatches pass", ExpectPass, evaluation.StatusFail, 0.9, OutcomeFail, false, false},
+		{"reported fail mismatches pass", ExpectPass, evaluation.StatusFail, 0.9, OutcomeFail, false, false},
 		{"hidden fail is inconclusive", ExpectPass, evaluation.StatusFail, 0.4, OutcomeInconclusive, false, true},
 		{"skip is inconclusive", ExpectPass, evaluation.StatusSkip, 0.9, OutcomeInconclusive, false, true},
 		{"abstain is inconclusive", ExpectPass, evaluation.StatusAbstain, 0.9, OutcomeInconclusive, false, true},
-		{"reportable fail matches fail", ExpectFail, evaluation.StatusFail, 0.9, OutcomeFail, true, false},
+		{"reported fail matches fail", ExpectFail, evaluation.StatusFail, 0.9, OutcomeFail, true, false},
 		{"hidden fail cannot match fail", ExpectFail, evaluation.StatusFail, 0.4, OutcomeInconclusive, false, true},
 		{"pass mismatches fail", ExpectFail, evaluation.StatusPass, 0.9, OutcomePass, false, false},
 	}
@@ -387,9 +387,9 @@ func TestRunClassifiesRawDecisions(t *testing.T) {
 				t.Fatalf("units = %#v", result.Units)
 			}
 			unit := result.Units[0]
-			wantReportable := test.status == evaluation.StatusFail && test.confidence >= floor
-			if unit.Reportable != wantReportable {
-				t.Fatalf("unit reportable = %v, want %v", unit.Reportable, wantReportable)
+			wantReported := test.status == evaluation.StatusFail && test.confidence >= floor
+			if unit.Reported != wantReported {
+				t.Fatalf("unit reported = %v, want %v", unit.Reported, wantReported)
 			}
 			if unit.Status != test.status || unit.Confidence != test.confidence {
 				t.Fatalf("unit = %#v", unit)
@@ -428,8 +428,8 @@ func TestRunAggregatesDecisionsAcrossCodeUnits(t *testing.T) {
 		want       Outcome
 		pass       int
 		skip       int
-		reportable int
-		hidden     int
+		reported   int
+		belowFloor int
 	}{
 		{
 			name:  "one pass and one skip passes",
@@ -447,20 +447,20 @@ func TestRunAggregatesDecisionsAcrossCodeUnits(t *testing.T) {
 			skip:  2,
 		},
 		{
-			name:   "hidden fail makes it inconclusive",
-			alpha:  evaluation.Result{Status: evaluation.StatusFail, Confidence: 0.4},
-			beta:   evaluation.Result{Status: evaluation.StatusPass, Confidence: 1},
-			want:   OutcomeInconclusive,
-			pass:   1,
-			hidden: 1,
+			name:       "below-floor fail makes it inconclusive",
+			alpha:      evaluation.Result{Status: evaluation.StatusFail, Confidence: 0.4},
+			beta:       evaluation.Result{Status: evaluation.StatusPass, Confidence: 1},
+			want:       OutcomeInconclusive,
+			pass:       1,
+			belowFloor: 1,
 		},
 		{
-			name:       "reportable fail wins",
-			alpha:      evaluation.Result{Status: evaluation.StatusFail, Confidence: 0.9},
-			beta:       evaluation.Result{Status: evaluation.StatusPass, Confidence: 1},
-			want:       OutcomeFail,
-			pass:       1,
-			reportable: 1,
+			name:     "reported fail wins",
+			alpha:    evaluation.Result{Status: evaluation.StatusFail, Confidence: 0.9},
+			beta:     evaluation.Result{Status: evaluation.StatusPass, Confidence: 1},
+			want:     OutcomeFail,
+			pass:     1,
+			reported: 1,
 		},
 	}
 
@@ -503,8 +503,8 @@ func TestRunAggregatesDecisionsAcrossCodeUnits(t *testing.T) {
 			}
 			if result.Decisions.Pass != test.pass ||
 				result.Decisions.Skip != test.skip ||
-				result.Decisions.ReportableFail != test.reportable ||
-				result.Decisions.HiddenFail != test.hidden {
+				result.Decisions.Reported != test.reported ||
+				result.Decisions.BelowFloor != test.belowFloor {
 				t.Fatalf("decisions = %#v", result.Decisions)
 			}
 			if len(result.Units) != 2 ||

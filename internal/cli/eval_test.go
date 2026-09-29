@@ -612,28 +612,25 @@ func TestWriteRunTextSeparatesExpectedAndActual(t *testing.T) {
 	var output bytes.Buffer
 	confidence := 0.62
 	report := evals.Report{
-		Total:              1,
-		Matched:            1,
-		ReportableFailures: 0,
-		HiddenFailures:     1,
+		Total:        1,
+		Inconclusive: 1,
 		Cases: []evals.Result{{
 			Rule:       "database-joins",
 			File:       "bad/example.go",
-			Expected:   evals.ExpectFail,
-			Actual:     evals.OutcomePass,
+			Expected:   evals.ExpectPass,
+			Actual:     evals.OutcomeInconclusive,
 			Floor:      0.8,
 			Confidence: &confidence,
-			Decisions:  evals.Decisions{Fail: 1, HiddenFail: 1},
+			Decisions:  evals.Decisions{Fail: 1, BelowFloor: 1},
 		}},
 	}
 	writeRunText(&output, outputStyle{}, report, false, "eval cases")
 	got := output.String()
 	for _, want := range []string{
-		"  ✗ bad/example.go\n      expected: fail\n      actual: pass\n",
-		"      floor: 0.80   jev: 0 pass, 1 fail (0 reportable, 1 hidden), 0 skip, 0 abstain\n",
-		"      fail confidence: 0.62\n",
-		"1/1 eval cases matched expectations, 0 inconclusive\n",
-		"  reportable failures: 0   hidden failures: 1\n",
+		"  ? bad/example.go\n      expected: pass\n      actual: inconclusive\n",
+		"      Jev: 0 pass, 1 fail, 0 skip, 0 abstain (floor 0.80)\n",
+		"      Jev flagged a violation with confidence 0.62, below the floor 0.80, so it was not reported.\n",
+		"0/1 eval cases matched expectations, 1 inconclusive\n",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("output = %q, want %q", got, want)
@@ -653,7 +650,7 @@ func TestWriteRunTextVerboseShowsUnits(t *testing.T) {
 			Expected:  evals.ExpectFail,
 			Actual:    evals.OutcomeInconclusive,
 			Floor:     0.8,
-			Decisions: evals.Decisions{Fail: 1, HiddenFail: 1},
+			Decisions: evals.Decisions{Fail: 1, BelowFloor: 1},
 			Units: []evals.UnitDecision{{
 				Name:       "Compute",
 				Kind:       parsing.CodeKindFunction,
@@ -667,7 +664,7 @@ func TestWriteRunTextVerboseShowsUnits(t *testing.T) {
 	writeRunText(&output, outputStyle{}, report, true, "eval cases")
 	got := output.String()
 	if !strings.Contains(got, "      units:\n") ||
-		!strings.Contains(got, "function Compute  lines 5-9  fail  0.62  (below floor, not reported)") {
+		!strings.Contains(got, "function Compute  lines 5-9  fail  0.62  (below the confidence floor, not reported)") {
 		t.Fatalf("output = %q", got)
 	}
 }
@@ -680,10 +677,10 @@ func TestWriteRunLegendExplainsOutcomes(t *testing.T) {
 	got := output.String()
 	for _, want := range []string{
 		"legend",
-		"pass          ",
-		"fail          ",
+		"matched       ",
+		"mismatched    ",
 		"inconclusive  ",
-		"confidence    ",
+		"confidence floor",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("legend = %q, want %q", got, want)

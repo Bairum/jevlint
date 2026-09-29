@@ -64,15 +64,15 @@ func (outcome *Outcome) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// Decisions counts the raw answers a rule gave across a fixture. Reportable
-// failures are kept apart from failures hidden by the confidence floor.
+// Decisions counts the raw answers a rule gave across a fixture. Reported
+// failures reached the confidence floor; below-floor failures did not.
 type Decisions struct {
-	Pass           int `json:"pass"`
-	Fail           int `json:"fail"`
-	Skip           int `json:"skip"`
-	Abstain        int `json:"abstain"`
-	ReportableFail int `json:"reportableFail"`
-	HiddenFail     int `json:"hiddenFail"`
+	Pass       int `json:"pass"`
+	Fail       int `json:"fail"`
+	Skip       int `json:"skip"`
+	Abstain    int `json:"abstain"`
+	Reported   int `json:"reported"`
+	BelowFloor int `json:"belowFloor"`
 }
 
 // UnitDecision is one raw rule answer for one code unit.
@@ -83,7 +83,7 @@ type UnitDecision struct {
 	EndLine    uint              `json:"endLine"`
 	Status     evaluation.Status `json:"status"`
 	Confidence float64           `json:"confidence"`
-	Reportable bool              `json:"reportable"`
+	Reported   bool              `json:"reported"`
 }
 
 // Result is the outcome of scoring one eval case.
@@ -106,8 +106,8 @@ type Report struct {
 	Matched            int      `json:"matched"`
 	Mismatched         int      `json:"mismatched"`
 	Inconclusive       int      `json:"inconclusive"`
-	ReportableFailures int      `json:"reportableFailures"`
-	HiddenFailures     int      `json:"hiddenFailures"`
+	ReportedFailures   int      `json:"reportedFailures"`
+	BelowFloorFailures int      `json:"belowFloorFailures"`
 	Cases              []Result `json:"cases"`
 }
 
@@ -144,8 +144,8 @@ func Run(
 			return Report{}, err
 		}
 		report.Total++
-		report.ReportableFailures += result.Decisions.ReportableFail
-		report.HiddenFailures += result.Decisions.HiddenFail
+		report.ReportedFailures += result.Decisions.Reported
+		report.BelowFloorFailures += result.Decisions.BelowFloor
 		switch {
 		case result.Matched:
 			report.Matched++
@@ -209,14 +209,14 @@ func runCase(
 
 // classifyOutcome turns a rule's raw decisions into a truthful case outcome.
 //
-// A reportable failure makes the case fail. Without one, a failure below the
-// confidence floor, or no explicit pass at all, makes the case inconclusive.
-// Otherwise the case passes.
+// A reported failure makes the case fail. Without one, a below-floor failure,
+// or no explicit pass at all, makes the case inconclusive. Otherwise the case
+// passes.
 func classifyOutcome(decisions Decisions) Outcome {
 	switch {
-	case decisions.ReportableFail > 0:
+	case decisions.Reported > 0:
 		return OutcomeFail
-	case decisions.HiddenFail > 0:
+	case decisions.BelowFloor > 0:
 		return OutcomeInconclusive
 	case decisions.Pass > 0:
 		return OutcomePass
@@ -310,17 +310,17 @@ func (recorder *recordingEvaluator) CacheStats() evaluation.CacheStats {
 	return provider.CacheStats()
 }
 
-// decisionsFor returns a copy of a rule's raw decisions, with reportable and
-// hidden failures filled in from the findings the runner reported.
-func (recorder *recordingEvaluator) decisionsFor(ruleID string, reportable int) Decisions {
+// decisionsFor returns a copy of a rule's raw decisions, with reported and
+// below-floor failures filled in from the findings the runner reported.
+func (recorder *recordingEvaluator) decisionsFor(ruleID string, reported int) Decisions {
 	var decisions Decisions
 	if recorded := recorder.decisions[ruleID]; recorded != nil {
 		decisions = *recorded
 	}
-	decisions.ReportableFail = reportable
-	decisions.HiddenFail = decisions.Fail - reportable
-	if decisions.HiddenFail < 0 {
-		decisions.HiddenFail = 0
+	decisions.Reported = reported
+	decisions.BelowFloor = decisions.Fail - reported
+	if decisions.BelowFloor < 0 {
+		decisions.BelowFloor = 0
 	}
 	return decisions
 }
@@ -334,7 +334,7 @@ func (recorder *recordingEvaluator) unitsFor(ruleID string, floor float64) []Uni
 	}
 	units := append([]UnitDecision(nil), recorded...)
 	for index := range units {
-		units[index].Reportable = units[index].Status == evaluation.StatusFail &&
+		units[index].Reported = units[index].Status == evaluation.StatusFail &&
 			units[index].Confidence >= floor
 	}
 	sort.SliceStable(units, func(i, j int) bool {

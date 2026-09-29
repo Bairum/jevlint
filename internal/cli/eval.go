@@ -223,13 +223,17 @@ func stripUnits(report evals.Report) evals.Report {
 	return report
 }
 
-// writeRunLegend explains how eval outcomes are decided.
+// writeRunLegend explains how eval outcomes and decisions are classified.
 func writeRunLegend(writer io.Writer, style outputStyle) {
 	fmt.Fprintln(writer, style.paint("1", "legend"))
-	fmt.Fprintln(writer, "  pass          the rule passed every code unit")
-	fmt.Fprintln(writer, "  fail          at least one violation at or above the confidence floor")
-	fmt.Fprintln(writer, "  inconclusive  a failure below the floor, or no unit returned an explicit pass")
-	fmt.Fprintln(writer, "  confidence    Jev's score for a decision; below the floor a fail is not reported")
+	fmt.Fprintln(writer, "  Each case runs one rule on every code unit in one fixture; Jev answers")
+	fmt.Fprintln(writer, "  pass, fail, skip, or abstain for each unit.")
+	fmt.Fprintln(writer, "    matched       the rule decided what the case expected")
+	fmt.Fprintln(writer, "    mismatched    the rule decided the opposite of what the case expected")
+	fmt.Fprintln(writer, "    inconclusive  the rule was not sure: a violation scored below the")
+	fmt.Fprintln(writer, "                  confidence floor, or every answer was skip or abstain")
+	fmt.Fprintln(writer, "  A violation is reported as a finding only when Jev's confidence is at")
+	fmt.Fprintln(writer, "  least the rule's confidence floor.")
 	fmt.Fprintln(writer)
 }
 
@@ -263,12 +267,6 @@ func writeRunText(
 		label,
 		report.Inconclusive,
 	)
-	fmt.Fprintf(
-		writer,
-		"  reportable failures: %d   hidden failures: %d\n",
-		report.ReportableFailures,
-		report.HiddenFailures,
-	)
 }
 
 // writeRunCase prints the result of one case.
@@ -287,35 +285,34 @@ func writeRunCase(writer io.Writer, style outputStyle, result evals.Result, verb
 	}
 	fmt.Fprintf(writer, "      expected: %s\n", result.Expected)
 	fmt.Fprintf(writer, "      actual: %s\n", result.Actual)
-	fmt.Fprintf(writer, "      floor: %.2f   jev: %s\n", result.Floor, jevSummary(result.Decisions))
+	fmt.Fprintf(
+		writer,
+		"      Jev: %d pass, %d fail, %d skip, %d abstain (floor %.2f)\n",
+		result.Decisions.Pass,
+		result.Decisions.Fail,
+		result.Decisions.Skip,
+		result.Decisions.Abstain,
+		result.Floor,
+	)
 	if result.Decisions.Fail > 0 && result.Confidence != nil {
-		fmt.Fprintf(writer, "      fail confidence: %.2f\n", *result.Confidence)
+		if result.Decisions.Reported > 0 {
+			fmt.Fprintf(
+				writer,
+				"      Jev flagged a violation with confidence %.2f, at or above the floor, so it was reported.\n",
+				*result.Confidence,
+			)
+		} else {
+			fmt.Fprintf(
+				writer,
+				"      Jev flagged a violation with confidence %.2f, below the floor %.2f, so it was not reported.\n",
+				*result.Confidence,
+				result.Floor,
+			)
+		}
 	}
 	if verbose {
 		writeUnitDecisions(writer, result)
 	}
-}
-
-// jevSummary prints the raw rule answers for one case.
-func jevSummary(decisions evals.Decisions) string {
-	if decisions.Fail == 0 {
-		return fmt.Sprintf(
-			"%d pass, %d fail, %d skip, %d abstain",
-			decisions.Pass,
-			decisions.Fail,
-			decisions.Skip,
-			decisions.Abstain,
-		)
-	}
-	return fmt.Sprintf(
-		"%d pass, %d fail (%d reportable, %d hidden), %d skip, %d abstain",
-		decisions.Pass,
-		decisions.Fail,
-		decisions.ReportableFail,
-		decisions.HiddenFail,
-		decisions.Skip,
-		decisions.Abstain,
-	)
 }
 
 // writeUnitDecisions prints the per-unit Jev answers for one case.
@@ -327,10 +324,10 @@ func writeUnitDecisions(writer io.Writer, result evals.Result) {
 	for _, unit := range result.Units {
 		note := ""
 		if unit.Status == evaluation.StatusFail {
-			if unit.Reportable {
-				note = "  (reportable)"
+			if unit.Reported {
+				note = "  (reported as a finding)"
 			} else {
-				note = "  (below floor, not reported)"
+				note = "  (below the confidence floor, not reported)"
 			}
 		}
 		fmt.Fprintf(
