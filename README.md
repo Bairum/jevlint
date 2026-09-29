@@ -21,6 +21,7 @@ go run ./cmd/jevlint check --concurrency 8 src
 go run ./cmd/jevlint check --refresh-cache .
 go run ./cmd/jevlint eval
 go run ./cmd/jevlint eval --rule database-joins --format json
+go run ./cmd/jevlint plugin install https://github.com/org/jevlint-packs#database-joins
 ```
 
 | Flag | Description |
@@ -151,7 +152,8 @@ results. Use `--clear-cache` to clear this project's cache before a run.
 `jevlint eval` scores your rules against fixtures you list in
 `jevlint-evals.json` (next to `--config`, or `--evals`). Check never loads that
 file. Each case names a rule, a fixture relative to the eval file, and
-`expect: pass` or `expect: fail`.
+`expect: pass` or `expect: fail`. Pack evals stay with the pack unless you
+pass `--packs`.
 
 Eval evaluates only that rule. It clears the rule's include and exclude so
 fixtures still run, and keeps kinds, exceptions, localize, and minConfidence.
@@ -183,6 +185,7 @@ have many cases, including several for the same language.
 | `--concurrency number` | Set the maximum number of concurrent Jev requests. Defaults to `4`. |
 | `--evals path` | Use a different eval file. Fixtures stay relative to that file. |
 | `--format text\|json` | Select human-readable or machine-readable output. Defaults to `text`. |
+| `--packs` | Also run evals from packs listed in `jevlint.json`. |
 | `--refresh-cache` | Reevaluate code and replace matching cached results. |
 | `--rule id` | Evaluate only this rule's cases. |
 | `--verbose` | Include the per-unit decisions in JSON output. |
@@ -224,6 +227,51 @@ Exit codes:
 - `0`: every case matched
 - `1`: at least one case was mismatched or inconclusive
 - `2`: configuration, parsing, or provider error
+
+## Packs
+
+A pack is a shared directory of rules, optional evals, and fixtures. Pins live
+in `jevlint.json`. Fetched files live in the user cache, not the project tree.
+
+```text
+pack.json
+rules.json
+evals.json
+fixtures/
+```
+
+```json
+{
+  "languages": { "go": {} },
+  "minConfidence": 0.8,
+  "packs": [
+    {
+      "id": "database-joins",
+      "source": "https://github.com/org/jevlint-packs",
+      "path": "database-joins",
+      "sha": "abc123"
+    }
+  ],
+  "rules": [
+    {
+      "id": "database-joins",
+      "minConfidence": 0.5,
+      "include": ["src/**/*.go"]
+    }
+  ]
+}
+```
+
+`plugin install` writes the pin. A project can use only pack rules. Project
+`rules` entries overlay a pack rule by id (confidence, include/exclude,
+severity) or add a local rule. Check never opens pack evals.
+
+```sh
+go run ./cmd/jevlint plugin install https://github.com/org/jevlint-packs#database-joins
+go run ./cmd/jevlint plugin list
+go run ./cmd/jevlint plugin update
+go run ./cmd/jevlint plugin remove database-joins
+```
 
 ## Supported languages
 

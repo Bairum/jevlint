@@ -14,7 +14,16 @@ import (
 type Config struct {
 	Languages     map[string]Language `json:"languages"`
 	MinConfidence *float64            `json:"minConfidence,omitempty"`
-	Rules         []Rule              `json:"rules"`
+	Packs         []PackRef           `json:"packs,omitempty"`
+	Rules         []Rule              `json:"rules,omitempty"`
+}
+
+type PackRef struct {
+	ID     string `json:"id"`
+	Source string `json:"source"`
+	Path   string `json:"path,omitempty"`
+	Ref    string `json:"ref,omitempty"`
+	SHA    string `json:"sha"`
 }
 
 // Language customizes a built in language preset.
@@ -240,6 +249,20 @@ func (cfg Config) ConfidenceFloor(rule Rule) float64 {
 	return cfg.MinimumConfidence()
 }
 
+func Write(path string, cfg Config) error {
+	file, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+	defer file.Close()
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(cfg); err != nil {
+		return fmt.Errorf("encode config: %w", err)
+	}
+	return nil
+}
+
 // Validate checks the config for mistakes.
 func (cfg Config) Validate() error {
 	if err := validateLanguages(cfg.Languages); err != nil {
@@ -248,8 +271,14 @@ func (cfg Config) Validate() error {
 	if err := validateMinConfidence(cfg.MinConfidence); err != nil {
 		return err
 	}
-	if len(cfg.Rules) == 0 {
+	if err := validatePackRefs(cfg.Packs); err != nil {
+		return err
+	}
+	if len(cfg.Packs) == 0 && len(cfg.Rules) == 0 {
 		return errors.New("config must contain at least one rule")
+	}
+	if len(cfg.Packs) > 0 && len(cfg.Rules) == 0 {
+		return nil
 	}
 
 	ids := make(map[string]struct{}, len(cfg.Rules))
@@ -262,7 +291,21 @@ func (cfg Config) Validate() error {
 			return fmt.Errorf("duplicate rule id %q", rule.ID)
 		}
 		ids[rule.ID] = struct{}{}
-
+		if err := validateMinConfidence(rule.MinConfidence); err != nil {
+			return fmt.Errorf("%s.minConfidence must be between 0 and 1", prefix)
+		}
+		if len(cfg.Packs) > 0 && !ruleLooksComplete(rule) {
+			if err := validateRulePatterns(rule, prefix); err != nil {
+				return err
+			}
+			if err := validateRuleLocalization(rule, prefix); err != nil {
+				return err
+			}
+			if err := validateRuleKinds(rule, prefix); err != nil {
+				return err
+			}
+			continue
+		}
 		if err := validateRuleDescription(rule, prefix); err != nil {
 			return err
 		}
@@ -278,9 +321,34 @@ func (cfg Config) Validate() error {
 		if err := validateRuleKinds(rule, prefix); err != nil {
 			return err
 		}
-		if err := validateMinConfidence(rule.MinConfidence); err != nil {
-			return fmt.Errorf("%s.minConfidence must be between 0 and 1", prefix)
+	}
+	return nil
+}
+
+func ruleLooksComplete(rule Rule) bool {
+	return strings.TrimSpace(rule.Description) != "" &&
+		(rule.Severity == SeverityInfo ||
+			rule.Severity == SeverityWarning ||
+			rule.Severity == SeverityError)
+}
+
+func validatePackRefs(refs []PackRef) error {
+	seen := make(map[string]struct{}, len(refs))
+	for index, ref := range refs {
+		prefix := fmt.Sprintf("packs[%d]", index)
+		if strings.TrimSpace(ref.ID) == "" {
+			return fmt.Errorf("%s.id is required", prefix)
 		}
+		if strings.TrimSpace(ref.Source) == "" {
+			return fmt.Errorf("%s.source is required", prefix)
+		}
+		if strings.TrimSpace(ref.SHA) == "" {
+			return fmt.Errorf("%s.sha is required", prefix)
+		}
+		if _, exists := seen[ref.ID]; exists {
+			return fmt.Errorf("duplicate pack id %q", ref.ID)
+		}
+		seen[ref.ID] = struct{}{}
 	}
 	return nil
 }

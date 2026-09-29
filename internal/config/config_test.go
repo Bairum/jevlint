@@ -457,6 +457,38 @@ func TestValidateRejectsInvalidLanguages(t *testing.T) {
 	}
 }
 
+func TestDecodePacksWithoutRules(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := Decode(strings.NewReader(withGoLanguage(`{
+		"packs": [{
+			"id": "database-joins",
+			"source": "https://github.com/org/repo",
+			"sha": "abc123"
+		}]
+	}`)))
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if len(cfg.Packs) != 1 || len(cfg.Rules) != 0 {
+		t.Fatalf("config = %#v", cfg)
+	}
+}
+
+func TestConfidenceFloorPrefersRule(t *testing.T) {
+	t.Parallel()
+
+	global := 0.8
+	ruleFloor := 0.5
+	cfg := Config{MinConfidence: &global}
+	if cfg.ConfidenceFloor(Rule{MinConfidence: &ruleFloor}) != 0.5 {
+		t.Fatalf("rule override = %v", cfg.ConfidenceFloor(Rule{MinConfidence: &ruleFloor}))
+	}
+	if cfg.ConfidenceFloor(Rule{}) != 0.8 {
+		t.Fatalf("global floor = %v", cfg.ConfidenceFloor(Rule{}))
+	}
+}
+
 func withGoLanguage(input string) string {
 	return strings.Replace(
 		input,
