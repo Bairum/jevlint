@@ -14,6 +14,8 @@ import (
 	"testing"
 
 	"jevlint/internal/evals"
+	"jevlint/internal/evaluation"
+	"jevlint/internal/parsing"
 )
 
 type evalProject struct {
@@ -503,6 +505,48 @@ func TestEvalInconclusiveExitsOne(t *testing.T) {
 	}
 }
 
+func TestEvalVerboseJSONIncludesUnits(t *testing.T) {
+	root := writeEvalProject(t, evalProject{
+		source: "package sample\n\nfunc JoinInCode() {\n\tprintln(\"join\")\n}\n",
+		evals: `{
+			"version": 1,
+			"cases": [{"rule": "database-joins", "file": "sample.go", "expect": "fail"}]
+		}`,
+	})
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(writer, `{
+			"model": "jev-test",
+			"answers": {"database-joins": {"type": "choice", "choice": "fail", "confidence": 0.92}}
+		}`)
+	}))
+	defer server.Close()
+	setEvalEnv(t, server.URL)
+
+	run := func(args []string) []byte {
+		t.Helper()
+		var stdout, stderr bytes.Buffer
+		exitCode := runCLI(context.Background(), args, &stdout, &stderr)
+		if exitCode != 0 {
+			t.Fatalf("Run() exit code = %d; stderr = %q", exitCode, stderr.String())
+		}
+		return stdout.Bytes()
+	}
+	base := []string{"eval", "--config", filepath.Join(root, "jevlint.json"), "--format", "json"}
+
+	plain := run(base)
+	if bytes.Contains(plain, []byte(`"units"`)) {
+		t.Fatalf("default JSON includes units: %s", plain)
+	}
+	verbose := run(append(append([]string(nil), base...), "--verbose"))
+	if !bytes.Contains(verbose, []byte(`"units"`)) {
+		t.Fatalf("verbose JSON omits units: %s", verbose)
+	}
+	if !bytes.Contains(verbose, []byte(`"confidence": 0.92`)) {
+		t.Fatalf("verbose JSON omits confidence: %s", verbose)
+	}
+}
+
 // writeExcludedExamplesProject writes a project whose only source files live
 // under examples and whose rule excludes that directory.
 func writeExcludedExamplesProject(t *testing.T) string {
@@ -566,20 +610,83 @@ func TestWriteRunTextSeparatesExpectedAndActual(t *testing.T) {
 	t.Parallel()
 
 	var output bytes.Buffer
+	confidence := 0.62
+	report := evals.Report{
+		Total:              1,
+		Matched:            1,
+		ReportableFailures: 0,
+		HiddenFailures:     1,
+		Cases: []evals.Result{{
+			Rule:       "database-joins",
+			File:       "bad/example.go",
+			Expected:   evals.ExpectFail,
+			Actual:     evals.OutcomePass,
+			Floor:      0.8,
+			Confidence: &confidence,
+			Decisions:  evals.Decisions{Fail: 1, HiddenFail: 1},
+		}},
+	}
+	writeRunText(&output, outputStyle{}, report, false, "eval cases")
+	got := output.String()
+	for _, want := range []string{
+		"  ✗ bad/example.go\n      expected: fail\n      actual: pass\n",
+		"      floor: 0.80   jev: 0 pass, 1 fail (0 reportable, 1 hidden), 0 skip, 0 abstain\n",
+		"      fail confidence: 0.62\n",
+		"1/1 eval cases matched expectations, 0 inconclusive\n",
+		"  reportable failures: 0   hidden failures: 1\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("output = %q, want %q", got, want)
+		}
+	}
+}
+
+func TestWriteRunTextVerboseShowsUnits(t *testing.T) {
+	t.Parallel()
+
+	var output bytes.Buffer
 	report := evals.Report{
 		Total: 1,
 		Cases: []evals.Result{{
-			Rule:     "database-joins",
-			File:     "bad/example.go",
-			Expected: evals.ExpectFail,
-			Actual:   evals.OutcomePass,
+			Rule:      "database-joins",
+			File:      "bad/example.go",
+			Expected:  evals.ExpectFail,
+			Actual:    evals.OutcomeInconclusive,
+			Floor:     0.8,
+			Decisions: evals.Decisions{Fail: 1, HiddenFail: 1},
+			Units: []evals.UnitDecision{{
+				Name:       "Compute",
+				Kind:       parsing.CodeKindFunction,
+				StartLine:  5,
+				EndLine:    9,
+				Status:     evaluation.StatusFail,
+				Confidence: 0.62,
+			}},
 		}},
 	}
-	writeRunText(&output, outputStyle{}, report, "eval cases")
-	if !strings.Contains(
-		output.String(),
-		"  ✗ bad/example.go\n      expected: fail\n      actual: pass\n",
-	) {
-		t.Fatalf("output = %q", output.String())
+	writeRunText(&output, outputStyle{}, report, true, "eval cases")
+	got := output.String()
+	if !strings.Contains(got, "      units:\n") ||
+		!strings.Contains(got, "function Compute  lines 5-9  fail  0.62  (below floor, not reported)") {
+		t.Fatalf("output = %q", got)
+	}
+}
+
+func TestWriteRunLegendExplainsOutcomes(t *testing.T) {
+	t.Parallel()
+
+	var output bytes.Buffer
+	writeRunLegend(&output, outputStyle{})
+	got := output.String()
+	for _, want := range []string{
+		"legend",
+		"pass          ",
+		"fail          ",
+		"inconclusive  ",
+		"confidence    ",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("legend = %q, want %q", got, want)
+		}
 	}
 }

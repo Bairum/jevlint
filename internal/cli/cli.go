@@ -40,6 +40,7 @@ Eval flags:
   --format text|json    output format (default "text")
   --refresh-cache       reevaluate and replace current cached results
   --rule id             evaluate only this rule's cases
+  --verbose             show per-unit Jev decisions
 `
 
 const evalUsage = `Usage:
@@ -54,6 +55,7 @@ Flags:
   --format text|json    output format (default "text")
   --refresh-cache       reevaluate and replace current cached results
   --rule id             evaluate only this rule's cases
+  --verbose             show per-unit Jev decisions
 `
 
 const (

@@ -380,6 +380,20 @@ func TestRunClassifiesRawDecisions(t *testing.T) {
 			if report.Matched+report.Mismatched+report.Inconclusive != report.Total {
 				t.Fatalf("report counts = %#v", report)
 			}
+			if result.Floor != floor {
+				t.Fatalf("floor = %v, want %v", result.Floor, floor)
+			}
+			if len(result.Units) != 1 {
+				t.Fatalf("units = %#v", result.Units)
+			}
+			unit := result.Units[0]
+			wantReportable := test.status == evaluation.StatusFail && test.confidence >= floor
+			if unit.Reportable != wantReportable {
+				t.Fatalf("unit reportable = %v, want %v", unit.Reportable, wantReportable)
+			}
+			if unit.Status != test.status || unit.Confidence != test.confidence {
+				t.Fatalf("unit = %#v", unit)
+			}
 		})
 	}
 }
@@ -492,6 +506,11 @@ func TestRunAggregatesDecisionsAcrossCodeUnits(t *testing.T) {
 				result.Decisions.ReportableFail != test.reportable ||
 				result.Decisions.HiddenFail != test.hidden {
 				t.Fatalf("decisions = %#v", result.Decisions)
+			}
+			if len(result.Units) != 2 ||
+				result.Units[0].Name != "Alpha" ||
+				result.Units[1].Name != "Beta" {
+				t.Fatalf("units = %#v", result.Units)
 			}
 		})
 	}

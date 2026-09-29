@@ -29,6 +29,7 @@ type evalContext struct {
 	ruleID      string
 	concurrency int
 	cache       cacheMode
+	verbose     bool
 }
 
 // parseEvalOptions reads the eval flags.
@@ -46,6 +47,7 @@ func parseEvalOptions(args []string, stderr io.Writer) (evalOptions, int, bool) 
 	format := flags.String("format", "text", "output format")
 	refreshCache := flags.Bool("refresh-cache", false, "refresh cached evaluations")
 	ruleID := flags.String("rule", "", "evaluate only this rule")
+	verbose := flags.Bool("verbose", false, "show per-unit Jev decisions")
 	flagArgs, leftover, err := splitFlagsAndPaths(flags, args)
 	if err != nil {
 		fmt.Fprintf(stderr, "jevlint: %v\n", err)
@@ -92,6 +94,7 @@ func parseEvalOptions(args []string, stderr io.Writer) (evalOptions, int, bool) 
 			ruleID:      *ruleID,
 			concurrency: *concurrency,
 			cache:       mode,
+			verbose:     *verbose,
 		},
 	}, exitSuccess, true
 }
@@ -158,7 +161,7 @@ func executeEval(
 		fmt.Fprintf(stderr, "jevlint: %v\n", err)
 		return exitUsageError
 	}
-	if err := writeEvalReport(stdout, report, options.output); err != nil {
+	if err := writeEvalReport(stdout, report, options.output, options.eval.verbose); err != nil {
 		fmt.Fprintf(stderr, "jevlint: write output: %v\n", err)
 		return exitUsageError
 	}
@@ -193,19 +196,51 @@ func writeEvalReport(
 	writer io.Writer,
 	report evals.Report,
 	output outputContext,
+	verbose bool,
 ) error {
 	if output.format == formatJSON {
 		encoder := json.NewEncoder(writer)
 		encoder.SetIndent("", "  ")
+		if !verbose {
+			report = stripUnits(report)
+		}
 		return encoder.Encode(report)
 	}
 	style := outputStyle{color: shouldUseColor(output.color, writer, output.hints)}
-	writeRunText(writer, style, report, "eval cases")
+	writeRunLegend(writer, style)
+	writeRunText(writer, style, report, verbose, "eval cases")
 	return nil
 }
 
+// stripUnits returns the report without the per-unit decisions.
+func stripUnits(report evals.Report) evals.Report {
+	cases := make([]evals.Result, len(report.Cases))
+	copy(cases, report.Cases)
+	for index := range cases {
+		cases[index].Units = nil
+	}
+	report.Cases = cases
+	return report
+}
+
+// writeRunLegend explains how eval outcomes are decided.
+func writeRunLegend(writer io.Writer, style outputStyle) {
+	fmt.Fprintln(writer, style.paint("1", "legend"))
+	fmt.Fprintln(writer, "  pass          the rule passed every code unit")
+	fmt.Fprintln(writer, "  fail          at least one violation at or above the confidence floor")
+	fmt.Fprintln(writer, "  inconclusive  a failure below the floor, or no unit returned an explicit pass")
+	fmt.Fprintln(writer, "  confidence    Jev's score for a decision; below the floor a fail is not reported")
+	fmt.Fprintln(writer)
+}
+
 // writeRunText prints case results grouped by rule.
-func writeRunText(writer io.Writer, style outputStyle, report evals.Report, label string) {
+func writeRunText(
+	writer io.Writer,
+	style outputStyle,
+	report evals.Report,
+	verbose bool,
+	label string,
+) {
 	currentRule := ""
 	for _, result := range report.Cases {
 		if result.Rule != currentRule {
@@ -215,33 +250,29 @@ func writeRunText(writer io.Writer, style outputStyle, report evals.Report, labe
 			fmt.Fprintln(writer, style.paint("1", result.Rule))
 			currentRule = result.Rule
 		}
-		writeRunCase(writer, style, result)
+		writeRunCase(writer, style, result, verbose)
 	}
 	if len(report.Cases) > 0 {
 		fmt.Fprintln(writer)
 	}
-	if report.Inconclusive > 0 {
-		fmt.Fprintf(
-			writer,
-			"%d/%d %s matched expectations, %d inconclusive\n",
-			report.Matched,
-			report.Total,
-			label,
-			report.Inconclusive,
-		)
-		return
-	}
 	fmt.Fprintf(
 		writer,
-		"%d/%d %s matched expectations\n",
+		"%d/%d %s matched expectations, %d inconclusive\n",
 		report.Matched,
 		report.Total,
 		label,
+		report.Inconclusive,
+	)
+	fmt.Fprintf(
+		writer,
+		"  reportable failures: %d   hidden failures: %d\n",
+		report.ReportableFailures,
+		report.HiddenFailures,
 	)
 }
 
 // writeRunCase prints the result of one case.
-func writeRunCase(writer io.Writer, style outputStyle, result evals.Result) {
+func writeRunCase(writer io.Writer, style outputStyle, result evals.Result, verbose bool) {
 	label := result.File
 	if result.Name != "" {
 		label = result.Name + "  " + result.File
@@ -256,16 +287,62 @@ func writeRunCase(writer io.Writer, style outputStyle, result evals.Result) {
 	}
 	fmt.Fprintf(writer, "      expected: %s\n", result.Expected)
 	fmt.Fprintf(writer, "      actual: %s\n", result.Actual)
-	if result.Actual == evals.OutcomeInconclusive {
+	fmt.Fprintf(writer, "      floor: %.2f   jev: %s\n", result.Floor, jevSummary(result.Decisions))
+	if result.Decisions.Fail > 0 && result.Confidence != nil {
+		fmt.Fprintf(writer, "      fail confidence: %.2f\n", *result.Confidence)
+	}
+	if verbose {
+		writeUnitDecisions(writer, result)
+	}
+}
+
+// jevSummary prints the raw rule answers for one case.
+func jevSummary(decisions evals.Decisions) string {
+	if decisions.Fail == 0 {
+		return fmt.Sprintf(
+			"%d pass, %d fail, %d skip, %d abstain",
+			decisions.Pass,
+			decisions.Fail,
+			decisions.Skip,
+			decisions.Abstain,
+		)
+	}
+	return fmt.Sprintf(
+		"%d pass, %d fail (%d reportable, %d hidden), %d skip, %d abstain",
+		decisions.Pass,
+		decisions.Fail,
+		decisions.ReportableFail,
+		decisions.HiddenFail,
+		decisions.Skip,
+		decisions.Abstain,
+	)
+}
+
+// writeUnitDecisions prints the per-unit Jev answers for one case.
+func writeUnitDecisions(writer io.Writer, result evals.Result) {
+	if len(result.Units) == 0 {
+		return
+	}
+	fmt.Fprintln(writer, "      units:")
+	for _, unit := range result.Units {
+		note := ""
+		if unit.Status == evaluation.StatusFail {
+			if unit.Reportable {
+				note = "  (reportable)"
+			} else {
+				note = "  (below floor, not reported)"
+			}
+		}
 		fmt.Fprintf(
 			writer,
-			"      decisions: pass=%d fail=%d skip=%d abstain=%d reportable=%d hidden=%d\n",
-			result.Decisions.Pass,
-			result.Decisions.Fail,
-			result.Decisions.Skip,
-			result.Decisions.Abstain,
-			result.Decisions.ReportableFail,
-			result.Decisions.HiddenFail,
+			"        %s %s  lines %d-%d  %s  %.2f%s\n",
+			unit.Kind,
+			unit.Name,
+			unit.StartLine,
+			unit.EndLine,
+			unit.Status,
+			unit.Confidence,
+			note,
 		)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 
 	"jevlint/internal/config"
 	"jevlint/internal/evaluation"
@@ -74,25 +75,40 @@ type Decisions struct {
 	HiddenFail     int `json:"hiddenFail"`
 }
 
+// UnitDecision is one raw rule answer for one code unit.
+type UnitDecision struct {
+	Name       string            `json:"name"`
+	Kind       parsing.CodeKind  `json:"kind"`
+	StartLine  uint              `json:"startLine"`
+	EndLine    uint              `json:"endLine"`
+	Status     evaluation.Status `json:"status"`
+	Confidence float64           `json:"confidence"`
+	Reportable bool              `json:"reportable"`
+}
+
 // Result is the outcome of scoring one eval case.
 type Result struct {
-	Rule       string    `json:"rule"`
-	Name       string    `json:"name,omitempty"`
-	File       string    `json:"file"`
-	Expected   Expect    `json:"expected"`
-	Actual     Outcome   `json:"actual"`
-	Matched    bool      `json:"matched"`
-	Confidence *float64  `json:"confidence,omitempty"`
-	Decisions  Decisions `json:"decisions"`
+	Rule       string         `json:"rule"`
+	Name       string         `json:"name,omitempty"`
+	File       string         `json:"file"`
+	Expected   Expect         `json:"expected"`
+	Actual     Outcome        `json:"actual"`
+	Matched    bool           `json:"matched"`
+	Confidence *float64       `json:"confidence,omitempty"`
+	Floor      float64        `json:"floor"`
+	Decisions  Decisions      `json:"decisions"`
+	Units      []UnitDecision `json:"units,omitempty"`
 }
 
 // Report is the outcome of scoring every case.
 type Report struct {
-	Total        int      `json:"total"`
-	Matched      int      `json:"matched"`
-	Mismatched   int      `json:"mismatched"`
-	Inconclusive int      `json:"inconclusive"`
-	Cases        []Result `json:"cases"`
+	Total              int      `json:"total"`
+	Matched            int      `json:"matched"`
+	Mismatched         int      `json:"mismatched"`
+	Inconclusive       int      `json:"inconclusive"`
+	ReportableFailures int      `json:"reportableFailures"`
+	HiddenFailures     int      `json:"hiddenFailures"`
+	Cases              []Result `json:"cases"`
 }
 
 // Options holds the settings for an eval run.
@@ -106,6 +122,7 @@ type recordingEvaluator struct {
 	inner     evaluation.Evaluator
 	bestFail  map[string]float64
 	decisions map[string]*Decisions
+	units     map[string][]UnitDecision
 }
 
 // Run scores every case and returns the report.
@@ -127,6 +144,8 @@ func Run(
 			return Report{}, err
 		}
 		report.Total++
+		report.ReportableFailures += result.Decisions.ReportableFail
+		report.HiddenFailures += result.Decisions.HiddenFail
 		switch {
 		case result.Matched:
 			report.Matched++
@@ -153,6 +172,7 @@ func runCase(
 	if !ok {
 		return Result{}, fmt.Errorf("unknown eval rule %q", evalCase.Rule)
 	}
+	floor := cfg.ConfidenceFloor(rule)
 	recorder := &recordingEvaluator{inner: evaluator}
 	check := runner.Runner{
 		Extractor: extractor,
@@ -179,8 +199,10 @@ func runCase(
 		Expected:   evalCase.Expect,
 		Actual:     actual,
 		Matched:    actual != OutcomeInconclusive && actual == expectedOutcome(evalCase.Expect),
-		Confidence: recorder.reportableConfidence(evalCase.Rule, cfg.ConfidenceFloor(rule)),
+		Confidence: recorder.bestFailConfidence(evalCase.Rule),
+		Floor:      floor,
 		Decisions:  decisions,
+		Units:      recorder.unitsFor(evalCase.Rule, floor),
 	}
 	return result, nil
 }
@@ -243,6 +265,9 @@ func (recorder *recordingEvaluator) Evaluate(
 	if recorder.decisions == nil {
 		recorder.decisions = make(map[string]*Decisions)
 	}
+	if recorder.units == nil {
+		recorder.units = make(map[string][]UnitDecision)
+	}
 	for id, result := range results {
 		decisions := recorder.decisions[id]
 		if decisions == nil {
@@ -264,6 +289,14 @@ func (recorder *recordingEvaluator) Evaluate(
 				recorder.bestFail[id] = result.Confidence
 			}
 		}
+		recorder.units[id] = append(recorder.units[id], UnitDecision{
+			Name:       batch.CodeUnit.Name,
+			Kind:       batch.CodeUnit.Kind,
+			StartLine:  batch.CodeUnit.StartLine,
+			EndLine:    batch.CodeUnit.EndLine,
+			Status:     result.Status,
+			Confidence: result.Confidence,
+		})
 	}
 	return results, nil
 }
@@ -292,13 +325,32 @@ func (recorder *recordingEvaluator) decisionsFor(ruleID string, reportable int) 
 	return decisions
 }
 
-// reportableConfidence returns the fail score when it reaches the floor.
-func (recorder *recordingEvaluator) reportableConfidence(
-	ruleID string,
-	floor float64,
-) *float64 {
+// unitsFor returns one rule's per-unit decisions in source order, marking the
+// failures that reach the confidence floor.
+func (recorder *recordingEvaluator) unitsFor(ruleID string, floor float64) []UnitDecision {
+	recorded := recorder.units[ruleID]
+	if len(recorded) == 0 {
+		return nil
+	}
+	units := append([]UnitDecision(nil), recorded...)
+	for index := range units {
+		units[index].Reportable = units[index].Status == evaluation.StatusFail &&
+			units[index].Confidence >= floor
+	}
+	sort.SliceStable(units, func(i, j int) bool {
+		if units[i].StartLine != units[j].StartLine {
+			return units[i].StartLine < units[j].StartLine
+		}
+		return units[i].Name < units[j].Name
+	})
+	return units
+}
+
+// bestFailConfidence returns the strongest fail score for a rule, whether or
+// not it reaches the confidence floor.
+func (recorder *recordingEvaluator) bestFailConfidence(ruleID string) *float64 {
 	confidence, ok := recorder.bestFail[ruleID]
-	if !ok || confidence < floor {
+	if !ok {
 		return nil
 	}
 	value := confidence

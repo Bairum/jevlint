@@ -185,6 +185,7 @@ have many cases, including several for the same language.
 | `--format text\|json` | Select human-readable or machine-readable output. Defaults to `text`. |
 | `--refresh-cache` | Reevaluate code and replace matching cached results. |
 | `--rule id` | Evaluate only this rule's cases. |
+| `--verbose` | Show every code unit's Jev decision and confidence. |
 
 Each case evaluates the rule against every code unit in the fixture. Each
 evaluation returns one raw decision: `pass`, `fail`, `skip`, or `abstain`. A
@@ -204,11 +205,17 @@ matches. This keeps an expected pass from succeeding just because evaluations
 skipped, abstained, or hid a failure under the confidence floor, and it makes
 an expected fail require a reportable violation.
 
-Text output is grouped by rule and ends with
-`N/M eval cases matched expectations` plus `, K inconclusive` when any case is
-inconclusive. JSON includes per-case confidence, the raw decision counts
-(`pass`, `fail`, `skip`, `abstain`, `reportableFail`, `hiddenFail`), and the
-inconclusive total.
+Text output starts with a legend, then groups cases by rule. Each case shows
+the expected and actual outcome, the confidence floor, the raw `jev:` decision
+counts, and the peak fail confidence when the case has any failure. The run
+ends with `N/M eval cases matched expectations, K inconclusive` and totals for
+reportable and hidden failures. Pass `--verbose` to also print every code
+unit's status and confidence.
+
+JSON includes the per-case confidence, the raw decision counts (`pass`, `fail`,
+`skip`, `abstain`, `reportableFail`, `hiddenFail`), the confidence floor, and
+the suite totals. `--verbose` adds a `units` array with each code unit's kind,
+name, lines, status, confidence, and whether it was reportable.
 
 Exit codes:
 
