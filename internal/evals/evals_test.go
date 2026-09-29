@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"jevlint/internal/config"
@@ -513,5 +515,69 @@ func TestRunAggregatesDecisionsAcrossCodeUnits(t *testing.T) {
 				t.Fatalf("units = %#v", result.Units)
 			}
 		})
+	}
+}
+
+// barrierEvaluator holds every call until all expected calls have started, so
+// concurrent recording overlaps.
+type barrierEvaluator struct {
+	mu      sync.Mutex
+	started int
+	total   int
+	release chan struct{}
+}
+
+func (evaluator *barrierEvaluator) Evaluate(
+	_ context.Context,
+	batch evaluation.Batch,
+) (map[string]evaluation.Result, error) {
+	evaluator.mu.Lock()
+	evaluator.started++
+	if evaluator.started == evaluator.total {
+		close(evaluator.release)
+	}
+	evaluator.mu.Unlock()
+	<-evaluator.release
+
+	results := make(map[string]evaluation.Result, len(batch.Rules))
+	for _, rule := range batch.Rules {
+		results[rule.ID] = evaluation.Result{Status: evaluation.StatusPass, Confidence: 1}
+	}
+	return results, nil
+}
+
+func TestRunConcurrentUnitsAreRaceFree(t *testing.T) {
+	t.Parallel()
+
+	const units = 8
+	root := t.TempDir()
+	path := filepath.Join(root, "sample.go")
+	var source strings.Builder
+	source.WriteString("package sample\n\n")
+	for index := 0; index < units; index++ {
+		fmt.Fprintf(&source, "func F%d() {}\n\n", index)
+	}
+	if err := os.WriteFile(path, []byte(source.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	document := Document{Version: currentVersion, Cases: []Case{{
+		Rule:   "database-joins",
+		File:   "sample.go",
+		Expect: ExpectPass,
+		abs:    path,
+	}}}
+	report, err := Run(
+		context.Background(),
+		document,
+		sampleConfig(nil),
+		testExtractor(t),
+		&barrierEvaluator{total: units, release: make(chan struct{})},
+		Options{Root: root, Concurrency: units},
+	)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if report.Matched != 1 || report.Cases[0].Decisions.Pass != units {
+		t.Fatalf("report = %#v", report)
 	}
 }

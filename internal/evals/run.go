@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync"
 
 	"jevlint/internal/config"
 	"jevlint/internal/evaluation"
@@ -118,8 +119,10 @@ type Options struct {
 }
 
 // recordingEvaluator wraps a client and records the raw decisions it returns.
+// The runner evaluates units concurrently, so its maps are guarded.
 type recordingEvaluator struct {
 	inner     evaluation.Evaluator
+	mu        sync.Mutex
 	bestFail  map[string]float64
 	decisions map[string]*Decisions
 	units     map[string][]UnitDecision
@@ -259,6 +262,8 @@ func (recorder *recordingEvaluator) Evaluate(
 	if batch.CodeUnit.Kind == parsing.CodeKindRegion {
 		return results, nil
 	}
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
 	if recorder.bestFail == nil {
 		recorder.bestFail = make(map[string]float64)
 	}
@@ -313,6 +318,9 @@ func (recorder *recordingEvaluator) CacheStats() evaluation.CacheStats {
 // decisionsFor returns a copy of a rule's raw decisions, with reported and
 // below-floor failures filled in from the findings the runner reported.
 func (recorder *recordingEvaluator) decisionsFor(ruleID string, reported int) Decisions {
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+
 	var decisions Decisions
 	if recorded := recorder.decisions[ruleID]; recorded != nil {
 		decisions = *recorded
@@ -328,6 +336,9 @@ func (recorder *recordingEvaluator) decisionsFor(ruleID string, reported int) De
 // unitsFor returns one rule's per-unit decisions in source order, marking the
 // failures that reach the confidence floor.
 func (recorder *recordingEvaluator) unitsFor(ruleID string, floor float64) []UnitDecision {
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+
 	recorded := recorder.units[ruleID]
 	if len(recorded) == 0 {
 		return nil
@@ -349,6 +360,9 @@ func (recorder *recordingEvaluator) unitsFor(ruleID string, floor float64) []Uni
 // bestFailConfidence returns the strongest fail score for a rule, whether or
 // not it reaches the confidence floor.
 func (recorder *recordingEvaluator) bestFailConfidence(ruleID string) *float64 {
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+
 	confidence, ok := recorder.bestFail[ruleID]
 	if !ok {
 		return nil
