@@ -138,9 +138,9 @@ func underRoot(root string, absolute string) (string, bool) {
 }
 
 const (
-	porcelainNUL            = 0
-	porcelainStatusWidth    = 2
-	porcelainPathOffset     = 3
+	porcelainNUL          = 0
+	porcelainStatusWidth  = 2
+	porcelainPathOffset   = 3
 	porcelainRenameStatus = 'R'
 	porcelainCopyStatus   = 'C'
 )
@@ -207,4 +207,3 @@ func wrapGitError(err error) error {
 	}
 	return err
 }
-
