@@ -185,13 +185,45 @@ have many cases, including several for the same language.
 | `--format text\|json` | Select human-readable or machine-readable output. Defaults to `text`. |
 | `--refresh-cache` | Reevaluate code and replace matching cached results. |
 | `--rule id` | Evaluate only this rule's cases. |
+| `--verbose` | Include the per-unit decisions in JSON output. |
 
-Text output is grouped by rule and ends with `N/M eval cases matched expectations`.
-JSON includes per-case confidence when a reportable fail is available.
+Each case evaluates the rule against every code unit in the fixture. Each
+evaluation returns one raw decision: `pass`, `fail`, `skip`, or `abstain`. The
+tool reports a violation only when Jev's confidence reaches the rule's
+confidence floor (the rule's `minConfidence`, or the global one); each reported
+violation becomes a finding.
+
+The case outcome follows from those decisions:
+
+- `fail`: at least one violation was reported.
+- `inconclusive`: no violation was reported, but Jev flagged one below the
+  confidence floor, or no unit returned an explicit pass (only `skip` or
+  `abstain`).
+- `pass`: otherwise, meaning at least one explicit pass and no failure.
+
+A case matches when its outcome equals `expect`, and `inconclusive` never
+matches. This keeps an expected pass from succeeding just because evaluations
+skipped, abstained, or hid a failure under the confidence floor, and it makes
+an expected fail require a reportable violation.
+
+Text output streams as Jev answers come back. It starts with a legend, prints
+each code unit's answer and confidence as it arrives, then prints the case's
+expected and actual outcome. The run ends with
+`N/M eval cases matched expectations, K inconclusive`. Cases stay in file
+order; units within a case print in completion order.
+
+JSON is written once after the run finishes. It includes the per-case
+confidence, the raw decision counts (`pass`, `fail`, `skip`, `abstain`,
+`reported`, `belowFloor`), the confidence floor, and the suite totals
+(`reportedFailures`, `belowFloorFailures`). `--verbose` adds a `units` array
+with each code unit's kind, name, lines, status, confidence, and whether its
+failure was reported.
+
+Exit codes:
 
 - `0`: every case matched
-- `1`: at least one case missed its expectation
-- `2`: configuration or runtime error
+- `1`: at least one case was mismatched or inconclusive
+- `2`: configuration, parsing, or provider error
 
 ## Supported languages
 

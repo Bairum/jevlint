@@ -14,6 +14,8 @@ import (
 	"testing"
 
 	"jevlint/internal/evals"
+	"jevlint/internal/evaluation"
+	"jevlint/internal/parsing"
 )
 
 type evalProject struct {
@@ -457,6 +459,94 @@ func setEvalEnv(t *testing.T, baseURL string) {
 	t.Setenv("TYPESAFE_DEFAULT_MODEL", "jev-test")
 }
 
+func TestEvalInconclusiveExitsOne(t *testing.T) {
+	root := writeEvalProject(t, evalProject{
+		config: `{
+			"languages": {"go": {}},
+			"rules": [{
+				"id": "database-joins",
+				"description": "Join related records in the database.",
+				"severity": "error",
+				"allowSkip": true
+			}]
+		}`,
+		source: "package sample\n\nfunc Ready() {}\n",
+		evals: `{
+			"version": 1,
+			"cases": [{"rule": "database-joins", "file": "sample.go", "expect": "pass"}]
+		}`,
+	})
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(writer, `{"answers":{"database-joins":{"type":"choice","choice":"skip","confidence":0.9}}}`)
+	}))
+	defer server.Close()
+	setEvalEnv(t, server.URL)
+
+	var stdout, stderr bytes.Buffer
+	exitCode := runCLI(
+		context.Background(),
+		[]string{"eval", "--config", filepath.Join(root, "jevlint.json"), "--format", "json"},
+		&stdout,
+		&stderr,
+	)
+	if exitCode != 1 {
+		t.Fatalf("Run() exit code = %d, want 1; stderr = %q", exitCode, stderr.String())
+	}
+	var report evals.Report
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.Inconclusive != 1 || report.Matched != 0 || report.Mismatched != 0 {
+		t.Fatalf("report = %#v", report)
+	}
+	if report.Cases[0].Actual != evals.OutcomeInconclusive {
+		t.Fatalf("actual = %v", report.Cases[0].Actual)
+	}
+}
+
+func TestEvalVerboseJSONIncludesUnits(t *testing.T) {
+	root := writeEvalProject(t, evalProject{
+		source: "package sample\n\nfunc JoinInCode() {\n\tprintln(\"join\")\n}\n",
+		evals: `{
+			"version": 1,
+			"cases": [{"rule": "database-joins", "file": "sample.go", "expect": "fail"}]
+		}`,
+	})
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(writer, `{
+			"model": "jev-test",
+			"answers": {"database-joins": {"type": "choice", "choice": "fail", "confidence": 0.92}}
+		}`)
+	}))
+	defer server.Close()
+	setEvalEnv(t, server.URL)
+
+	run := func(args []string) []byte {
+		t.Helper()
+		var stdout, stderr bytes.Buffer
+		exitCode := runCLI(context.Background(), args, &stdout, &stderr)
+		if exitCode != 0 {
+			t.Fatalf("Run() exit code = %d; stderr = %q", exitCode, stderr.String())
+		}
+		return stdout.Bytes()
+	}
+	base := []string{"eval", "--config", filepath.Join(root, "jevlint.json"), "--format", "json"}
+
+	plain := run(base)
+	if bytes.Contains(plain, []byte(`"units"`)) {
+		t.Fatalf("default JSON includes units: %s", plain)
+	}
+	verbose := run(append(append([]string(nil), base...), "--verbose"))
+	if !bytes.Contains(verbose, []byte(`"units"`)) {
+		t.Fatalf("verbose JSON omits units: %s", verbose)
+	}
+	if !bytes.Contains(verbose, []byte(`"confidence": 0.92`)) {
+		t.Fatalf("verbose JSON omits confidence: %s", verbose)
+	}
+}
+
 // writeExcludedExamplesProject writes a project whose only source files live
 // under examples and whose rule excludes that directory.
 func writeExcludedExamplesProject(t *testing.T) string {
@@ -516,24 +606,70 @@ func TestCheckSkipsExamplesDirectory(t *testing.T) {
 	}
 }
 
-func TestWriteRunTextSeparatesExpectedAndActual(t *testing.T) {
+func TestStreamPrinterWritesUnitsThenCase(t *testing.T) {
 	t.Parallel()
 
 	var output bytes.Buffer
-	report := evals.Report{
-		Total: 1,
-		Cases: []evals.Result{{
-			Rule:     "database-joins",
-			File:     "bad/example.go",
-			Expected: evals.ExpectFail,
-			Actual:   evals.ExpectPass,
-		}},
+	printer := &streamPrinter{writer: &output, style: outputStyle{}}
+	printer.unit(
+		evals.Case{Rule: "database-joins", File: "bad/example.go"},
+		evals.UnitDecision{
+			Name:       "Join",
+			Kind:       parsing.CodeKindFunction,
+			StartLine:  12,
+			EndLine:    20,
+			Status:     evaluation.StatusFail,
+			Confidence: 0.62,
+		},
+	)
+	printer.caseResult(evals.Result{
+		Rule:     "database-joins",
+		File:     "bad/example.go",
+		Expected: evals.ExpectPass,
+		Actual:   evals.OutcomeInconclusive,
+	})
+	got := output.String()
+	for _, want := range []string{
+		"database-joins\n",
+		"  bad/example.go\n",
+		"    function Join  lines 12-20  fail  0.62\n",
+		"    ? expected: pass   actual: inconclusive\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("output = %q, want %q", got, want)
+		}
 	}
-	writeRunText(&output, outputStyle{}, report, "eval cases")
-	if !strings.Contains(
-		output.String(),
-		"  ✗ bad/example.go\n      expected: fail\n      actual: pass\n",
-	) {
+}
+
+func TestWriteRunSummary(t *testing.T) {
+	t.Parallel()
+
+	var output bytes.Buffer
+	writeRunSummary(
+		&output,
+		outputStyle{},
+		evals.Report{Total: 2, Matched: 1, Inconclusive: 1},
+		"eval cases",
+	)
+	if !strings.Contains(output.String(), "1/2 eval cases matched expectations, 1 inconclusive\n") {
 		t.Fatalf("output = %q", output.String())
+	}
+}
+
+func TestWriteRunLegendExplainsOutcomes(t *testing.T) {
+	t.Parallel()
+
+	var output bytes.Buffer
+	writeRunLegend(&output, outputStyle{})
+	got := output.String()
+	for _, want := range []string{
+		"legend",
+		"matched       ",
+		"mismatched    ",
+		"inconclusive  ",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("legend = %q, want %q", got, want)
+		}
 	}
 }

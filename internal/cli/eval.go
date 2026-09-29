@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"jevlint/internal/config"
 	"jevlint/internal/evals"
@@ -29,6 +30,7 @@ type evalContext struct {
 	ruleID      string
 	concurrency int
 	cache       cacheMode
+	verbose     bool
 }
 
 // parseEvalOptions reads the eval flags.
@@ -46,6 +48,7 @@ func parseEvalOptions(args []string, stderr io.Writer) (evalOptions, int, bool) 
 	format := flags.String("format", "text", "output format")
 	refreshCache := flags.Bool("refresh-cache", false, "refresh cached evaluations")
 	ruleID := flags.String("rule", "", "evaluate only this rule")
+	verbose := flags.Bool("verbose", false, "show per-unit Jev decisions")
 	flagArgs, leftover, err := splitFlagsAndPaths(flags, args)
 	if err != nil {
 		fmt.Fprintf(stderr, "jevlint: %v\n", err)
@@ -92,6 +95,7 @@ func parseEvalOptions(args []string, stderr io.Writer) (evalOptions, int, bool) 
 			ruleID:      *ruleID,
 			concurrency: *concurrency,
 			cache:       mode,
+			verbose:     *verbose,
 		},
 	}, exitSuccess, true
 }
@@ -143,26 +147,30 @@ func executeEval(
 		fmt.Fprintf(stderr, "jevlint: %v\n", err)
 		return exitUsageError
 	}
-	report, err := evals.Run(
-		ctx,
-		document,
-		cfg,
-		extractor,
-		evaluator,
-		evals.Options{
-			Root:        filepath.Dir(absoluteConfig),
-			Concurrency: options.eval.concurrency,
-		},
-	)
+	text := options.output.format != formatJSON
+	style := outputStyle{color: shouldUseColor(options.output.color, stdout, options.output.hints)}
+	runOptions := evals.Options{
+		Root:        filepath.Dir(absoluteConfig),
+		Concurrency: options.eval.concurrency,
+	}
+	if text {
+		writeRunLegend(stdout, style)
+		printer := &streamPrinter{writer: stdout, style: style}
+		runOptions.OnUnit = printer.unit
+		runOptions.OnResult = printer.caseResult
+	}
+	report, err := evals.Run(ctx, document, cfg, extractor, evaluator, runOptions)
 	if err != nil {
 		fmt.Fprintf(stderr, "jevlint: %v\n", err)
 		return exitUsageError
 	}
-	if err := writeEvalReport(stdout, report, options.output); err != nil {
+	if text {
+		writeRunSummary(stdout, style, report, "eval cases")
+	} else if err := writeEvalJSON(stdout, report, options.eval.verbose); err != nil {
 		fmt.Fprintf(stderr, "jevlint: write output: %v\n", err)
 		return exitUsageError
 	}
-	if report.Mismatched > 0 {
+	if report.Mismatched > 0 || report.Inconclusive > 0 {
 		return exitHasFindings
 	}
 	return exitSuccess
@@ -188,58 +196,103 @@ func loadEvalDocument(
 	return document, exitSuccess
 }
 
-// writeEvalReport prints the eval results in the chosen format.
-func writeEvalReport(
-	writer io.Writer,
-	report evals.Report,
-	output outputContext,
-) error {
-	if output.format == formatJSON {
-		encoder := json.NewEncoder(writer)
-		encoder.SetIndent("", "  ")
-		return encoder.Encode(report)
+// writeEvalJSON prints the buffered report as JSON.
+func writeEvalJSON(writer io.Writer, report evals.Report, verbose bool) error {
+	encoder := json.NewEncoder(writer)
+	encoder.SetIndent("", "  ")
+	if !verbose {
+		report = stripUnits(report)
 	}
-	style := outputStyle{color: shouldUseColor(output.color, writer, output.hints)}
-	writeRunText(writer, style, report, "eval cases")
-	return nil
+	return encoder.Encode(report)
 }
 
-// writeRunText prints case results grouped by rule.
-func writeRunText(writer io.Writer, style outputStyle, report evals.Report, label string) {
-	currentRule := ""
-	for _, result := range report.Cases {
-		if result.Rule != currentRule {
-			if currentRule != "" {
-				fmt.Fprintln(writer)
-			}
-			fmt.Fprintln(writer, style.paint("1", result.Rule))
-			currentRule = result.Rule
-		}
-		writeRunCase(writer, style, result)
+// streamPrinter prints unit decisions and case results as they arrive.
+type streamPrinter struct {
+	writer io.Writer
+	style  outputStyle
+	mu     sync.Mutex
+	rule   string
+	file   string
+}
+
+// unit prints one Jev answer for one code unit.
+func (printer *streamPrinter) unit(evalCase evals.Case, unit evals.UnitDecision) {
+	printer.mu.Lock()
+	defer printer.mu.Unlock()
+
+	if evalCase.Rule != printer.rule {
+		fmt.Fprintln(printer.writer, printer.style.paint("1", evalCase.Rule))
+		printer.rule = evalCase.Rule
+		printer.file = ""
 	}
-	if len(report.Cases) > 0 {
-		fmt.Fprintln(writer)
+	if evalCase.File != printer.file {
+		fmt.Fprintf(printer.writer, "  %s\n", printer.style.paint("36", evalCase.File))
+		printer.file = evalCase.File
 	}
 	fmt.Fprintf(
-		writer,
-		"%d/%d %s matched expectations\n",
-		report.Matched,
-		report.Total,
-		label,
+		printer.writer,
+		"    %s %s  lines %d-%d  %s  %.2f\n",
+		unit.Kind,
+		unit.Name,
+		unit.StartLine,
+		unit.EndLine,
+		unit.Status,
+		unit.Confidence,
 	)
 }
 
-// writeRunCase prints the result of one case.
-func writeRunCase(writer io.Writer, style outputStyle, result evals.Result) {
-	label := result.File
-	if result.Name != "" {
-		label = result.Name + "  " + result.File
-	}
-	mark := style.paint("32", "✓ "+label)
+// caseResult prints the expected and actual outcome of one case.
+func (printer *streamPrinter) caseResult(result evals.Result) {
+	printer.mu.Lock()
+	defer printer.mu.Unlock()
+
+	mark := printer.style.paint("32", "✓")
 	if !result.Matched {
-		mark = style.paint("31", "✗ "+label)
+		mark = printer.style.paint("31", "✗")
 	}
-	fmt.Fprintf(writer, "  %s\n", mark)
-	fmt.Fprintf(writer, "      expected: %s\n", result.Expected)
-	fmt.Fprintf(writer, "      actual: %s\n", result.Actual)
+	if result.Actual == evals.OutcomeInconclusive {
+		mark = printer.style.paint("33", "?")
+	}
+	fmt.Fprintf(
+		printer.writer,
+		"    %s expected: %s   actual: %s\n",
+		mark,
+		result.Expected,
+		result.Actual,
+	)
+}
+
+// writeRunSummary prints the suite totals.
+func writeRunSummary(writer io.Writer, style outputStyle, report evals.Report, label string) {
+	fmt.Fprintln(writer)
+	fmt.Fprintf(
+		writer,
+		"%d/%d %s matched expectations, %d inconclusive\n",
+		report.Matched,
+		report.Total,
+		label,
+		report.Inconclusive,
+	)
+}
+
+// stripUnits returns the report without the per-unit decisions.
+func stripUnits(report evals.Report) evals.Report {
+	cases := make([]evals.Result, len(report.Cases))
+	copy(cases, report.Cases)
+	for index := range cases {
+		cases[index].Units = nil
+	}
+	report.Cases = cases
+	return report
+}
+
+// writeRunLegend explains how eval outcomes and decisions are classified.
+func writeRunLegend(writer io.Writer, style outputStyle) {
+	fmt.Fprintln(writer, style.paint("1", "legend"))
+	fmt.Fprintln(writer, "  Each case runs one rule on every code unit in one fixture. Jev answers")
+	fmt.Fprintln(writer, "  pass, fail, skip, or abstain for each unit and scores its confidence.")
+	fmt.Fprintln(writer, "    matched       the rule decided what the case expected")
+	fmt.Fprintln(writer, "    mismatched    the rule decided the opposite of what the case expected")
+	fmt.Fprintln(writer, "    inconclusive  the rule did not clearly pass or fail")
+	fmt.Fprintln(writer)
 }
