@@ -181,6 +181,75 @@ func buildUsers() { fmt.Println("users") }
 		}
 	})
 
+	t.Run("qualified external call omitted despite same-named project function", func(t *testing.T) {
+		t.Parallel()
+		caller := extractGoFunctions(t, "caller.go", `package sample
+func run() { foo.Parse("users") }
+`)
+		parse := extractGoFunctions(t, "parse.go", `package sample
+func Parse() {}
+`)
+		ResolveCallees(append(functionPointers(caller), functionPointers(parse)...))
+		if got := functionNamed(t, caller, "run").Resolved; got != nil {
+			t.Fatalf("resolved = %#v, want omitted", got)
+		}
+	})
+
+	t.Run("qualified same-file call omitted", func(t *testing.T) {
+		t.Parallel()
+		units := extractGoFunctions(t, "same.go", `package sample
+func run() { foo.Parse("users") }
+func Parse() {}
+`)
+		resolveExtracted(units)
+		if got := functionNamed(t, units, "run").Resolved; got != nil {
+			t.Fatalf("resolved = %#v, want omitted", got)
+		}
+	})
+
+	t.Run("qualified call omitted even with same-file candidate", func(t *testing.T) {
+		t.Parallel()
+		local := extractGoFunctions(t, "local.go", `package sample
+func run() { foo.Parse("users") }
+func Parse() {}
+`)
+		remote := extractGoFunctions(t, "remote.go", `package sample
+func Parse() {}
+`)
+		ResolveCallees(append(functionPointers(local), functionPointers(remote)...))
+		if got := functionNamed(t, local, "run").Resolved; got != nil {
+			t.Fatalf("resolved = %#v, want omitted", got)
+		}
+	})
+
+	t.Run("qualified method omitted despite unique method", func(t *testing.T) {
+		t.Parallel()
+		units := extractGoFunctions(t, "models.go", `package sample
+func (User) Save() {}
+func persist() { user.Save() }
+`)
+		resolveExtracted(units)
+		if got := functionNamed(t, units, "persist").Resolved; got != nil {
+			t.Fatalf("resolved = %#v, want omitted", got)
+		}
+	})
+
+	t.Run("unqualified call still resolves beside qualified call", func(t *testing.T) {
+		t.Parallel()
+		units := extractGoFunctions(t, "mixed.go", `package sample
+func run() {
+	helper()
+	log.Println(helper())
+}
+func helper() {}
+`)
+		resolveExtracted(units)
+		got := calleeNames(functionNamed(t, units, "run").Resolved)
+		if !reflect.DeepEqual(got, []string{"helper"}) {
+			t.Fatalf("resolved = %#v, want [helper]", got)
+		}
+	})
+
 	t.Run("self-recursive call omitted", func(t *testing.T) {
 		t.Parallel()
 		units := extractGoFunctions(t, "walk.go", `package sample
