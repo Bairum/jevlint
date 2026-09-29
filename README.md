@@ -185,7 +185,7 @@ have many cases, including several for the same language.
 | `--format text\|json` | Select human-readable or machine-readable output. Defaults to `text`. |
 | `--refresh-cache` | Reevaluate code and replace matching cached results. |
 | `--rule id` | Evaluate only this rule's cases. |
-| `--verbose` | Show every code unit's Jev decision and confidence. |
+| `--verbose` | Include the per-unit decisions in JSON output. |
 
 Each case evaluates the rule against every code unit in the fixture. Each
 evaluation returns one raw decision: `pass`, `fail`, `skip`, or `abstain`. The
@@ -206,18 +206,18 @@ matches. This keeps an expected pass from succeeding just because evaluations
 skipped, abstained, or hid a failure under the confidence floor, and it makes
 an expected fail require a reportable violation.
 
-Text output starts with a legend, then groups cases by rule. Each case shows
-the expected and actual outcome, the raw `Jev:` decision counts (`pass`, `fail`,
-`skip`, `abstain`), the confidence floor, and, when the rule flagged a
-violation, Jev's confidence and whether the floor allowed it to be reported.
-The run ends with `N/M eval cases matched expectations, K inconclusive`. Pass
-`--verbose` to also print every code unit's status and confidence.
+Text output streams as Jev answers come back. It starts with a legend, prints
+each code unit's answer and confidence as it arrives, then prints the case's
+expected and actual outcome. The run ends with
+`N/M eval cases matched expectations, K inconclusive`. Cases stay in file
+order; units within a case print in completion order.
 
-JSON includes the per-case confidence, the raw decision counts (`pass`, `fail`,
-`skip`, `abstain`, `reported`, `belowFloor`), the confidence floor, and the
-suite totals (`reportedFailures`, `belowFloorFailures`). `--verbose` adds a
-`units` array with each code unit's kind, name, lines, status, confidence, and
-whether its failure was reported.
+JSON is written once after the run finishes. It includes the per-case
+confidence, the raw decision counts (`pass`, `fail`, `skip`, `abstain`,
+`reported`, `belowFloor`), the confidence floor, and the suite totals
+(`reportedFailures`, `belowFloorFailures`). `--verbose` adds a `units` array
+with each code unit's kind, name, lines, status, confidence, and whether its
+failure was reported.
 
 Exit codes:
 

@@ -606,31 +606,34 @@ func TestCheckSkipsExamplesDirectory(t *testing.T) {
 	}
 }
 
-func TestWriteRunTextSeparatesExpectedAndActual(t *testing.T) {
+func TestStreamPrinterWritesUnitsThenCase(t *testing.T) {
 	t.Parallel()
 
 	var output bytes.Buffer
-	confidence := 0.62
-	report := evals.Report{
-		Total:        1,
-		Inconclusive: 1,
-		Cases: []evals.Result{{
-			Rule:       "database-joins",
-			File:       "bad/example.go",
-			Expected:   evals.ExpectPass,
-			Actual:     evals.OutcomeInconclusive,
-			Floor:      0.8,
-			Confidence: &confidence,
-			Decisions:  evals.Decisions{Fail: 1, BelowFloor: 1},
-		}},
-	}
-	writeRunText(&output, outputStyle{}, report, false, "eval cases")
+	printer := &streamPrinter{writer: &output, style: outputStyle{}}
+	printer.unit(
+		evals.Case{Rule: "database-joins", File: "bad/example.go"},
+		evals.UnitDecision{
+			Name:       "Join",
+			Kind:       parsing.CodeKindFunction,
+			StartLine:  12,
+			EndLine:    20,
+			Status:     evaluation.StatusFail,
+			Confidence: 0.62,
+		},
+	)
+	printer.caseResult(evals.Result{
+		Rule:     "database-joins",
+		File:     "bad/example.go",
+		Expected: evals.ExpectPass,
+		Actual:   evals.OutcomeInconclusive,
+	})
 	got := output.String()
 	for _, want := range []string{
-		"  ? bad/example.go\n      expected: pass\n      actual: inconclusive\n",
-		"      Jev: 0 pass, 1 fail, 0 skip, 0 abstain (floor 0.80)\n",
-		"      Jev flagged a violation with confidence 0.62, below the floor 0.80, so it was not reported.\n",
-		"0/1 eval cases matched expectations, 1 inconclusive\n",
+		"database-joins\n",
+		"  bad/example.go\n",
+		"    function Join  lines 12-20  fail  0.62\n",
+		"    ? expected: pass   actual: inconclusive\n",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("output = %q, want %q", got, want)
@@ -638,34 +641,18 @@ func TestWriteRunTextSeparatesExpectedAndActual(t *testing.T) {
 	}
 }
 
-func TestWriteRunTextVerboseShowsUnits(t *testing.T) {
+func TestWriteRunSummary(t *testing.T) {
 	t.Parallel()
 
 	var output bytes.Buffer
-	report := evals.Report{
-		Total: 1,
-		Cases: []evals.Result{{
-			Rule:      "database-joins",
-			File:      "bad/example.go",
-			Expected:  evals.ExpectFail,
-			Actual:    evals.OutcomeInconclusive,
-			Floor:     0.8,
-			Decisions: evals.Decisions{Fail: 1, BelowFloor: 1},
-			Units: []evals.UnitDecision{{
-				Name:       "Compute",
-				Kind:       parsing.CodeKindFunction,
-				StartLine:  5,
-				EndLine:    9,
-				Status:     evaluation.StatusFail,
-				Confidence: 0.62,
-			}},
-		}},
-	}
-	writeRunText(&output, outputStyle{}, report, true, "eval cases")
-	got := output.String()
-	if !strings.Contains(got, "      units:\n") ||
-		!strings.Contains(got, "function Compute  lines 5-9  fail  0.62  (below the confidence floor, not reported)") {
-		t.Fatalf("output = %q", got)
+	writeRunSummary(
+		&output,
+		outputStyle{},
+		evals.Report{Total: 2, Matched: 1, Inconclusive: 1},
+		"eval cases",
+	)
+	if !strings.Contains(output.String(), "1/2 eval cases matched expectations, 1 inconclusive\n") {
+		t.Fatalf("output = %q", output.String())
 	}
 }
 
@@ -680,7 +667,6 @@ func TestWriteRunLegendExplainsOutcomes(t *testing.T) {
 		"matched       ",
 		"mismatched    ",
 		"inconclusive  ",
-		"confidence floor",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("legend = %q, want %q", got, want)

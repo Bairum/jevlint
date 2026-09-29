@@ -581,3 +581,52 @@ func TestRunConcurrentUnitsAreRaceFree(t *testing.T) {
 		t.Fatalf("report = %#v", report)
 	}
 }
+
+func TestRunEmitsUnitDecisions(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := filepath.Join(root, "sample.go")
+	source := "package sample\n\nfunc Alpha() {}\n\nfunc Beta() {}\n"
+	if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	document := Document{Version: currentVersion, Cases: []Case{{
+		Rule:   "database-joins",
+		File:   "sample.go",
+		Expect: ExpectPass,
+		abs:    path,
+	}}}
+
+	var mu sync.Mutex
+	seen := map[string]UnitDecision{}
+	_, err := Run(
+		context.Background(),
+		document,
+		sampleConfig(nil),
+		testExtractor(t),
+		perUnitEvaluator{results: map[string]evaluation.Result{
+			"Alpha": {Status: evaluation.StatusPass, Confidence: 1},
+			"Beta":  {Status: evaluation.StatusFail, Confidence: 0.9},
+		}},
+		Options{
+			Root:        root,
+			Concurrency: 2,
+			OnUnit: func(_ Case, unit UnitDecision) {
+				mu.Lock()
+				seen[unit.Name] = unit
+				mu.Unlock()
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if len(seen) != 2 {
+		t.Fatalf("emitted units = %#v", seen)
+	}
+	beta, ok := seen["Beta"]
+	if !ok || beta.Status != evaluation.StatusFail || !beta.Reported {
+		t.Fatalf("Beta unit = %#v", beta)
+	}
+}

@@ -116,13 +116,19 @@ type Report struct {
 type Options struct {
 	Root        string
 	Concurrency int
+	// OnUnit, when set, is called with each unit decision as it is scored.
+	OnUnit func(Case, UnitDecision)
+	// OnResult, when set, is called with each case result as it is scored.
+	OnResult func(Result)
 }
 
 // recordingEvaluator wraps a client and records the raw decisions it returns.
 // The runner evaluates units concurrently, so its maps are guarded.
 type recordingEvaluator struct {
 	inner     evaluation.Evaluator
+	onUnit    func(UnitDecision)
 	mu        sync.Mutex
+	floor     float64
 	bestFail  map[string]float64
 	decisions map[string]*Decisions
 	units     map[string][]UnitDecision
@@ -145,6 +151,9 @@ func Run(
 		result, err := runCase(ctx, evalCase, cfg, extractor, evaluator, options)
 		if err != nil {
 			return Report{}, err
+		}
+		if options.OnResult != nil {
+			options.OnResult(result)
 		}
 		report.Total++
 		report.ReportedFailures += result.Decisions.Reported
@@ -176,7 +185,12 @@ func runCase(
 		return Result{}, fmt.Errorf("unknown eval rule %q", evalCase.Rule)
 	}
 	floor := cfg.ConfidenceFloor(rule)
-	recorder := &recordingEvaluator{inner: evaluator}
+	recorder := &recordingEvaluator{inner: evaluator, floor: floor}
+	if options.OnUnit != nil {
+		recorder.onUnit = func(unit UnitDecision) {
+			options.OnUnit(evalCase, unit)
+		}
+	}
 	check := runner.Runner{
 		Extractor: extractor,
 		Evaluator: recorder,
@@ -263,7 +277,6 @@ func (recorder *recordingEvaluator) Evaluate(
 		return results, nil
 	}
 	recorder.mu.Lock()
-	defer recorder.mu.Unlock()
 	if recorder.bestFail == nil {
 		recorder.bestFail = make(map[string]float64)
 	}
@@ -273,6 +286,7 @@ func (recorder *recordingEvaluator) Evaluate(
 	if recorder.units == nil {
 		recorder.units = make(map[string][]UnitDecision)
 	}
+	emitted := make([]UnitDecision, 0, len(results))
 	for id, result := range results {
 		decisions := recorder.decisions[id]
 		if decisions == nil {
@@ -294,14 +308,25 @@ func (recorder *recordingEvaluator) Evaluate(
 				recorder.bestFail[id] = result.Confidence
 			}
 		}
-		recorder.units[id] = append(recorder.units[id], UnitDecision{
+		unit := UnitDecision{
 			Name:       batch.CodeUnit.Name,
 			Kind:       batch.CodeUnit.Kind,
 			StartLine:  batch.CodeUnit.StartLine,
 			EndLine:    batch.CodeUnit.EndLine,
 			Status:     result.Status,
 			Confidence: result.Confidence,
-		})
+			Reported: result.Status == evaluation.StatusFail &&
+				result.Confidence >= recorder.floor,
+		}
+		recorder.units[id] = append(recorder.units[id], unit)
+		emitted = append(emitted, unit)
+	}
+	recorder.mu.Unlock()
+
+	if recorder.onUnit != nil {
+		for _, unit := range emitted {
+			recorder.onUnit(unit)
+		}
 	}
 	return results, nil
 }
