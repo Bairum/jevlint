@@ -39,7 +39,7 @@ type Language struct {
 type Rule struct {
 	ID            string       `json:"id"`
 	Description   string       `json:"description"`
-	Severity      Severity     `json:"severity"`
+	Severity      Severity     `json:"severity,omitempty"`
 	Include       []string     `json:"include,omitempty"`
 	Exclude       []string     `json:"exclude,omitempty"`
 	Exceptions    []string     `json:"exceptions,omitempty"`
@@ -163,23 +163,34 @@ func (severity Severity) MarshalJSON() ([]byte, error) {
 	return json.Marshal(severity.String())
 }
 
-// UnmarshalJSON reads a severity from its name.
+// UnmarshalJSON reads a severity from its name. Invalid names fail loudly
+// instead of becoming SeverityUnknown, which would look like "not specified"
+// and let a typo pass silently in a partial pack overlay.
 func (severity *Severity) UnmarshalJSON(data []byte) error {
 	var value string
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
+	parsed, ok := ParseSeverity(value)
+	if !ok {
+		return fmt.Errorf("invalid severity %q", value)
+	}
+	*severity = parsed
+	return nil
+}
+
+// ParseSeverity turns a severity name into a severity value.
+func ParseSeverity(value string) (Severity, bool) {
 	switch value {
 	case "info":
-		*severity = SeverityInfo
+		return SeverityInfo, true
 	case "warning":
-		*severity = SeverityWarning
+		return SeverityWarning, true
 	case "error":
-		*severity = SeverityError
+		return SeverityError, true
 	default:
-		*severity = SeverityUnknown
+		return SeverityUnknown, false
 	}
-	return nil
 }
 
 var languagePresets = map[string]struct{}{
