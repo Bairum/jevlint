@@ -33,7 +33,10 @@ func Resolve(
 }
 
 func resolveRef(ref config.PackRef, userCache string) (Loaded, error) {
-	dir := CacheDir(userCache, ref.SHA, ref.ID)
+	dir, err := CacheDir(userCache, ref.SHA, ref.ID)
+	if err != nil {
+		return Loaded{}, err
+	}
 	if _, err := os.Stat(filepath.Join(dir, ManifestFile)); err != nil {
 		if err := fetchRef(ref, dir); err != nil {
 			return Loaded{}, err
@@ -74,7 +77,10 @@ func Install(
 
 	packDir := checkout.dir
 	if parsed.Path != "" {
-		packDir = filepath.Join(checkout.dir, parsed.Path)
+		packDir, err = safeJoin(checkout.dir, parsed.Path)
+		if err != nil {
+			return config.PackRef{}, fmt.Errorf("pack path: %w", err)
+		}
 	}
 	item, err := LoadDir(packDir)
 	if err != nil {
@@ -87,7 +93,10 @@ func Install(
 		Ref:    parsed.Ref,
 		SHA:    checkout.sha,
 	}
-	dest := CacheDir(userCache, ref.SHA, ref.ID)
+	dest, err := CacheDir(userCache, ref.SHA, ref.ID)
+	if err != nil {
+		return config.PackRef{}, err
+	}
 	if err := replaceDir(dest, packDir); err != nil {
 		return config.PackRef{}, err
 	}
@@ -96,9 +105,6 @@ func Install(
 
 func fetchRef(ref config.PackRef, dest string) error {
 	parsed := Spec{Source: ref.Source, Ref: ref.SHA, Path: ref.Path}
-	if ref.Ref != "" {
-		parsed.Ref = ref.SHA
-	}
 	checkout, err := cloneSpec(parsed)
 	if err != nil {
 		return fmt.Errorf("fetch pack %q: %w", ref.ID, err)
@@ -106,7 +112,10 @@ func fetchRef(ref config.PackRef, dest string) error {
 	defer os.RemoveAll(filepath.Dir(checkout.dir))
 	packDir := checkout.dir
 	if ref.Path != "" {
-		packDir = filepath.Join(checkout.dir, ref.Path)
+		packDir, err = safeJoin(checkout.dir, ref.Path)
+		if err != nil {
+			return fmt.Errorf("fetch pack %q: %w", ref.ID, err)
+		}
 	}
 	return replaceDir(dest, packDir)
 }

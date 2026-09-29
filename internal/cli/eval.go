@@ -229,7 +229,11 @@ func loadPackEvalDocuments(
 ) (evals.Document, int) {
 	combined := evals.Document{Version: 1}
 	for _, pack := range loadedPacks {
-		path := pack.EvalPath()
+		path, err := pack.EvalPath()
+		if err != nil {
+			fmt.Fprintf(stderr, "jevlint: %v\n", err)
+			return evals.Document{}, exitUsageError
+		}
 		if _, err := os.Stat(path); err != nil {
 			if os.IsNotExist(err) {
 				continue
