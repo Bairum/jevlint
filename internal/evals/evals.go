@@ -137,6 +137,14 @@ func Load(
 	return document, nil
 }
 
+func (document Document) Concat(others ...Document) Document {
+	combined := Document{Version: document.Version, Cases: append([]Case{}, document.Cases...)}
+	for _, other := range others {
+		combined.Cases = append(combined.Cases, other.Cases...)
+	}
+	return combined
+}
+
 // FilterRule keeps only the cases for one rule.
 func (document Document) FilterRule(ruleID string) (Document, error) {
 	if ruleID == "" {

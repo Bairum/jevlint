@@ -14,6 +14,7 @@ import (
 	"jevlint/internal/changed"
 	"jevlint/internal/config"
 	"jevlint/internal/evaluation"
+	"jevlint/internal/packs"
 	"jevlint/internal/parsing"
 	"jevlint/internal/runner"
 )
@@ -21,6 +22,7 @@ import (
 const usage = `Usage:
   jevlint check [flags] [paths...]
   jevlint eval [flags]
+  jevlint plugin install|list|update|remove [args]
 
 Check flags:
   --changed             check only git-modified files
@@ -38,9 +40,16 @@ Eval flags:
   --concurrency number  maximum concurrent Jev requests (default 4)
   --evals path          eval cases (default "jevlint-evals.json" next to --config)
   --format text|json    output format (default "text")
+  --packs               also run evals from extended packs
   --refresh-cache       reevaluate and replace current cached results
   --rule id             evaluate only this rule's cases
   --verbose             show per-unit Jev decisions
+
+Plugin:
+  jevlint plugin install <github-url>
+  jevlint plugin list
+  jevlint plugin update [id]
+  jevlint plugin remove <id>
 `
 
 const evalUsage = `Usage:
@@ -53,9 +62,20 @@ Flags:
   --concurrency number  maximum concurrent Jev requests (default 4)
   --evals path          eval cases (default "jevlint-evals.json" next to --config)
   --format text|json    output format (default "text")
+  --packs               also run evals from extended packs
   --refresh-cache       reevaluate and replace current cached results
   --rule id             evaluate only this rule's cases
   --verbose             show per-unit Jev decisions
+`
+
+const pluginUsage = `Usage:
+  jevlint plugin install <github-url>
+  jevlint plugin list
+  jevlint plugin update [id]
+  jevlint plugin remove <id>
+
+Flags:
+  --config path         rule configuration (default "jevlint.json")
 `
 
 const (
@@ -71,6 +91,7 @@ const (
 	commandUnknown cliCommand = iota
 	commandCheck
 	commandEval
+	commandPlugin
 	commandHelp
 )
 
@@ -158,6 +179,8 @@ func parseCLICommand(name string) cliCommand {
 		return commandCheck
 	case "eval":
 		return commandEval
+	case "plugin":
+		return commandPlugin
 	case "-h", "--help":
 		return commandHelp
 	default:
@@ -172,6 +195,8 @@ func (command cliCommand) String() string {
 		return "check"
 	case commandEval:
 		return "eval"
+	case commandPlugin:
+		return "plugin"
 	case commandHelp:
 		return "help"
 	default:
@@ -229,6 +254,9 @@ func Run(
 	if dispatch := handleSpecialCommand(args[0], stderr); dispatch.handled {
 		return dispatch.exitCode
 	}
+	if command == commandPlugin {
+		return executePlugin(args[1:], stdout, stderr, os.UserCacheDir)
+	}
 	if command == commandEval {
 		options, exitCode, ready := parseEvalOptions(args[1:], stderr)
 		if !ready {
@@ -264,7 +292,7 @@ func handleSpecialCommand(
 	case commandHelp:
 		fmt.Fprint(stderr, usage)
 		return commandDispatch{exitCode: exitSuccess, handled: true}
-	case commandCheck, commandEval:
+	case commandCheck, commandEval, commandPlugin:
 		return commandDispatch{exitCode: exitSuccess, handled: false}
 	default:
 		fmt.Fprintf(stderr, "jevlint: unknown command %q\n\n%s", command, usage)
@@ -432,7 +460,11 @@ func loadRun(
 	stderr io.Writer,
 	userCacheDir func() (string, error),
 ) (loadedRun, int) {
-	absoluteConfig, cfg, extractor, exitCode := loadProject(options.check.configPath, stderr)
+	absoluteConfig, cfg, extractor, _, exitCode := loadProject(
+		options.check.configPath,
+		stderr,
+		userCacheDir,
+	)
 	if exitCode != 0 {
 		return loadedRun{}, exitCode
 	}
@@ -469,23 +501,37 @@ func loadRun(
 func loadProject(
 	configPath string,
 	stderr io.Writer,
-) (string, config.Config, *parsing.Extractor, int) {
+	userCacheDir func() (string, error),
+) (string, config.Config, *parsing.Extractor, []packs.Loaded, int) {
 	absoluteConfig, err := filepath.Abs(configPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "jevlint: resolve config path: %v\n", err)
-		return "", config.Config{}, nil, exitUsageError
+		return "", config.Config{}, nil, nil, exitUsageError
 	}
 	cfg, err := config.Load(absoluteConfig)
 	if err != nil {
 		fmt.Fprintf(stderr, "jevlint: %v\n", err)
-		return "", config.Config{}, nil, exitUsageError
+		return "", config.Config{}, nil, nil, exitUsageError
+	}
+	var loadedPacks []packs.Loaded
+	if len(cfg.Packs) > 0 {
+		loadedPacks, err = packs.Resolve(cfg.Packs, userCacheDir)
+		if err != nil {
+			fmt.Fprintf(stderr, "jevlint: %v\n", err)
+			return "", config.Config{}, nil, nil, exitUsageError
+		}
+		cfg, err = packs.Merge(cfg, loadedPacks)
+		if err != nil {
+			fmt.Fprintf(stderr, "jevlint: %v\n", err)
+			return "", config.Config{}, nil, nil, exitUsageError
+		}
 	}
 	extractor, err := parsing.NewExtractor(cfg.Languages)
 	if err != nil {
 		fmt.Fprintf(stderr, "jevlint: configure languages: %v\n", err)
-		return "", config.Config{}, nil, exitUsageError
+		return "", config.Config{}, nil, nil, exitUsageError
 	}
-	return absoluteConfig, cfg, extractor, exitSuccess
+	return absoluteConfig, cfg, extractor, loadedPacks, exitSuccess
 }
 
 // openResultCache opens the saved results and clears them when asked.
