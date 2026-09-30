@@ -37,6 +37,24 @@ func TestDecodeValidConfig(t *testing.T) {
 	}
 }
 
+func TestParseTargetKindAndSeverity(t *testing.T) {
+	t.Parallel()
+
+	if kind, err := ParseTargetKind(KindFunction); err != nil || kind != TargetKindFunction {
+		t.Fatalf("ParseTargetKind(%q) = %v, %v", KindFunction, kind, err)
+	}
+	if _, err := ParseTargetKind("banana"); err == nil || err.Error() != `invalid kind "banana"` {
+		t.Fatalf("ParseTargetKind(banana) error = %v", err)
+	}
+
+	if severity, err := ParseSeverity("error"); err != nil || severity != SeverityError {
+		t.Fatalf("ParseSeverity(error) = %v, %v", severity, err)
+	}
+	if _, err := ParseSeverity("erorr"); err == nil || err.Error() != `invalid severity "erorr"` {
+		t.Fatalf("ParseSeverity(erorr) error = %v", err)
+	}
+}
+
 func TestDecodeRuleContext(t *testing.T) {
 	t.Parallel()
 

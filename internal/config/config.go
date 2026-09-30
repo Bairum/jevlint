@@ -113,31 +113,32 @@ func (kind *TargetKind) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
-	parsed, ok := ParseTargetKind(value)
-	if !ok {
-		return fmt.Errorf("invalid kind %q", value)
+	parsed, err := ParseTargetKind(value)
+	if err != nil {
+		return err
 	}
 	*kind = parsed
 	return nil
 }
 
-// ParseTargetKind turns a kind name into a kind value.
-func ParseTargetKind(value string) (TargetKind, bool) {
+// ParseTargetKind turns a kind name into a kind value. An unknown name is an
+// error rather than TargetKindUnknown, which means "not specified".
+func ParseTargetKind(value string) (TargetKind, error) {
 	switch value {
 	case KindComment:
-		return TargetKindComment, true
+		return TargetKindComment, nil
 	case KindDocComment:
-		return TargetKindDocComment, true
+		return TargetKindDocComment, nil
 	case KindField:
-		return TargetKindField, true
+		return TargetKindField, nil
 	case KindFunction:
-		return TargetKindFunction, true
+		return TargetKindFunction, nil
 	case KindStatement:
-		return TargetKindStatement, true
+		return TargetKindStatement, nil
 	case KindType:
-		return TargetKindType, true
+		return TargetKindType, nil
 	default:
-		return TargetKindUnknown, false
+		return TargetKindUnknown, fmt.Errorf("invalid kind %q", value)
 	}
 }
 
@@ -171,25 +172,26 @@ func (severity *Severity) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
-	parsed, ok := ParseSeverity(value)
-	if !ok {
-		return fmt.Errorf("invalid severity %q", value)
+	parsed, err := ParseSeverity(value)
+	if err != nil {
+		return err
 	}
 	*severity = parsed
 	return nil
 }
 
-// ParseSeverity turns a severity name into a severity value.
-func ParseSeverity(value string) (Severity, bool) {
+// ParseSeverity turns a severity name into a severity value. An unknown name is
+// an error rather than SeverityUnknown, which means "not specified".
+func ParseSeverity(value string) (Severity, error) {
 	switch value {
 	case "info":
-		return SeverityInfo, true
+		return SeverityInfo, nil
 	case "warning":
-		return SeverityWarning, true
+		return SeverityWarning, nil
 	case "error":
-		return SeverityError, true
+		return SeverityError, nil
 	default:
-		return SeverityUnknown, false
+		return SeverityUnknown, fmt.Errorf("invalid severity %q", value)
 	}
 }
 
