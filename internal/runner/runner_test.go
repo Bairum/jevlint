@@ -43,6 +43,9 @@ type scoredBooleanEvaluator struct {
 
 type lowConfidencePassEvaluator struct{}
 
+// lowConfidencePassConfidence is below every confidence floor in these tests.
+const lowConfidencePassConfidence = 0.1
+
 type fixedStatusEvaluator struct {
 	status evaluation.Status
 }
@@ -668,7 +671,7 @@ func (lowConfidencePassEvaluator) Evaluate(
 	for _, rule := range batch.Rules {
 		results[rule.ID] = evaluation.Result{
 			Status:     evaluation.StatusPass,
-			Confidence: 0.1,
+			Confidence: lowConfidencePassConfidence,
 		}
 	}
 	return results, nil

@@ -342,19 +342,33 @@ func TestInstallRejectsSymlinkWithoutCopyingTarget(t *testing.T) {
 
 func assertNoFileContains(t *testing.T, root string, needle string) {
 	t.Helper()
-	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil || entry.IsDir() {
+	// A missing cache directory is a valid outcome (nothing was copied), but
+	// any other error means the check did not actually run.
+	if _, err := os.Stat(root); err != nil {
+		if os.IsNotExist(err) {
+			return
+		}
+		t.Fatalf("stat %s: %v", root, err)
+	}
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
 			return nil
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
-			return nil
+			return err
 		}
 		if strings.Contains(string(data), needle) {
 			t.Fatalf("found symlink target %q in %s", needle, path)
 		}
 		return nil
 	})
+	if err != nil {
+		t.Fatalf("walk %s: %v", root, err)
+	}
 }
 
 func writePackRepo(t *testing.T, manifest string, rules string) string {

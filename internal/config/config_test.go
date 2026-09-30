@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -32,6 +34,24 @@ func TestDecodeValidConfig(t *testing.T) {
 	}
 	if cfg.Rules[0].Context.Callees {
 		t.Fatalf("context = %#v, want omitted", cfg.Rules[0].Context)
+	}
+}
+
+func TestParseTargetKindAndSeverity(t *testing.T) {
+	t.Parallel()
+
+	if kind, err := ParseTargetKind(KindFunction); err != nil || kind != TargetKindFunction {
+		t.Fatalf("ParseTargetKind(%q) = %v, %v", KindFunction, kind, err)
+	}
+	if _, err := ParseTargetKind("banana"); err == nil || err.Error() != `invalid kind "banana"` {
+		t.Fatalf("ParseTargetKind(banana) error = %v", err)
+	}
+
+	if severity, err := ParseSeverity("error"); err != nil || severity != SeverityError {
+		t.Fatalf("ParseSeverity(error) = %v, %v", severity, err)
+	}
+	if _, err := ParseSeverity("erorr"); err == nil || err.Error() != `invalid severity "erorr"` {
+		t.Fatalf("ParseSeverity(erorr) error = %v", err)
 	}
 }
 
@@ -143,6 +163,67 @@ func TestDecodeMinConfidence(t *testing.T) {
 	}
 	if ruleFloor.Rules[0].MinConfidence == nil || *ruleFloor.Rules[0].MinConfidence != 0.8 {
 		t.Fatalf("Decode() rule minConfidence = %#v, want 0.8", ruleFloor.Rules[0].MinConfidence)
+	}
+}
+
+func TestDecodeRejectsInvalidOverlaySeverity(t *testing.T) {
+	t.Parallel()
+
+	_, err := Decode(strings.NewReader(`{
+		"languages": {"go": {}},
+		"packs": [{"id": "database-joins", "source": "local", "sha": "abc123"}],
+		"rules": [{"id": "database-joins", "severity": "erorr"}]
+	}`))
+	if err == nil || !strings.Contains(err.Error(), `invalid severity "erorr"`) {
+		t.Fatalf("Decode() error = %v, want invalid severity", err)
+	}
+}
+
+func TestDecodeAllowsOverlayWithoutSeverity(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := Decode(strings.NewReader(`{
+		"languages": {"go": {}},
+		"packs": [{"id": "database-joins", "source": "local", "sha": "abc123"}],
+		"rules": [{"id": "database-joins", "include": ["src/**/*.go"]}]
+	}`))
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if len(cfg.Rules) != 1 || cfg.Rules[0].Severity != SeverityUnknown {
+		t.Fatalf("rules = %#v", cfg.Rules)
+	}
+}
+
+func TestWritePartialOverlayRoundTrips(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "jevlint.json")
+	cfg, err := Decode(strings.NewReader(`{
+		"languages": {"go": {}},
+		"packs": [{"id": "database-joins", "source": "local", "sha": "abc123"}],
+		"rules": [{"id": "database-joins", "include": ["src/**/*.go"]}]
+	}`))
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if err := Write(path, cfg); err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), `"severity"`) {
+		t.Fatalf("written config included an unknown severity: %s", data)
+	}
+	reloaded, err := Decode(strings.NewReader(string(data)))
+	if err != nil {
+		t.Fatalf("reload error = %v; data = %s", err, data)
+	}
+	if len(reloaded.Rules) != 1 || len(reloaded.Rules[0].Include) != 1 {
+		t.Fatalf("reloaded = %#v", reloaded)
 	}
 }
 
@@ -270,14 +351,14 @@ func TestDecodeValidationErrors(t *testing.T) {
 			input: `{"rules": [{
 				"id": " ",
 				"description": "",
-				"severity": "unknown"
+				"severity": "error"
 			}]}`,
 			want: "rules[0].id is required",
 		},
 		"duplicate id takes precedence": {
 			input: `{"rules": [
 				{"id": "same", "description": "Valid.", "severity": "info"},
-				{"id": "same", "description": "", "severity": "unknown"}
+				{"id": "same", "description": "", "severity": "error"}
 			]}`,
 			want: `duplicate rule id "same"`,
 		},
@@ -295,7 +376,15 @@ func TestDecodeValidationErrors(t *testing.T) {
 				"description": "A rule.",
 				"severity": "unknown"
 			}]}`,
-			want: "rules[0].severity must be info, warning, or error",
+			want: `decode config: invalid severity "unknown"`,
+		},
+		"misspelled severity": {
+			input: `{"rules": [{
+				"id": "one",
+				"description": "A rule.",
+				"severity": "erorr"
+			}]}`,
+			want: `decode config: invalid severity "erorr"`,
 		},
 		"empty include pattern": {
 			input: `{"rules": [{

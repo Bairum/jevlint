@@ -39,7 +39,7 @@ type Language struct {
 type Rule struct {
 	ID            string       `json:"id"`
 	Description   string       `json:"description"`
-	Severity      Severity     `json:"severity"`
+	Severity      Severity     `json:"severity,omitempty"`
 	Include       []string     `json:"include,omitempty"`
 	Exclude       []string     `json:"exclude,omitempty"`
 	Exceptions    []string     `json:"exceptions,omitempty"`
@@ -113,31 +113,32 @@ func (kind *TargetKind) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
-	parsed, ok := ParseTargetKind(value)
-	if !ok {
-		return fmt.Errorf("invalid kind %q", value)
+	parsed, err := ParseTargetKind(value)
+	if err != nil {
+		return err
 	}
 	*kind = parsed
 	return nil
 }
 
-// ParseTargetKind turns a kind name into a kind value.
-func ParseTargetKind(value string) (TargetKind, bool) {
+// ParseTargetKind turns a kind name into a kind value. An unknown name is an
+// error rather than TargetKindUnknown, which means "not specified".
+func ParseTargetKind(value string) (TargetKind, error) {
 	switch value {
 	case KindComment:
-		return TargetKindComment, true
+		return TargetKindComment, nil
 	case KindDocComment:
-		return TargetKindDocComment, true
+		return TargetKindDocComment, nil
 	case KindField:
-		return TargetKindField, true
+		return TargetKindField, nil
 	case KindFunction:
-		return TargetKindFunction, true
+		return TargetKindFunction, nil
 	case KindStatement:
-		return TargetKindStatement, true
+		return TargetKindStatement, nil
 	case KindType:
-		return TargetKindType, true
+		return TargetKindType, nil
 	default:
-		return TargetKindUnknown, false
+		return TargetKindUnknown, fmt.Errorf("invalid kind %q", value)
 	}
 }
 
@@ -163,23 +164,35 @@ func (severity Severity) MarshalJSON() ([]byte, error) {
 	return json.Marshal(severity.String())
 }
 
-// UnmarshalJSON reads a severity from its name.
+// UnmarshalJSON reads a severity from its name. Invalid names fail loudly
+// instead of becoming SeverityUnknown, which would look like "not specified"
+// and let a typo pass silently in a partial pack overlay.
 func (severity *Severity) UnmarshalJSON(data []byte) error {
 	var value string
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
+	parsed, err := ParseSeverity(value)
+	if err != nil {
+		return err
+	}
+	*severity = parsed
+	return nil
+}
+
+// ParseSeverity turns a severity name into a severity value. An unknown name is
+// an error rather than SeverityUnknown, which means "not specified".
+func ParseSeverity(value string) (Severity, error) {
 	switch value {
 	case "info":
-		*severity = SeverityInfo
+		return SeverityInfo, nil
 	case "warning":
-		*severity = SeverityWarning
+		return SeverityWarning, nil
 	case "error":
-		*severity = SeverityError
+		return SeverityError, nil
 	default:
-		*severity = SeverityUnknown
+		return SeverityUnknown, fmt.Errorf("invalid severity %q", value)
 	}
-	return nil
 }
 
 var languagePresets = map[string]struct{}{
