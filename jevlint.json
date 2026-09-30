@@ -25,24 +25,7 @@
         "callees": true
       },
       "include": ["**/*"],
-      "exclude": [
-        "**/examples/**",
-        "**/test/**",
-        "**/tests/**",
-        "**/testdata/**",
-        "**/__tests__/**",
-        "**/*_test.go",
-        "**/*.test.js",
-        "**/*.test.jsx",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.js",
-        "**/*.spec.jsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test_*.py",
-        "**/*_test.py"
-      ],
+      "exclude": ["**/examples/**"],
       "exceptions": [
         "The data comes from different services or databases.",
         "The join cannot reasonably be expressed by the database or ORM."
@@ -55,24 +38,7 @@
       "severity": "error",
       "kinds": ["field"],
       "include": ["**/*"],
-      "exclude": [
-        "**/examples/**",
-        "**/test/**",
-        "**/tests/**",
-        "**/testdata/**",
-        "**/__tests__/**",
-        "**/*_test.go",
-        "**/*.test.js",
-        "**/*.test.jsx",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.js",
-        "**/*.spec.jsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test_*.py",
-        "**/*_test.py"
-      ]
+      "exclude": ["**/examples/**"]
     },
     {
       "id": "comment-quality",
@@ -80,24 +46,7 @@
       "severity": "warning",
       "kinds": ["comment"],
       "include": ["**/*"],
-      "exclude": [
-        "**/examples/**",
-        "**/test/**",
-        "**/tests/**",
-        "**/testdata/**",
-        "**/__tests__/**",
-        "**/*_test.go",
-        "**/*.test.js",
-        "**/*.test.jsx",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.js",
-        "**/*.spec.jsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test_*.py",
-        "**/*_test.py"
-      ]
+      "exclude": ["**/examples/**"]
     },
     {
       "id": "accurate-doc-comments",
@@ -105,24 +54,7 @@
       "severity": "warning",
       "kinds": ["docComment"],
       "include": ["**/*"],
-      "exclude": [
-        "**/examples/**",
-        "**/test/**",
-        "**/tests/**",
-        "**/testdata/**",
-        "**/__tests__/**",
-        "**/*_test.go",
-        "**/*.test.js",
-        "**/*.test.jsx",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.js",
-        "**/*.spec.jsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test_*.py",
-        "**/*_test.py"
-      ]
+      "exclude": ["**/examples/**"]
     },
     {
       "id": "redundant-if-statements",
@@ -133,24 +65,7 @@
         "callees": true
       },
       "include": ["**/*"],
-      "exclude": [
-        "**/examples/**",
-        "**/test/**",
-        "**/tests/**",
-        "**/testdata/**",
-        "**/__tests__/**",
-        "**/*_test.go",
-        "**/*.test.js",
-        "**/*.test.jsx",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.js",
-        "**/*.spec.jsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test_*.py",
-        "**/*_test.py"
-      ],
+      "exclude": ["**/examples/**"],
       "localize": ["statement"]
     },
     {
@@ -162,24 +77,7 @@
         "callees": true
       },
       "include": ["**/*"],
-      "exclude": [
-        "**/examples/**",
-        "**/test/**",
-        "**/tests/**",
-        "**/testdata/**",
-        "**/__tests__/**",
-        "**/*_test.go",
-        "**/*.test.js",
-        "**/*.test.jsx",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.js",
-        "**/*.spec.jsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test_*.py",
-        "**/*_test.py"
-      ]
+      "exclude": ["**/examples/**"]
     },
     {
       "id": "redundant-type-properties",
@@ -187,24 +85,7 @@
       "severity": "warning",
       "kinds": ["type"],
       "include": ["**/*"],
-      "exclude": [
-        "**/examples/**",
-        "**/test/**",
-        "**/tests/**",
-        "**/testdata/**",
-        "**/__tests__/**",
-        "**/*_test.go",
-        "**/*.test.js",
-        "**/*.test.jsx",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.js",
-        "**/*.spec.jsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test_*.py",
-        "**/*_test.py"
-      ],
+      "exclude": ["**/examples/**"],
       "localize": ["field"]
     },
     {
@@ -216,24 +97,7 @@
         "callees": true
       },
       "include": ["**/*"],
-      "exclude": [
-        "**/examples/**",
-        "**/test/**",
-        "**/tests/**",
-        "**/testdata/**",
-        "**/__tests__/**",
-        "**/*_test.go",
-        "**/*.test.js",
-        "**/*.test.jsx",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.js",
-        "**/*.spec.jsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test_*.py",
-        "**/*_test.py"
-      ]
+      "exclude": ["**/examples/**"]
     },
     {
       "id": "speculative-generalization",
@@ -244,24 +108,7 @@
         "callees": true
       },
       "include": ["**/*"],
-      "exclude": [
-        "**/examples/**",
-        "**/test/**",
-        "**/tests/**",
-        "**/testdata/**",
-        "**/__tests__/**",
-        "**/*_test.go",
-        "**/*.test.js",
-        "**/*.test.jsx",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.js",
-        "**/*.spec.jsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test_*.py",
-        "**/*_test.py"
-      ]
+      "exclude": ["**/examples/**"]
     },
     {
       "id": "wrapper-without-value",
@@ -272,24 +119,7 @@
         "callees": true
       },
       "include": ["**/*"],
-      "exclude": [
-        "**/examples/**",
-        "**/test/**",
-        "**/tests/**",
-        "**/testdata/**",
-        "**/__tests__/**",
-        "**/*_test.go",
-        "**/*.test.js",
-        "**/*.test.jsx",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.js",
-        "**/*.spec.jsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test_*.py",
-        "**/*_test.py"
-      ]
+      "exclude": ["**/examples/**"]
     },
     {
       "id": "mixed-levels-of-abstraction",
@@ -300,24 +130,7 @@
         "callees": true
       },
       "include": ["**/*"],
-      "exclude": [
-        "**/examples/**",
-        "**/test/**",
-        "**/tests/**",
-        "**/testdata/**",
-        "**/__tests__/**",
-        "**/*_test.go",
-        "**/*.test.js",
-        "**/*.test.jsx",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.js",
-        "**/*.spec.jsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test_*.py",
-        "**/*_test.py"
-      ]
+      "exclude": ["**/examples/**"]
     },
     {
       "id": "function-name-behavior-mismatch",
@@ -328,24 +141,7 @@
         "callees": true
       },
       "include": ["**/*"],
-      "exclude": [
-        "**/examples/**",
-        "**/test/**",
-        "**/tests/**",
-        "**/testdata/**",
-        "**/__tests__/**",
-        "**/*_test.go",
-        "**/*.test.js",
-        "**/*.test.jsx",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.js",
-        "**/*.spec.jsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test_*.py",
-        "**/*_test.py"
-      ]
+      "exclude": ["**/examples/**"]
     },
     {
       "id": "invalid-state-representation",
@@ -353,24 +149,7 @@
       "severity": "warning",
       "kinds": ["type"],
       "include": ["**/*"],
-      "exclude": [
-        "**/examples/**",
-        "**/test/**",
-        "**/tests/**",
-        "**/testdata/**",
-        "**/__tests__/**",
-        "**/*_test.go",
-        "**/*.test.js",
-        "**/*.test.jsx",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.js",
-        "**/*.spec.jsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test_*.py",
-        "**/*_test.py"
-      ],
+      "exclude": ["**/examples/**"],
       "localize": ["field"]
     },
     {
@@ -382,24 +161,7 @@
         "callees": true
       },
       "include": ["**/*"],
-      "exclude": [
-        "**/examples/**",
-        "**/test/**",
-        "**/tests/**",
-        "**/testdata/**",
-        "**/__tests__/**",
-        "**/*_test.go",
-        "**/*.test.js",
-        "**/*.test.jsx",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.js",
-        "**/*.spec.jsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test_*.py",
-        "**/*_test.py"
-      ],
+      "exclude": ["**/examples/**"],
       "localize": ["statement"]
     },
     {
@@ -411,24 +173,7 @@
         "callees": true
       },
       "include": ["**/*"],
-      "exclude": [
-        "**/examples/**",
-        "**/test/**",
-        "**/tests/**",
-        "**/testdata/**",
-        "**/__tests__/**",
-        "**/*_test.go",
-        "**/*.test.js",
-        "**/*.test.jsx",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.js",
-        "**/*.spec.jsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test_*.py",
-        "**/*_test.py"
-      ]
+      "exclude": ["**/examples/**"]
     },
     {
       "id": "unnecessary-mutation",
@@ -439,24 +184,7 @@
         "callees": true
       },
       "include": ["**/*"],
-      "exclude": [
-        "**/examples/**",
-        "**/test/**",
-        "**/tests/**",
-        "**/testdata/**",
-        "**/__tests__/**",
-        "**/*_test.go",
-        "**/*.test.js",
-        "**/*.test.jsx",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.js",
-        "**/*.spec.jsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test_*.py",
-        "**/*_test.py"
-      ],
+      "exclude": ["**/examples/**"],
       "localize": ["statement"]
     },
     {
@@ -468,24 +196,7 @@
         "callees": true
       },
       "include": ["**/*"],
-      "exclude": [
-        "**/examples/**",
-        "**/test/**",
-        "**/tests/**",
-        "**/testdata/**",
-        "**/__tests__/**",
-        "**/*_test.go",
-        "**/*.test.js",
-        "**/*.test.jsx",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.js",
-        "**/*.spec.jsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test_*.py",
-        "**/*_test.py"
-      ]
+      "exclude": ["**/examples/**"]
     },
     {
       "id": "coincidental-abstraction",
@@ -496,24 +207,7 @@
         "callees": true
       },
       "include": ["**/*"],
-      "exclude": [
-        "**/examples/**",
-        "**/test/**",
-        "**/tests/**",
-        "**/testdata/**",
-        "**/__tests__/**",
-        "**/*_test.go",
-        "**/*.test.js",
-        "**/*.test.jsx",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.js",
-        "**/*.spec.jsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test_*.py",
-        "**/*_test.py"
-      ]
+      "exclude": ["**/examples/**"]
     },
     {
       "id": "temporal-coupling",
@@ -521,24 +215,7 @@
       "severity": "warning",
       "kinds": ["type"],
       "include": ["**/*"],
-      "exclude": [
-        "**/examples/**",
-        "**/test/**",
-        "**/tests/**",
-        "**/testdata/**",
-        "**/__tests__/**",
-        "**/*_test.go",
-        "**/*.test.js",
-        "**/*.test.jsx",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.js",
-        "**/*.spec.jsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test_*.py",
-        "**/*_test.py"
-      ]
+      "exclude": ["**/examples/**"]
     },
     {
       "id": "hidden-global-dependency",
@@ -549,24 +226,7 @@
         "callees": true
       },
       "include": ["**/*"],
-      "exclude": [
-        "**/examples/**",
-        "**/test/**",
-        "**/tests/**",
-        "**/testdata/**",
-        "**/__tests__/**",
-        "**/*_test.go",
-        "**/*.test.js",
-        "**/*.test.jsx",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.js",
-        "**/*.spec.jsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test_*.py",
-        "**/*_test.py"
-      ],
+      "exclude": ["**/examples/**"],
       "localize": ["statement"]
     },
     {
@@ -578,24 +238,7 @@
         "callees": true
       },
       "include": ["**/*"],
-      "exclude": [
-        "**/examples/**",
-        "**/test/**",
-        "**/tests/**",
-        "**/testdata/**",
-        "**/__tests__/**",
-        "**/*_test.go",
-        "**/*.test.js",
-        "**/*.test.jsx",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.js",
-        "**/*.spec.jsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test_*.py",
-        "**/*_test.py"
-      ],
+      "exclude": ["**/examples/**"],
       "localize": ["statement"]
     },
     {
@@ -607,24 +250,7 @@
         "callees": true
       },
       "include": ["**/*"],
-      "exclude": [
-        "**/examples/**",
-        "**/test/**",
-        "**/tests/**",
-        "**/testdata/**",
-        "**/__tests__/**",
-        "**/*_test.go",
-        "**/*.test.js",
-        "**/*.test.jsx",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.js",
-        "**/*.spec.jsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test_*.py",
-        "**/*_test.py"
-      ],
+      "exclude": ["**/examples/**"],
       "localize": ["statement"]
     },
     {
@@ -636,24 +262,7 @@
         "callees": true
       },
       "include": ["**/*"],
-      "exclude": [
-        "**/examples/**",
-        "**/test/**",
-        "**/tests/**",
-        "**/testdata/**",
-        "**/__tests__/**",
-        "**/*_test.go",
-        "**/*.test.js",
-        "**/*.test.jsx",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.js",
-        "**/*.spec.jsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test_*.py",
-        "**/*_test.py"
-      ],
+      "exclude": ["**/examples/**"],
       "localize": ["statement"]
     },
     {
@@ -665,24 +274,7 @@
         "callees": true
       },
       "include": ["**/*"],
-      "exclude": [
-        "**/examples/**",
-        "**/test/**",
-        "**/tests/**",
-        "**/testdata/**",
-        "**/__tests__/**",
-        "**/*_test.go",
-        "**/*.test.js",
-        "**/*.test.jsx",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.js",
-        "**/*.spec.jsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test_*.py",
-        "**/*_test.py"
-      ]
+      "exclude": ["**/examples/**"]
     },
     {
       "id": "excessive-optional-configuration",
@@ -693,24 +285,7 @@
         "callees": true
       },
       "include": ["**/*"],
-      "exclude": [
-        "**/examples/**",
-        "**/test/**",
-        "**/tests/**",
-        "**/testdata/**",
-        "**/__tests__/**",
-        "**/*_test.go",
-        "**/*.test.js",
-        "**/*.test.jsx",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.js",
-        "**/*.spec.jsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test_*.py",
-        "**/*_test.py"
-      ],
+      "exclude": ["**/examples/**"],
       "exceptions": [
         "The options are independent command-line flags or a CLI argument parser."
       ]
