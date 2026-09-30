@@ -33,22 +33,49 @@ type Loaded struct {
 	Dir      string
 }
 
-func (loaded Loaded) EvalPath() string {
+func (loaded Loaded) EvalPath() (string, error) {
 	name := loaded.Manifest.Evals
 	if name == "" {
 		name = evals.DefaultFile
 	}
-	return filepath.Join(loaded.Dir, name)
+	path, err := safeJoin(loaded.Dir, name)
+	if err != nil {
+		return "", err
+	}
+	if info, statErr := os.Lstat(path); statErr == nil && info.Mode()&os.ModeSymlink != 0 {
+		return "", fmt.Errorf("pack eval file %q is a symbolic link", name)
+	}
+	return path, nil
 }
 
-func CacheDir(userCache string, sha string, id string) string {
-	return filepath.Join(userCache, "jevlint", "packs", sha, id)
+// CacheDir returns the cache location for one pinned pack. The sha and id come
+// from config or pack metadata, so both are validated before they become path
+// components.
+func CacheDir(userCache string, sha string, id string) (string, error) {
+	if err := validatePackID(id); err != nil {
+		return "", err
+	}
+	if err := validatePackID(sha); err != nil {
+		return "", fmt.Errorf("invalid pack sha %q", sha)
+	}
+	packsDir, err := safeJoin(userCache, filepath.Join("jevlint", "packs"))
+	if err != nil {
+		return "", err
+	}
+	bySHA, err := safeJoin(packsDir, sha)
+	if err != nil {
+		return "", err
+	}
+	return safeJoin(bySHA, id)
 }
 
 func LoadDir(dir string) (Loaded, error) {
 	absolute, err := filepath.Abs(dir)
 	if err != nil {
 		return Loaded{}, fmt.Errorf("resolve pack dir: %w", err)
+	}
+	if err := rejectSymlinks(absolute); err != nil {
+		return Loaded{}, err
 	}
 	manifest, err := loadManifest(filepath.Join(absolute, ManifestFile))
 	if err != nil {
@@ -58,7 +85,11 @@ func LoadDir(dir string) (Loaded, error) {
 	if rulesPath == "" {
 		rulesPath = defaultRulesFile
 	}
-	rules, err := loadRules(filepath.Join(absolute, rulesPath))
+	rulesFile, err := safeJoin(absolute, rulesPath)
+	if err != nil {
+		return Loaded{}, fmt.Errorf("pack %q: %w", manifest.ID, err)
+	}
+	rules, err := loadRules(rulesFile)
 	if err != nil {
 		return Loaded{}, fmt.Errorf("pack %q: %w", manifest.ID, err)
 	}
@@ -97,6 +128,17 @@ func loadManifest(path string) (Manifest, error) {
 	}
 	if strings.TrimSpace(manifest.ID) == "" {
 		return Manifest{}, fmt.Errorf("pack id is required")
+	}
+	if err := validatePackID(manifest.ID); err != nil {
+		return Manifest{}, err
+	}
+	for _, name := range []string{manifest.Rules, manifest.Evals} {
+		if name == "" {
+			continue
+		}
+		if err := validateRelativeName(name); err != nil {
+			return Manifest{}, fmt.Errorf("pack manifest: %w", err)
+		}
 	}
 	return manifest, nil
 }

@@ -98,8 +98,13 @@ func pluginList(
 		return exitSuccess
 	}
 	for _, ref := range cfg.Packs {
+		cacheDir, err := packs.CacheDir(userCache, ref.SHA, ref.ID)
+		if err != nil {
+			fmt.Fprintf(stderr, "jevlint: %v\n", err)
+			return exitUsageError
+		}
 		status := "missing"
-		if _, statErr := os.Stat(filepath.Join(packs.CacheDir(userCache, ref.SHA, ref.ID), packs.ManifestFile)); statErr == nil {
+		if _, statErr := os.Stat(filepath.Join(cacheDir, packs.ManifestFile)); statErr == nil {
 			status = "cached"
 		}
 		fmt.Fprintf(stdout, "%s  %s  %s  %s\n", ref.ID, ref.SHA, status, ref.Source)
