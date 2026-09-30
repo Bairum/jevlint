@@ -244,7 +244,7 @@ fixtures/
 ```json
 {
   "version": 1,
-  "id": "database-joins",
+  "id": "codegirl-007/database-joins",
   "languages": ["go"],
   "rules": "rules.json",
   "evals": "jevlint-evals.json"
@@ -253,9 +253,9 @@ fixtures/
 
 `rules` and `evals` are optional and default to `rules.json` and
 `jevlint-evals.json`; both must stay inside the pack. Any languages a pack
-declares must be enabled in your config. Pack ids and pinned shas are simple
-identifiers (letters, digits, `.`, `_`, `-`), and packs containing symbolic
-links are rejected.
+declares must be enabled in your config. Pack ids are `owner/name`, where each
+part is a simple identifier (letters, digits, `.`, `_`, `-`), and packs
+containing symbolic links are rejected.
 
 ```json
 {
@@ -263,7 +263,7 @@ links are rejected.
   "minConfidence": 0.8,
   "packs": [
     {
-      "id": "database-joins",
+      "id": "codegirl-007/database-joins",
       "source": "https://github.com/codegirl-007/jevlint.git",
       "path": "examples/packs/database-joins",
       "sha": "<commit-sha>"
@@ -292,7 +292,7 @@ go run ./cmd/jevlint plugin install https://github.com/codegirl-007/jevlint/tree
 go run ./cmd/jevlint plugin install /path/to/packs#database-joins
 go run ./cmd/jevlint plugin list
 go run ./cmd/jevlint plugin update
-go run ./cmd/jevlint plugin remove database-joins
+go run ./cmd/jevlint plugin remove codegirl-007/database-joins
 ```
 
 ## Supported languages

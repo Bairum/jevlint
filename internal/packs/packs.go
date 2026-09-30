@@ -48,15 +48,16 @@ func (loaded Loaded) EvalPath() (string, error) {
 	return path, nil
 }
 
-// CacheDir returns the cache location for one pinned pack. The sha and id come
-// from config or pack metadata, so both are validated before they become path
-// components.
+// CacheDir returns the cache location for one pinned pack. The sha and
+// owner/name id come from config or pack metadata, so each path component is
+// validated before use.
 func CacheDir(userCache string, sha string, id string) (string, error) {
-	if err := validatePackID(id); err != nil {
+	owner, name, err := splitPackID(id)
+	if err != nil {
 		return "", err
 	}
-	if err := validatePackID(sha); err != nil {
-		return "", fmt.Errorf("invalid pack sha %q", sha)
+	if err := validateIDPart("sha", sha); err != nil {
+		return "", err
 	}
 	packsDir, err := safeJoin(userCache, filepath.Join("jevlint", "packs"))
 	if err != nil {
@@ -66,7 +67,11 @@ func CacheDir(userCache string, sha string, id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return safeJoin(bySHA, id)
+	byOwner, err := safeJoin(bySHA, owner)
+	if err != nil {
+		return "", err
+	}
+	return safeJoin(byOwner, name)
 }
 
 func LoadDir(dir string) (Loaded, error) {

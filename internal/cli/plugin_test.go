@@ -46,7 +46,7 @@ func TestPluginInstallWritesPin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cfg.Packs) != 1 || cfg.Packs[0].ID != "database-joins" || cfg.Packs[0].SHA == "" {
+	if len(cfg.Packs) != 1 || cfg.Packs[0].ID != "codegirl-007/database-joins" || cfg.Packs[0].SHA == "" {
 		t.Fatalf("packs = %#v", cfg.Packs)
 	}
 }
@@ -82,7 +82,7 @@ func TestPluginUpdateRejectsChangedPackID(t *testing.T) {
 
 	if err := os.WriteFile(filepath.Join(packRepo, "pack.json"), []byte(`{
 		"version": 1,
-		"id": "sql-database-joins",
+		"id": "codegirl-007/sql-database-joins",
 		"languages": ["go"]
 	}`), 0o600); err != nil {
 		t.Fatal(err)
@@ -110,7 +110,7 @@ func TestPluginUpdateRejectsChangedPackID(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(after.Packs) != 1 ||
-		after.Packs[0].ID != "database-joins" ||
+		after.Packs[0].ID != "codegirl-007/database-joins" ||
 		after.Packs[0].SHA != oldSHA {
 		t.Fatalf("config changed: %#v", after.Packs)
 	}
@@ -260,7 +260,7 @@ func writeGitPack(t *testing.T) string {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "pack.json"), []byte(`{
 		"version": 1,
-		"id": "database-joins",
+		"id": "codegirl-007/database-joins",
 		"languages": ["go"]
 	}`), 0o600); err != nil {
 		t.Fatal(err)

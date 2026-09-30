@@ -54,6 +54,23 @@ func TestSafeJoinRejectsEscapes(t *testing.T) {
 	}
 }
 
+func TestValidatePackID(t *testing.T) {
+	t.Parallel()
+
+	valid := []string{"owner/name", "codegirl-007/database-joins", "a.b/c-d_e", "A1/B2"}
+	for _, id := range valid {
+		if err := validatePackID(id); err != nil {
+			t.Fatalf("validatePackID(%q) error = %v", id, err)
+		}
+	}
+	invalid := []string{"", "name", "/name", "owner/", "owner/name/extra", "../x", "a b/c", "owner//name"}
+	for _, id := range invalid {
+		if err := validatePackID(id); err == nil {
+			t.Fatalf("validatePackID(%q) = nil, want an error", id)
+		}
+	}
+}
+
 func TestCacheDirRejectsTraversal(t *testing.T) {
 	t.Parallel()
 
@@ -66,19 +83,21 @@ func TestCacheDirRejectsTraversal(t *testing.T) {
 		{"traversing id", "abc123", "../../outside"},
 		{"absolute id", "abc123", "/etc"},
 		{"empty id", "abc123", ""},
-		{"traversing sha", "../../outside", "database-joins"},
-		{"slash in id", "abc123", "pack/bad"},
+		{"missing owner", "abc123", "database-joins"},
+		{"too many slashes", "abc123", "owner/name/extra"},
+		{"empty name", "abc123", "owner/"},
+		{"traversing sha", "../../outside", "codegirl-007/database-joins"},
 	} {
 		if got, err := CacheDir(userCache, test.sha, test.id); err == nil {
 			t.Fatalf("CacheDir(%q, %q) = %q, want an error", test.sha, test.id, got)
 		}
 	}
 
-	got, err := CacheDir(userCache, "abc123", "database-joins")
+	got, err := CacheDir(userCache, "abc123", "codegirl-007/database-joins")
 	if err != nil {
 		t.Fatalf("CacheDir() error = %v", err)
 	}
-	want := filepath.Join(userCache, "jevlint", "packs", "abc123", "database-joins")
+	want := filepath.Join(userCache, "jevlint", "packs", "abc123", "codegirl-007", "database-joins")
 	if got != want {
 		t.Fatalf("CacheDir() = %q, want %q", got, want)
 	}
@@ -89,10 +108,10 @@ func TestLoadDirRejectsManifestTraversal(t *testing.T) {
 
 	tests := map[string]string{
 		"traversing id":    `{"version": 1, "id": "../../outside"}`,
-		"absolute rules":   `{"version": 1, "id": "joins", "rules": "/etc/passwd"}`,
-		"traversing rules": `{"version": 1, "id": "joins", "rules": "../outside.json"}`,
-		"traversing evals": `{"version": 1, "id": "joins", "evals": "../../secret.json"}`,
-		"absolute evals":   `{"version": 1, "id": "joins", "evals": "/etc/passwd"}`,
+		"absolute rules":   `{"version": 1, "id": "codegirl-007/joins", "rules": "/etc/passwd"}`,
+		"traversing rules": `{"version": 1, "id": "codegirl-007/joins", "rules": "../outside.json"}`,
+		"traversing evals": `{"version": 1, "id": "codegirl-007/joins", "evals": "../../secret.json"}`,
+		"absolute evals":   `{"version": 1, "id": "codegirl-007/joins", "evals": "/etc/passwd"}`,
 	}
 	for name, manifest := range tests {
 		name, manifest := name, manifest
@@ -171,7 +190,7 @@ func TestInstallRejectsPathTraversal(t *testing.T) {
 		t.Skip("git is required for pack install tests")
 	}
 
-	repo := writePackRepo(t, `{"version": 1, "id": "database-joins", "languages": ["go"]}`, validRulesJSON)
+	repo := writePackRepo(t, `{"version": 1, "id": "codegirl-007/database-joins", "languages": ["go"]}`, validRulesJSON)
 	cache := t.TempDir()
 	_, err := Install(repo+"#../outside", func() (string, error) { return cache, nil })
 	if err == nil || !strings.Contains(err.Error(), "escapes") {
@@ -182,14 +201,14 @@ func TestInstallRejectsPathTraversal(t *testing.T) {
 func TestLoadDirRejectsSymlinks(t *testing.T) {
 	t.Parallel()
 
-	const manifestJSON = `{"version": 1, "id": "joins", "languages": ["go"]}`
+	const manifestJSON = `{"version": 1, "id": "codegirl-007/joins", "languages": ["go"]}`
 	tests := map[string]struct {
 		manifest string
 		link     string
 	}{
 		"symlinked manifest": {manifestJSON, ManifestFile},
 		"symlinked rules":    {manifestJSON, defaultRulesFile},
-		"symlinked evals":    {`{"version": 1, "id": "joins", "evals": "evals.json"}`, "evals.json"},
+		"symlinked evals":    {`{"version": 1, "id": "codegirl-007/joins", "evals": "evals.json"}`, "evals.json"},
 		"symlinked fixture":  {manifestJSON, "fixture.go"},
 	}
 	for name, test := range tests {
@@ -305,7 +324,7 @@ func TestInstallRejectsSymlinkWithoutCopyingTarget(t *testing.T) {
 	repo := t.TempDir()
 	if err := os.WriteFile(filepath.Join(repo, ManifestFile), []byte(`{
 		"version": 1,
-		"id": "database-joins",
+		"id": "codegirl-007/database-joins",
 		"languages": ["go"]
 	}`), 0o600); err != nil {
 		t.Fatal(err)
