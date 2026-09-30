@@ -13,7 +13,7 @@ code units, then asks Jev whether each one passes.
 ## Run
 
 ```sh
-export TYPESAFE_API_KEY="sk-..."
+export TYPESAFE_API_KEY="apikey_..."
 
 go run ./cmd/jevlint check .
 go run ./cmd/jevlint check --format json src
@@ -66,9 +66,10 @@ Jevlint reads `jevlint.json` by default.
 }
 ```
 
-No languages are enabled by default. Available presets are `c`, `cpp`, `csharp`,
-`go`, `java`, `javascript`, `kotlin`, `php`, `python`, `ruby`, `rust`, `tsx`,
-and `typescript`.
+No languages are enabled by default, and a config must enable at least one
+language and define at least one rule (or list a pack). Available presets are
+`c`, `cpp`, `csharp`, `go`, `java`, `javascript`, `kotlin`, `php`, `python`,
+`ruby`, `rust`, `tsx`, and `typescript`.
 
 Each preset includes common extensions, extraction queries, and localization
 regions. Override only what your project needs:
@@ -230,15 +231,32 @@ Exit codes:
 
 ## Packs
 
-A pack is a shared directory of rules, optional evals, and fixtures. Pins live
-in `jevlint.json`. Fetched files live in the user cache, not the project tree.
+A pack is a shared directory with a `pack.json` manifest, rules, optional evals,
+and fixtures. Pins live in `jevlint.json`; fetched files live in the user cache,
+not the project tree.
 
 ```text
 pack.json
 rules.json
-evals.json
+jevlint-evals.json
 fixtures/
 ```
+
+```json
+{
+  "version": 1,
+  "id": "database-joins",
+  "languages": ["go"],
+  "rules": "rules.json",
+  "evals": "jevlint-evals.json"
+}
+```
+
+`rules` and `evals` are optional and default to `rules.json` and
+`jevlint-evals.json`; both must stay inside the pack. Any languages a pack
+declares must be enabled in your config. Pack ids and pinned shas are simple
+identifiers (letters, digits, `.`, `_`, `-`), and packs containing symbolic
+links are rejected.
 
 ```json
 {
@@ -314,3 +332,5 @@ go test -race ./...
 go vet ./...
 go build ./cmd/jevlint
 ```
+
+CI runs these on every push and pull request.
