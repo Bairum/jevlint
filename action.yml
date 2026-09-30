@@ -1,0 +1,66 @@
+name: jevlint
+description: Check code against plain-language rules with jevlint
+author: codegirl-007
+
+branding:
+  icon: check-circle
+  color: purple
+
+inputs:
+  version:
+    description: Release version to install, or "latest"
+    required: false
+    default: latest
+  api-key:
+    description: TypeSafe API key (TYPESAFE_API_KEY)
+    required: true
+  args:
+    description: Arguments passed to `jevlint check`
+    required: false
+    default: "."
+
+runs:
+  using: composite
+  steps:
+    - name: Install jevlint
+      shell: bash
+      run: |
+        set -euo pipefail
+        version="${{ inputs.version }}"
+        repo="${{ github.action_repository }}"
+        if [ "${version}" = "latest" ]; then
+          base="https://github.com/${repo}/releases/latest/download"
+        else
+          base="https://github.com/${repo}/releases/download/${version}"
+        fi
+        os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+        case "${os}" in
+          linux | darwin) ;;
+          mingw* | msys* | cygwin*) os="windows" ;;
+          *)
+            echo "unsupported OS: ${os}" >&2
+            exit 1
+            ;;
+        esac
+        machine="$(uname -m)"
+        case "${machine}" in
+          x86_64 | amd64) arch="amd64" ;;
+          arm64 | aarch64) arch="arm64" ;;
+          *)
+            echo "unsupported architecture: ${machine}" >&2
+            exit 1
+            ;;
+        esac
+        ext=""
+        if [ "${os}" = "windows" ]; then ext=".exe"; fi
+        dir="${RUNNER_TEMP:-/tmp}/jevlint"
+        mkdir -p "${dir}"
+        curl -fsSL "${base}/jevlint_${os}_${arch}${ext}" -o "${dir}/jevlint${ext}"
+        chmod +x "${dir}/jevlint${ext}" 2>/dev/null || true
+        echo "${dir}" >> "${GITHUB_PATH}"
+
+    - name: Run jevlint
+      shell: bash
+      env:
+        TYPESAFE_API_KEY: ${{ inputs.api-key }}
+      run: jevlint check ${{ inputs.args }}

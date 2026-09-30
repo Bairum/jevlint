@@ -1,0 +1,108 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, goos: linux, goarch: amd64 }
+          - { os: ubuntu-24.04-arm, goos: linux, goarch: arm64 }
+          - { os: macos-14, goos: darwin, goarch: arm64 }
+          # Intel macOS runner; adjust the label if GitHub retires it.
+          - { os: macos-13, goos: darwin, goarch: amd64 }
+          - { os: windows-latest, goos: windows, goarch: amd64 }
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up mingw (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: mingw-w64-x86_64-gcc
+
+      - name: Build (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          CGO_ENABLED: "1"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          set -euo pipefail
+          name="jevlint_${GOOS}_${GOARCH}"
+          go build -trimpath \
+            -ldflags "-s -w -X github.com/codegirl-007/jevlint/internal/cli.version=${GITHUB_REF_NAME}" \
+            -o "${name}" ./cmd/jevlint
+          sha256sum "${name}" > "${name}.sha256"
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          CGO_ENABLED: "1"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          set -euo pipefail
+          name="jevlint_${GOOS}_${GOARCH}.exe"
+          go build -trimpath \
+            -ldflags "-s -w -X github.com/codegirl-007/jevlint/internal/cli.version=${GITHUB_REF_NAME}" \
+            -o "${name}" ./cmd/jevlint
+          sha256sum "${name}" > "${name}.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jevlint-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: jevlint_*
+          if-no-files-found: error
+
+  release:
+    name: publish
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Combine checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          cat *.sha256 > checksums.txt
+          rm -f *.sha256
+          ls -l
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            dist/*
