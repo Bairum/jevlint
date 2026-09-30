@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"jevlint/internal/config"
-	"jevlint/internal/packs"
+	"github.com/codegirl-007/jevlint/internal/config"
+	"github.com/codegirl-007/jevlint/internal/packs"
 )
 
 func executePlugin(

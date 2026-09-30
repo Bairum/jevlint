@@ -14,10 +14,10 @@ import (
 	"strings"
 	"testing"
 
-	"jevlint/internal/config"
-	"jevlint/internal/evaluation"
-	"jevlint/internal/parsing"
-	"jevlint/internal/runner"
+	"github.com/codegirl-007/jevlint/internal/config"
+	"github.com/codegirl-007/jevlint/internal/evaluation"
+	"github.com/codegirl-007/jevlint/internal/parsing"
+	"github.com/codegirl-007/jevlint/internal/runner"
 )
 
 func runCLI(
@@ -27,6 +27,20 @@ func runCLI(
 	stderr io.Writer,
 ) int {
 	return Run(ctx, args, stdout, stderr, os.Getenv)
+}
+
+func TestVersionCommand(t *testing.T) {
+	t.Parallel()
+
+	for _, args := range [][]string{{"version"}, {"--version"}, {"-v"}} {
+		var stdout, stderr bytes.Buffer
+		if code := runCLI(context.Background(), args, &stdout, &stderr); code != 0 {
+			t.Fatalf("%v exit = %d; stderr = %q", args, code, stderr.String())
+		}
+		if !strings.HasPrefix(stdout.String(), "jevlint ") {
+			t.Fatalf("%v stdout = %q", args, stdout.String())
+		}
+	}
 }
 
 func TestRunReportsJevFailureAsJSON(t *testing.T) {

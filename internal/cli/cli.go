@@ -11,18 +11,19 @@ import (
 	"path/filepath"
 	"strings"
 
-	"jevlint/internal/changed"
-	"jevlint/internal/config"
-	"jevlint/internal/evaluation"
-	"jevlint/internal/packs"
-	"jevlint/internal/parsing"
-	"jevlint/internal/runner"
+	"github.com/codegirl-007/jevlint/internal/changed"
+	"github.com/codegirl-007/jevlint/internal/config"
+	"github.com/codegirl-007/jevlint/internal/evaluation"
+	"github.com/codegirl-007/jevlint/internal/packs"
+	"github.com/codegirl-007/jevlint/internal/parsing"
+	"github.com/codegirl-007/jevlint/internal/runner"
 )
 
 const usage = `Usage:
   jevlint check [flags] [paths...]
   jevlint eval [flags]
   jevlint plugin install|list|update|remove [args]
+  jevlint version
 
 Check flags:
   --changed             check only git-modified files
@@ -93,6 +94,7 @@ const (
 	commandEval
 	commandPlugin
 	commandHelp
+	commandVersion
 )
 
 // outputFormat selects text or json output.
@@ -183,6 +185,8 @@ func parseCLICommand(name string) cliCommand {
 		return commandPlugin
 	case "-h", "--help":
 		return commandHelp
+	case "-v", "--version", "version":
+		return commandVersion
 	default:
 		return commandUnknown
 	}
@@ -199,6 +203,8 @@ func (command cliCommand) String() string {
 		return "plugin"
 	case commandHelp:
 		return "help"
+	case commandVersion:
+		return "version"
 	default:
 		return ""
 	}
@@ -253,7 +259,7 @@ func Run(
 		return exitUsageError
 	}
 	command := parseCLICommand(args[0])
-	if dispatch := handleSpecialCommand(args[0], stderr); dispatch.handled {
+	if dispatch := handleSpecialCommand(args[0], stdout, stderr); dispatch.handled {
 		return dispatch.exitCode
 	}
 	if command == commandPlugin {
@@ -288,11 +294,15 @@ func (mode cacheMode) shouldRefresh() bool {
 // handleSpecialCommand prints help or an error for commands that do not run.
 func handleSpecialCommand(
 	command string,
+	stdout io.Writer,
 	stderr io.Writer,
 ) commandDispatch {
 	switch parseCLICommand(command) {
 	case commandHelp:
 		fmt.Fprint(stderr, usage)
+		return commandDispatch{exitCode: exitSuccess, handled: true}
+	case commandVersion:
+		fmt.Fprintf(stdout, "jevlint %s\n", Version())
 		return commandDispatch{exitCode: exitSuccess, handled: true}
 	case commandCheck, commandEval, commandPlugin:
 		return commandDispatch{exitCode: exitSuccess, handled: false}

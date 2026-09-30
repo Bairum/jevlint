@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"jevlint/internal/config"
+	"github.com/codegirl-007/jevlint/internal/config"
 )
 
 func Resolve(

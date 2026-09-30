@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"jevlint/internal/config"
-	"jevlint/internal/evals"
+	"github.com/codegirl-007/jevlint/internal/config"
+	"github.com/codegirl-007/jevlint/internal/evals"
 )
 
 const (

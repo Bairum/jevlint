@@ -11,11 +11,11 @@ import (
 	"path/filepath"
 	"sync"
 
-	"jevlint/internal/config"
-	"jevlint/internal/evals"
-	"jevlint/internal/evaluation"
-	"jevlint/internal/packs"
-	"jevlint/internal/parsing"
+	"github.com/codegirl-007/jevlint/internal/config"
+	"github.com/codegirl-007/jevlint/internal/evals"
+	"github.com/codegirl-007/jevlint/internal/evaluation"
+	"github.com/codegirl-007/jevlint/internal/packs"
+	"github.com/codegirl-007/jevlint/internal/parsing"
 )
 
 // evalOptions holds the settings for an eval run.

@@ -3,7 +3,7 @@ package scoping
 import (
 	"testing"
 
-	"jevlint/internal/config"
+	"github.com/codegirl-007/jevlint/internal/config"
 )
 
 func TestApplies(t *testing.T) {

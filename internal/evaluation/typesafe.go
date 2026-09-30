@@ -17,8 +17,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"jevlint/internal/config"
-	"jevlint/internal/parsing"
+	"github.com/codegirl-007/jevlint/internal/config"
+	"github.com/codegirl-007/jevlint/internal/parsing"
 )
 
 const (
@@ -569,8 +569,8 @@ func (client *TypeSafe) newRequest(
 	request.Header.Set("Authorization", "Bearer "+client.apiKey)
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("User-Agent", "jevlint/0.1.0")
-	request.Header.Set("X-TypeSafe-SDK", "jevlint/0.1.0")
+	request.Header.Set("User-Agent", "github.com/codegirl-007/jevlint/0.1.0")
+	request.Header.Set("X-TypeSafe-SDK", "github.com/codegirl-007/jevlint/0.1.0")
 	request.Header.Set("X-TypeSafe-Runtime", runtime.Version())
 	if attempt > 0 {
 		request.Header.Set("X-TypeSafe-Retry-Count", strconv.Itoa(attempt))

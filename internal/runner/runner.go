@@ -9,10 +9,10 @@ import (
 	"sort"
 	"sync"
 
-	"jevlint/internal/config"
-	"jevlint/internal/evaluation"
-	"jevlint/internal/parsing"
-	"jevlint/internal/scoping"
+	"github.com/codegirl-007/jevlint/internal/config"
+	"github.com/codegirl-007/jevlint/internal/evaluation"
+	"github.com/codegirl-007/jevlint/internal/parsing"
+	"github.com/codegirl-007/jevlint/internal/scoping"
 )
 
 const defaultConcurrency = 4

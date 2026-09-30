@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"jevlint/internal/config"
+	"github.com/codegirl-007/jevlint/internal/config"
 )
 
 const validRulesJSON = `{

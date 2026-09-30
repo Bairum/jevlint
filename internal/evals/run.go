@@ -8,10 +8,10 @@ import (
 	"sort"
 	"sync"
 
-	"jevlint/internal/config"
-	"jevlint/internal/evaluation"
-	"jevlint/internal/parsing"
-	"jevlint/internal/runner"
+	"github.com/codegirl-007/jevlint/internal/config"
+	"github.com/codegirl-007/jevlint/internal/evaluation"
+	"github.com/codegirl-007/jevlint/internal/parsing"
+	"github.com/codegirl-007/jevlint/internal/runner"
 )
 
 var ErrNoApplicableUnits = errors.New("no applicable code units")

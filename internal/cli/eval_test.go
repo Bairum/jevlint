@@ -13,9 +13,9 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"jevlint/internal/evals"
-	"jevlint/internal/evaluation"
-	"jevlint/internal/parsing"
+	"github.com/codegirl-007/jevlint/internal/evals"
+	"github.com/codegirl-007/jevlint/internal/evaluation"
+	"github.com/codegirl-007/jevlint/internal/parsing"
 )
 
 type evalProject struct {
