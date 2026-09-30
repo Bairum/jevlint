@@ -113,11 +113,17 @@ func resolveFunctionCallees(
 }
 
 // resolveCallRef finds the one function a call can mean, or nothing when unsure.
+// Qualified calls are not bound: without receiver or package information a
+// qualifier cannot be checked against the bare function index, so binding on
+// the final name alone would attach external calls to same-named functions.
 func resolveCallRef(
 	ref CallRef,
 	caller CodeUnit,
 	index map[string][]*CodeUnit,
 ) *CodeUnit {
+	if ref.Path != "" {
+		return nil
+	}
 	candidates := index[ref.Name]
 	if len(candidates) == 0 {
 		return nil
