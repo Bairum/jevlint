@@ -150,9 +150,14 @@ func pluginUpdate(
 			fmt.Fprintf(stderr, "jevlint: %v\n", err)
 			return exitUsageError
 		}
-		updated.ID = ref.ID
-		if updated.ID == "" {
-			updated.ID = ref.ID
+		if updated.ID != ref.ID {
+			fmt.Fprintf(
+				stderr,
+				"jevlint: pack %q changed its id to %q; refusing to update\n",
+				ref.ID,
+				updated.ID,
+			)
+			return exitUsageError
 		}
 		cfg.Packs = upsertPack(cfg.Packs, updated)
 		fmt.Fprintf(stdout, "updated %s@%s\n", updated.ID, updated.SHA)
