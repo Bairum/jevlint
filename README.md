@@ -21,7 +21,6 @@ go run ./cmd/jevlint check --concurrency 8 src
 go run ./cmd/jevlint check --refresh-cache .
 go run ./cmd/jevlint eval
 go run ./cmd/jevlint eval --rule database-joins --format json
-go run ./cmd/jevlint plugin install https://github.com/org/jevlint-packs#database-joins
 ```
 
 | Flag | Description |
@@ -265,9 +264,9 @@ links are rejected.
   "packs": [
     {
       "id": "database-joins",
-      "source": "https://github.com/org/jevlint-packs",
-      "path": "database-joins",
-      "sha": "abc123"
+      "source": "https://github.com/codegirl-007/jevlint.git",
+      "path": "examples/packs/database-joins",
+      "sha": "<commit-sha>"
     }
   ],
   "rules": [
@@ -284,8 +283,13 @@ links are rejected.
 `rules` entries overlay a pack rule by id (confidence, include/exclude,
 severity) or add a local rule. Check never opens pack evals.
 
+The repository ships a sample pack at `examples/packs/database-joins`. Install
+it with a GitHub tree URL, or install your own pack from a tree URL or a local
+git repository:
+
 ```sh
-go run ./cmd/jevlint plugin install https://github.com/org/jevlint-packs#database-joins
+go run ./cmd/jevlint plugin install https://github.com/codegirl-007/jevlint/tree/master/examples/packs/database-joins
+go run ./cmd/jevlint plugin install /path/to/packs#database-joins
 go run ./cmd/jevlint plugin list
 go run ./cmd/jevlint plugin update
 go run ./cmd/jevlint plugin remove database-joins
