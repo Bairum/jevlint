@@ -504,8 +504,8 @@ func requestedRegionKinds(rules []config.Rule) map[parsing.CodeKind]parsing.Code
 	requested := make(map[parsing.CodeKind]parsing.CodeKind)
 	for _, rule := range rules {
 		for _, kind := range rule.Kinds {
-			parsed, ok := parsing.ParseCodeKind(kind.String())
-			if !ok {
+			parsed, err := parsing.ParseCodeKind(kind.String())
+			if err != nil {
 				continue
 			}
 			switch parsed {
@@ -561,8 +561,8 @@ func appliesToKind(rule config.Rule, kind parsing.CodeKind) bool {
 		return kind == parsing.CodeKindFunction || kind == parsing.CodeKindType
 	}
 	for _, allowed := range rule.Kinds {
-		parsed, ok := parsing.ParseCodeKind(allowed.String())
-		if ok && parsed == kind {
+		parsed, err := parsing.ParseCodeKind(allowed.String())
+		if err == nil && parsed == kind {
 			return true
 		}
 	}
@@ -864,8 +864,8 @@ func evaluateLocalizationJob(
 // localizesTo reports whether a rule can point at a given kind of region.
 func localizesTo(rule config.Rule, category parsing.CodeKind) bool {
 	for _, allowed := range rule.Localize {
-		parsed, ok := parsing.ParseCodeKind(allowed.String())
-		if ok && parsed == category {
+		parsed, err := parsing.ParseCodeKind(allowed.String())
+		if err == nil && parsed == category {
 			return true
 		}
 	}

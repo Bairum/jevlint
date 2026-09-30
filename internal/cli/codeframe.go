@@ -115,8 +115,8 @@ func highlightedLines(source string, language string, color bool) []string {
 		return strings.Split(source, "\n")
 	}
 
-	sourceLanguage, ok := parsing.ParseSourceLanguage(language)
-	if !ok {
+	sourceLanguage, err := parsing.ParseSourceLanguage(language)
+	if err != nil {
 		return strings.Split(source, "\n")
 	}
 	lexer := sourceLanguage.String()

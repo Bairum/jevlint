@@ -129,8 +129,8 @@ func configuredLanguage(
 		config.KindField:     append([]string(nil), preset.regions[CodeKindField]...),
 		config.KindStatement: append([]string(nil), preset.regions[CodeKindStatement]...),
 	}, override.Regions)
-	languageID, ok := ParseSourceLanguage(preset.name)
-	if !ok {
+	languageID, err := ParseSourceLanguage(preset.name)
+	if err != nil {
 		return languageSpec{}, nil, fmt.Errorf("unknown language preset %q", preset.name)
 	}
 	regionKinds, err := categorizeRegions(regions)
@@ -219,8 +219,8 @@ func mergeRegions(
 func categorizeRegions(regions map[string][]string) (map[string]CodeKind, error) {
 	result := make(map[string]CodeKind)
 	for category, kinds := range regions {
-		parsed, ok := ParseCodeKind(category)
-		if !ok {
+		parsed, err := ParseCodeKind(category)
+		if err != nil {
 			return nil, fmt.Errorf("unknown region category %q", category)
 		}
 		for _, kind := range kinds {

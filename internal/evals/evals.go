@@ -59,8 +59,9 @@ func (expect Expect) String() string {
 	}
 }
 
-// parseExpect turns an outcome name into an outcome value.
-func parseExpect(value string) (Expect, bool) {
+// lookupExpect turns an outcome name into an outcome value, reporting whether
+// the name is known. The caller decides what an unknown name means.
+func lookupExpect(value string) (Expect, bool) {
 	switch value {
 	case expectPassName:
 		return ExpectPass, true
@@ -77,7 +78,7 @@ func (expect *Expect) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
-	parsed, ok := parseExpect(value)
+	parsed, ok := lookupExpect(value)
 	if !ok {
 		return fmt.Errorf("expect must be %s or %s", expectPassName, expectFailName)
 	}

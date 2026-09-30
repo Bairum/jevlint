@@ -761,6 +761,25 @@ func TestNewLanguagePresetsCategorizeRegions(t *testing.T) {
 	}
 }
 
+func TestParseEnumNames(t *testing.T) {
+	t.Parallel()
+
+	if kind, err := ParseCodeKind("function"); err != nil || kind != CodeKindFunction {
+		t.Fatalf("ParseCodeKind(function) = %v, %v", kind, err)
+	}
+	if _, err := ParseCodeKind("banana"); err == nil || err.Error() != `invalid code kind "banana"` {
+		t.Fatalf("ParseCodeKind(banana) error = %v", err)
+	}
+
+	if language, err := ParseSourceLanguage("go"); err != nil || language != SourceLanguageGo {
+		t.Fatalf("ParseSourceLanguage(go) = %v, %v", language, err)
+	}
+	if _, err := ParseSourceLanguage("brainfuck"); err == nil ||
+		err.Error() != `invalid source language "brainfuck"` {
+		t.Fatalf("ParseSourceLanguage(brainfuck) error = %v", err)
+	}
+}
+
 func findUnit(units []CodeUnit, kind CodeKind, name string) *CodeUnit {
 	for index := range units {
 		if units[index].Kind == kind && units[index].Name == name {

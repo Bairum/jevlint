@@ -148,33 +148,34 @@ func (kind *CodeKind) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
-	parsed, ok := ParseCodeKind(value)
-	if !ok {
-		return fmt.Errorf("invalid code kind %q", value)
+	parsed, err := ParseCodeKind(value)
+	if err != nil {
+		return err
 	}
 	*kind = parsed
 	return nil
 }
 
-// ParseCodeKind turns a kind name into a kind value.
-func ParseCodeKind(value string) (CodeKind, bool) {
+// ParseCodeKind turns a kind name into a kind value. An unknown name is an
+// error rather than CodeKindUnknown, which means "not specified".
+func ParseCodeKind(value string) (CodeKind, error) {
 	switch value {
 	case "function":
-		return CodeKindFunction, true
+		return CodeKindFunction, nil
 	case "type":
-		return CodeKindType, true
+		return CodeKindType, nil
 	case "comment":
-		return CodeKindComment, true
+		return CodeKindComment, nil
 	case "docComment":
-		return CodeKindDocComment, true
+		return CodeKindDocComment, nil
 	case "field":
-		return CodeKindField, true
+		return CodeKindField, nil
 	case "statement":
-		return CodeKindStatement, true
+		return CodeKindStatement, nil
 	case "region":
-		return CodeKindRegion, true
+		return CodeKindRegion, nil
 	default:
-		return CodeKindUnknown, false
+		return CodeKindUnknown, fmt.Errorf("invalid code kind %q", value)
 	}
 }
 
@@ -223,45 +224,47 @@ func (language *SourceLanguage) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
-	parsed, ok := ParseSourceLanguage(value)
-	if !ok {
-		return fmt.Errorf("invalid source language %q", value)
+	parsed, err := ParseSourceLanguage(value)
+	if err != nil {
+		return err
 	}
 	*language = parsed
 	return nil
 }
 
-// ParseSourceLanguage turns a language name into a language value.
-func ParseSourceLanguage(value string) (SourceLanguage, bool) {
+// ParseSourceLanguage turns a language name into a language value. An unknown
+// name is an error rather than SourceLanguageUnknown, which means "not
+// specified".
+func ParseSourceLanguage(value string) (SourceLanguage, error) {
 	switch value {
 	case "c":
-		return SourceLanguageC, true
+		return SourceLanguageC, nil
 	case "cpp":
-		return SourceLanguageCPP, true
+		return SourceLanguageCPP, nil
 	case "csharp":
-		return SourceLanguageCSharp, true
+		return SourceLanguageCSharp, nil
 	case "go":
-		return SourceLanguageGo, true
+		return SourceLanguageGo, nil
 	case "java":
-		return SourceLanguageJava, true
+		return SourceLanguageJava, nil
 	case "javascript":
-		return SourceLanguageJavaScript, true
+		return SourceLanguageJavaScript, nil
 	case "kotlin":
-		return SourceLanguageKotlin, true
+		return SourceLanguageKotlin, nil
 	case "php":
-		return SourceLanguagePHP, true
+		return SourceLanguagePHP, nil
 	case "python":
-		return SourceLanguagePython, true
+		return SourceLanguagePython, nil
 	case "ruby":
-		return SourceLanguageRuby, true
+		return SourceLanguageRuby, nil
 	case "rust":
-		return SourceLanguageRust, true
+		return SourceLanguageRust, nil
 	case "tsx":
-		return SourceLanguageTSX, true
+		return SourceLanguageTSX, nil
 	case "typescript":
-		return SourceLanguageTypeScript, true
+		return SourceLanguageTypeScript, nil
 	default:
-		return SourceLanguageUnknown, false
+		return SourceLanguageUnknown, fmt.Errorf("invalid source language %q", value)
 	}
 }
 

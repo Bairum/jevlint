@@ -204,8 +204,9 @@ func (command cliCommand) String() string {
 	}
 }
 
-// parseOutputFormat turns a format name into a format value.
-func parseOutputFormat(value string) (outputFormat, bool) {
+// lookupOutputFormat turns a format name into a format value, reporting whether
+// the name is known.
+func lookupOutputFormat(value string) (outputFormat, bool) {
 	switch value {
 	case "text":
 		return formatText, true
@@ -216,8 +217,9 @@ func parseOutputFormat(value string) (outputFormat, bool) {
 	}
 }
 
-// parseColorMode turns a color name into a color mode.
-func parseColorMode(value string) (colorMode, bool) {
+// lookupColorMode turns a color name into a color mode, reporting whether the
+// name is known.
+func lookupColorMode(value string) (colorMode, bool) {
 	switch value {
 	case "auto":
 		return colorAuto, true
@@ -382,12 +384,12 @@ func parseOutputOptions(
 	concurrency int,
 	stderr io.Writer,
 ) (outputFormat, colorMode, int, bool) {
-	parsedFormat, ok := parseOutputFormat(format)
+	parsedFormat, ok := lookupOutputFormat(format)
 	if !ok {
 		fmt.Fprintf(stderr, "jevlint: --format must be text or json\n")
 		return formatUnknown, colorUnknown, exitUsageError, false
 	}
-	parsedColor, ok := parseColorMode(color)
+	parsedColor, ok := lookupColorMode(color)
 	if !ok {
 		fmt.Fprintln(stderr, "jevlint: --color must be auto, always, or never")
 		return formatUnknown, colorUnknown, exitUsageError, false
