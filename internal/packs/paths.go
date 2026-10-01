@@ -14,8 +14,8 @@ import (
 // accepting arbitrary strings.
 var packIDPartPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
-// splitPackID splits and validates an "owner/name" pack identifier.
-func splitPackID(id string) (string, string, error) {
+// SplitPackID splits and validates an "owner/name" pack identifier.
+func SplitPackID(id string) (string, string, error) {
 	owner, name, ok := strings.Cut(id, "/")
 	if !ok || !packIDPartPattern.MatchString(owner) || !packIDPartPattern.MatchString(name) {
 		return "", "", fmt.Errorf("invalid pack id %q; want owner/name", id)
@@ -25,7 +25,7 @@ func splitPackID(id string) (string, string, error) {
 
 // validatePackID rejects pack identifiers that are not a safe owner/name pair.
 func validatePackID(id string) error {
-	_, _, err := splitPackID(id)
+	_, _, err := SplitPackID(id)
 	return err
 }
 

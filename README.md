@@ -279,6 +279,17 @@ containing symbolic links are rejected.
 }
 ```
 
+Create a new pack with `plugin init`:
+
+```sh
+jevlint plugin init codegirl-007/database-joins
+jevlint plugin init my-org/my-pack --languages go,typescript --dir ./my-pack
+```
+
+It writes `pack.json`, `rules.json`, and a README, plus example evals and Go
+fixtures when `go` is one of the languages. Commit the result to a git
+repository to install it.
+
 `plugin install` writes the pin. A project can use only pack rules. Project
 `rules` entries overlay a pack rule by id (confidence, include/exclude,
 severity) or add a local rule. Check never opens pack evals.

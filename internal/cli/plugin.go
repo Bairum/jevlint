@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/codegirl-007/jevlint/internal/config"
 	"github.com/codegirl-007/jevlint/internal/packs"
@@ -21,6 +22,8 @@ func executePlugin(
 		return exitUsageError
 	}
 	switch args[0] {
+	case "init":
+		return pluginInit(args[1:], stdout, stderr)
 	case "install":
 		return pluginInstall(args[1:], stdout, stderr, userCacheDir)
 	case "list":
@@ -202,6 +205,101 @@ func pluginRemove(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	fmt.Fprintf(stdout, "removed %s\n", leftover[0])
 	return exitSuccess
+}
+
+func pluginInit(args []string, stdout io.Writer, stderr io.Writer) int {
+	for _, arg := range args {
+		if arg == "-h" || arg == "--help" {
+			fmt.Fprint(stderr, pluginUsage)
+			return exitSuccess
+		}
+	}
+	options, exitCode := parsePluginInitArgs(args, stderr)
+	if exitCode != exitSuccess {
+		return exitCode
+	}
+	dir, created, err := scaffoldPack(options)
+	if err != nil {
+		fmt.Fprintf(stderr, "jevlint: %v\n", err)
+		return exitUsageError
+	}
+	fmt.Fprintf(stdout, "created pack %s in %s\n", options.id, dir)
+	for _, path := range created {
+		fmt.Fprintf(stdout, "  %s\n", path)
+	}
+	fmt.Fprintf(
+		stdout,
+		"\nNext: commit the pack to a git repository and install it from your project:\n"+
+			"  jevlint plugin install <git-url-or-path>#<path-to-pack>\n",
+	)
+	return exitSuccess
+}
+
+func parsePluginInitArgs(args []string, stderr io.Writer) (pluginInitOptions, int) {
+	options := pluginInitOptions{languages: []string{"go"}}
+	positional := make([]string, 0, 2)
+	for index := 0; index < len(args); index++ {
+		arg := args[index]
+		switch {
+		case arg == "--force":
+			options.force = true
+		case arg == "--dir":
+			if index+1 >= len(args) {
+				fmt.Fprintln(stderr, "jevlint: --dir requires a path")
+				return pluginInitOptions{}, exitUsageError
+			}
+			index++
+			options.dir = args[index]
+		case strings.HasPrefix(arg, "--dir="):
+			options.dir = strings.TrimPrefix(arg, "--dir=")
+		case arg == "--languages":
+			if index+1 >= len(args) {
+				fmt.Fprintln(stderr, "jevlint: --languages requires a value")
+				return pluginInitOptions{}, exitUsageError
+			}
+			index++
+			languages, err := splitLanguages(args[index])
+			if err != nil {
+				fmt.Fprintf(stderr, "jevlint: %v\n", err)
+				return pluginInitOptions{}, exitUsageError
+			}
+			options.languages = languages
+		case strings.HasPrefix(arg, "--languages="):
+			languages, err := splitLanguages(strings.TrimPrefix(arg, "--languages="))
+			if err != nil {
+				fmt.Fprintf(stderr, "jevlint: %v\n", err)
+				return pluginInitOptions{}, exitUsageError
+			}
+			options.languages = languages
+		default:
+			positional = append(positional, arg)
+		}
+	}
+	if len(positional) < 1 || len(positional) > 2 {
+		fmt.Fprint(stderr, pluginUsage)
+		return pluginInitOptions{}, exitUsageError
+	}
+	options.id = positional[0]
+	if len(positional) == 2 {
+		options.dir = positional[1]
+	}
+	return options, exitSuccess
+}
+
+func splitLanguages(value string) ([]string, error) {
+	parts := strings.Split(value, ",")
+	languages := make([]string, 0, len(parts))
+	for _, part := range parts {
+		language := strings.TrimSpace(part)
+		if language == "" {
+			continue
+		}
+		languages = append(languages, language)
+	}
+	if len(languages) == 0 {
+		return nil, fmt.Errorf("--languages cannot be empty")
+	}
+	return languages, nil
 }
 
 func parsePluginArgs(args []string, minPositional int, stderr io.Writer) (string, []string, int) {

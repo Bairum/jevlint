@@ -52,7 +52,7 @@ func (loaded Loaded) EvalPath() (string, error) {
 // owner/name id come from config or pack metadata, so each path component is
 // validated before use.
 func CacheDir(userCache string, sha string, id string) (string, error) {
-	owner, name, err := splitPackID(id)
+	owner, name, err := SplitPackID(id)
 	if err != nil {
 		return "", err
 	}
