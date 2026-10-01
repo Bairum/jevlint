@@ -55,6 +55,18 @@ func TestParseTargetKindAndSeverity(t *testing.T) {
 	}
 }
 
+func TestDecodeAllowsNoRules(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := Decode(strings.NewReader(`{"languages": {"go": {}}}`))
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if len(cfg.Rules) != 0 || len(cfg.Packs) != 0 {
+		t.Fatalf("config = %#v", cfg)
+	}
+}
+
 func TestDecodeRuleContext(t *testing.T) {
 	t.Parallel()
 
@@ -404,10 +416,6 @@ func TestDecodeValidationErrors(t *testing.T) {
 		input string
 		want  string
 	}{
-		"empty rules": {
-			input: `{"rules": []}`,
-			want:  "config must contain at least one rule",
-		},
 		"minConfidence below zero": {
 			input: `{
 				"minConfidence": -0.1,

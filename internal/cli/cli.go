@@ -538,6 +538,9 @@ func loadProject(
 			return "", config.Config{}, nil, nil, exitUsageError
 		}
 	}
+	if len(cfg.Rules) == 0 {
+		fmt.Fprintln(stderr, "jevlint: warning: no rules are configured; nothing will be checked")
+	}
 	extractor, err := parsing.NewExtractor(cfg.Languages)
 	if err != nil {
 		fmt.Fprintf(stderr, "jevlint: configure languages: %v\n", err)
