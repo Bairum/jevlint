@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "id": "database-joins",
+  "languages": ["go"],
+  "rules": "rules.json"
+}

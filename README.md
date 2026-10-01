@@ -13,7 +13,7 @@ code units, then asks Jev whether each one passes.
 ## Run
 
 ```sh
-export TYPESAFE_API_KEY="sk-..."
+export TYPESAFE_API_KEY="apikey_..."
 
 go run ./cmd/jevlint check .
 go run ./cmd/jevlint check --format json src
@@ -21,7 +21,6 @@ go run ./cmd/jevlint check --concurrency 8 src
 go run ./cmd/jevlint check --refresh-cache .
 go run ./cmd/jevlint eval
 go run ./cmd/jevlint eval --rule database-joins --format json
-go run ./cmd/jevlint plugin install https://github.com/org/jevlint-packs#database-joins
 ```
 
 | Flag | Description |
@@ -66,9 +65,10 @@ Jevlint reads `jevlint.json` by default.
 }
 ```
 
-No languages are enabled by default. Available presets are `c`, `cpp`, `csharp`,
-`go`, `java`, `javascript`, `kotlin`, `php`, `python`, `ruby`, `rust`, `tsx`,
-and `typescript`.
+No languages are enabled by default, and a config must enable at least one
+language and define at least one rule (or list a pack). Available presets are
+`c`, `cpp`, `csharp`, `go`, `java`, `javascript`, `kotlin`, `php`, `python`,
+`ruby`, `rust`, `tsx`, and `typescript`.
 
 Each preset includes common extensions, extraction queries, and localization
 regions. Override only what your project needs:
@@ -230,15 +230,32 @@ Exit codes:
 
 ## Packs
 
-A pack is a shared directory of rules, optional evals, and fixtures. Pins live
-in `jevlint.json`. Fetched files live in the user cache, not the project tree.
+A pack is a shared directory with a `pack.json` manifest, rules, optional evals,
+and fixtures. Pins live in `jevlint.json`; fetched files live in the user cache,
+not the project tree.
 
 ```text
 pack.json
 rules.json
-evals.json
+jevlint-evals.json
 fixtures/
 ```
+
+```json
+{
+  "version": 1,
+  "id": "database-joins",
+  "languages": ["go"],
+  "rules": "rules.json",
+  "evals": "jevlint-evals.json"
+}
+```
+
+`rules` and `evals` are optional and default to `rules.json` and
+`jevlint-evals.json`; both must stay inside the pack. Any languages a pack
+declares must be enabled in your config. Pack ids and pinned shas are simple
+identifiers (letters, digits, `.`, `_`, `-`), and packs containing symbolic
+links are rejected.
 
 ```json
 {
@@ -247,9 +264,9 @@ fixtures/
   "packs": [
     {
       "id": "database-joins",
-      "source": "https://github.com/org/jevlint-packs",
-      "path": "database-joins",
-      "sha": "abc123"
+      "source": "https://github.com/codegirl-007/jevlint.git",
+      "path": "examples/packs/database-joins",
+      "sha": "<commit-sha>"
     }
   ],
   "rules": [
@@ -266,8 +283,13 @@ fixtures/
 `rules` entries overlay a pack rule by id (confidence, include/exclude,
 severity) or add a local rule. Check never opens pack evals.
 
+The repository ships a sample pack at `examples/packs/database-joins`. Install
+it with a GitHub tree URL, or install your own pack from a tree URL or a local
+git repository:
+
 ```sh
-go run ./cmd/jevlint plugin install https://github.com/org/jevlint-packs#database-joins
+go run ./cmd/jevlint plugin install https://github.com/codegirl-007/jevlint/tree/master/examples/packs/database-joins
+go run ./cmd/jevlint plugin install /path/to/packs#database-joins
 go run ./cmd/jevlint plugin list
 go run ./cmd/jevlint plugin update
 go run ./cmd/jevlint plugin remove database-joins
@@ -314,3 +336,5 @@ go test -race ./...
 go vet ./...
 go build ./cmd/jevlint
 ```
+
+CI runs these on every push and pull request.
