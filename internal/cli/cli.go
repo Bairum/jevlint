@@ -22,7 +22,7 @@ import (
 const usage = `Usage:
   jevlint check [flags] [paths...]
   jevlint eval [flags]
-  jevlint plugin install|list|update|remove [args]
+  jevlint plugin init|install|list|update|remove [args]
   jevlint version
 
 Check flags:
@@ -70,10 +70,16 @@ Flags:
 `
 
 const pluginUsage = `Usage:
+  jevlint plugin init <owner/name> [directory]
   jevlint plugin install <github-url>
   jevlint plugin list
   jevlint plugin update [id]
   jevlint plugin remove <id>
+
+Init flags:
+  --languages list      comma-separated languages (default "go")
+  --dir path            output directory (default: the pack name)
+  --force               write into a non-empty directory
 
 Flags:
   --config path         rule configuration (default "jevlint.json")
