@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"jevlint/internal/config"
-	"jevlint/internal/evals"
+	"github.com/codegirl-007/jevlint/internal/config"
+	"github.com/codegirl-007/jevlint/internal/evals"
 )
 
 func TestPluginInstallWritesPin(t *testing.T) {

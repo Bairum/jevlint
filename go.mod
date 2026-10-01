@@ -1,4 +1,4 @@
-module jevlint
+module github.com/codegirl-007/jevlint
 
 go 1.26
 

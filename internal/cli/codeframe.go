@@ -9,8 +9,8 @@ import (
 
 	"github.com/alecthomas/chroma/v2/quick"
 
-	"jevlint/internal/parsing"
-	"jevlint/internal/runner"
+	"github.com/codegirl-007/jevlint/internal/parsing"
+	"github.com/codegirl-007/jevlint/internal/runner"
 )
 
 const frameTabWidth = 4

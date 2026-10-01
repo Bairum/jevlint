@@ -7,7 +7,7 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 
-	"jevlint/internal/config"
+	"github.com/codegirl-007/jevlint/internal/config"
 )
 
 // Applies reports whether a rule covers a file path.

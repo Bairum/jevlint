@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"jevlint/internal/config"
-	"jevlint/internal/parsing"
+	"github.com/codegirl-007/jevlint/internal/config"
+	"github.com/codegirl-007/jevlint/internal/parsing"
 )
 
 const (

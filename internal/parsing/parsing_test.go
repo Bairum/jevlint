@@ -8,7 +8,7 @@ import (
 
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 
-	"jevlint/internal/config"
+	"github.com/codegirl-007/jevlint/internal/config"
 )
 
 func TestExtractCodeUnits(t *testing.T) {

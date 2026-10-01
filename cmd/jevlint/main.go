@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	"jevlint/internal/cli"
+	"github.com/codegirl-007/jevlint/internal/cli"
 )
 
 // main runs the jevlint command and exits with its status code.

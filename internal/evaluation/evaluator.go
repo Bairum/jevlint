@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"jevlint/internal/config"
-	"jevlint/internal/parsing"
+	"github.com/codegirl-007/jevlint/internal/config"
+	"github.com/codegirl-007/jevlint/internal/parsing"
 )
 
 // Status is the answer for one rule on one piece of code.
