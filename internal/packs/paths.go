@@ -8,16 +8,31 @@ import (
 	"strings"
 )
 
-// packIDPattern matches pack identifiers. A pack id becomes a filesystem path
-// component under the user cache and a lookup key in the project config, so it
-// is restricted to a conservative set of characters instead of accepting
-// arbitrary strings.
-var packIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+// packIDPartPattern matches one component of a pack id. A pack id is
+// "owner/name" and each component becomes a path segment under the user cache,
+// so components are restricted to a conservative set of characters instead of
+// accepting arbitrary strings.
+var packIDPartPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
-// validatePackID rejects pack identifiers that are unsafe as path components.
+// splitPackID splits and validates an "owner/name" pack identifier.
+func splitPackID(id string) (string, string, error) {
+	owner, name, ok := strings.Cut(id, "/")
+	if !ok || !packIDPartPattern.MatchString(owner) || !packIDPartPattern.MatchString(name) {
+		return "", "", fmt.Errorf("invalid pack id %q; want owner/name", id)
+	}
+	return owner, name, nil
+}
+
+// validatePackID rejects pack identifiers that are not a safe owner/name pair.
 func validatePackID(id string) error {
-	if !packIDPattern.MatchString(id) {
-		return fmt.Errorf("invalid pack id %q", id)
+	_, _, err := splitPackID(id)
+	return err
+}
+
+// validateIDPart rejects a single path component used in the pack cache.
+func validateIDPart(kind string, value string) error {
+	if !packIDPartPattern.MatchString(value) {
+		return fmt.Errorf("invalid pack %s %q", kind, value)
 	}
 	return nil
 }

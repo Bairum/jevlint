@@ -159,7 +159,7 @@ func TestLoadDirReadsPack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadDir() error = %v", err)
 	}
-	if loaded.Manifest.ID != "database-joins" || len(loaded.Rules) != 1 {
+	if loaded.Manifest.ID != "codegirl-007/database-joins" || len(loaded.Rules) != 1 {
 		t.Fatalf("loaded = %#v", loaded)
 	}
 }
@@ -183,7 +183,7 @@ func writePackDir(t *testing.T) string {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, ManifestFile), []byte(`{
 		"version": 1,
-		"id": "database-joins",
+		"id": "codegirl-007/database-joins",
 		"languages": ["go"]
 	}`), 0o600); err != nil {
 		t.Fatal(err)
