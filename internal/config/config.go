@@ -333,13 +333,6 @@ func (cfg Config) Validate() error {
 	if err := validatePackRefs(cfg.Packs); err != nil {
 		return err
 	}
-	if len(cfg.Packs) == 0 && len(cfg.Rules) == 0 {
-		return errors.New("config must contain at least one rule")
-	}
-	if len(cfg.Packs) > 0 && len(cfg.Rules) == 0 {
-		return nil
-	}
-
 	ids := make(map[string]struct{}, len(cfg.Rules))
 	for index, rule := range cfg.Rules {
 		prefix := fmt.Sprintf("rules[%d]", index)
