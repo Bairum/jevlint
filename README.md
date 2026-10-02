@@ -99,17 +99,61 @@ export TYPESAFE_API_KEY=apikey_...
 
 ### Providers
 
-Jevlint sends requests to TypeSafe's Jev at
-`https://api.typesafe.ai/v1/systemone`.
+Jevlint selects a provider from `JEVLINT_PROVIDER`: `typesafe`, `jev`,
+`cloudflare`, or `clef` (default: `typesafe`). The default talks to TypeSafe's
+Jev at `https://api.typesafe.ai/v1/systemone`. `cloudflare`/`clef` use
+Cloudflare Workers AI instead (see below).
 
 | Variable | Meaning |
 | --- | --- |
+| `JEVLINT_PROVIDER` | Provider: `typesafe`, `jev`, `cloudflare`, or `clef` (default: `typesafe`). |
 | `TYPESAFE_API_KEY` | API key. |
 | `TYPESAFE_BASE_URL` | Service base URL. Defaults to `https://api.typesafe.ai`. |
 | `TYPESAFE_DEFAULT_MODEL` | Model name. Defaults to `jev-latest`. |
 | `TYPESAFE_ENDPOINT` | Full request URL, bypassing `TYPESAFE_BASE_URL`. |
 
 Set `TYPESAFE_ENDPOINT` to target another SystemOne-compatible service.
+
+#### Cloudflare Workers AI (Clef)
+
+Jevlint can use the [Clef decision models on Cloudflare Workers
+AI](https://developers.cloudflare.com/workers-ai/models/clef) instead of Jev.
+Set `JEVLINT_PROVIDER=cloudflare`:
+
+```sh
+export JEVLINT_PROVIDER=cloudflare
+export CLOUDFLARE_ACCOUNT_ID=<account id>
+export CLOUDFLARE_AUTH_TOKEN=<cloudflare api token>
+export CLEF_MODEL=clef        # or clef-flash
+```
+
+| Variable | Meaning |
+| --- | --- |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account id. |
+| `CLOUDFLARE_AUTH_TOKEN` | Cloudflare API token. `CLOUDFLARE_API_TOKEN` is accepted as an alias; if both are set, they must match. |
+| `CLEF_MODEL` | `clef` (default) or `clef-flash`. |
+
+Requests go to
+`https://api.cloudflare.com/client/v4/accounts/<account id>/ai/run/@cf/cloudflare/<model>`.
+
+Create a **Workers AI API Token** with `Workers AI: Read` and
+`Workers AI: Edit` permissions:
+
+1. Open the [Workers AI page](https://dash.cloudflare.com/?to=/:account/ai/workers-ai)
+   and select **Use REST API**.
+2. Select **Create a Workers AI API Token**, then copy it — it is shown only
+   once.
+
+You can also create one from the
+[API Tokens page](https://dash.cloudflare.com/profile/api-tokens) using the
+**Workers AI** template. The account id is on the Workers AI page, or in the
+dashboard URL. A Global API Key, or a token without the Workers AI permission,
+is rejected. See the
+[Workers AI REST API guide](https://developers.cloudflare.com/workers-ai/get-started/rest-api/)
+for details.
+
+Clef has the same request and response shape as Jev, so rules, findings, and
+caching work unchanged.
 
 ## Rules
 
