@@ -156,6 +156,7 @@ func executeEval(
 			Cache:   resultCache,
 			Refresh: options.eval.cache.shouldRefresh(),
 			Logf:    debugLogger(stderr),
+			Warnf:   warnLogger(stderr),
 		},
 		os.Getenv,
 	)

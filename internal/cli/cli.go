@@ -522,6 +522,7 @@ func loadRun(
 			Cache:   resultCache,
 			Refresh: options.check.cache.shouldRefresh(),
 			Logf:    debugLogger(stderr),
+			Warnf:   warnLogger(stderr),
 		},
 		os.Getenv,
 	)
@@ -545,6 +546,13 @@ func debugLogger(stderr io.Writer) func(string, ...any) {
 	if strings.TrimSpace(os.Getenv("JEVLINT_DEBUG")) == "" {
 		return nil
 	}
+	return func(format string, args ...any) {
+		fmt.Fprintf(stderr, format+"\n", args...)
+	}
+}
+
+// warnLogger writes warnings to stderr.
+func warnLogger(stderr io.Writer) func(string, ...any) {
 	return func(format string, args ...any) {
 		fmt.Fprintf(stderr, format+"\n", args...)
 	}

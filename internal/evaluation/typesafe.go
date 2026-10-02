@@ -10,7 +10,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,6 +28,9 @@ const (
 	defaultModel            = "jev-latest"
 	defaultCloudflareAPIURL = "https://api.cloudflare.com/client/v4"
 	defaultClefModel        = "clef"
+	clefFlashModel          = "clef-flash"
+	maxCloudflareQuestions  = 64
+	maxCloudflareBodyBytes  = 13 << 20
 	defaultTimeout          = 10 * time.Second
 	defaultMaxRetries       = 2
 	maxResponseBytes        = 1 << 20
@@ -65,6 +70,9 @@ type TypeSafeOptions struct {
 	// Logf, when set, receives request and response debug lines. The
 	// Authorization header is never logged.
 	Logf func(format string, args ...any)
+	// Warnf, when set, receives warnings such as a provider left at its
+	// default while another provider's variables are present.
+	Warnf func(format string, args ...any)
 }
 
 // TypeSafe is a client for a Jev/SystemOne compatible decision service.
@@ -77,7 +85,9 @@ type TypeSafe struct {
 	sleep       func(context.Context, time.Duration) error
 	cache       ResultCache
 	refresh     bool
+	provider    string
 	logf        func(string, ...any)
+	warnf       func(string, ...any)
 	inflightMu  sync.Mutex
 	inflight    map[string]*evaluationCall
 	cacheHits   atomic.Uint64
@@ -204,6 +214,8 @@ func NewTypeSafeFromEnvWithOptions(
 	getenv func(string) string,
 ) (*TypeSafe, error) {
 	model := ""
+	providerID := ""
+	warnDefaultWithCloudflare := false
 	if getenv != nil {
 		if options.Endpoint == "" {
 			options.Endpoint = strings.TrimSpace(getenv("TYPESAFE_ENDPOINT"))
@@ -220,29 +232,46 @@ func NewTypeSafeFromEnvWithOptions(
 			if options.APIKey == "" {
 				options.APIKey = typesafeKey
 			}
+			warnDefaultWithCloudflare = provider == "" &&
+				cloudflareVariablesSet(getenv)
 		case "cloudflare", "clef":
 			clefModel := firstNonEmpty(
-				strings.TrimSpace(getenv("CLEF_MODEL")),
-				model,
+				cleanCredential(getenv("CLEF_MODEL")),
+				cleanCredential(model),
 				defaultClefModel,
 			)
+			if !isClefModel(clefModel) {
+				return nil, fmt.Errorf(
+					"unsupported CLEF_MODEL %q; want %q or %q",
+					clefModel,
+					defaultClefModel,
+					clefFlashModel,
+				)
+			}
 			// A caller-supplied endpoint may point at a self-hosted
 			// SystemOne service, so it is the only case where a non
 			// Cloudflare key is accepted.
 			customEndpoint := options.Endpoint != ""
 			if !customEndpoint {
-				accountID := strings.TrimSpace(getenv("CLOUDFLARE_ACCOUNT_ID"))
+				accountID := cleanCredential(getenv("CLOUDFLARE_ACCOUNT_ID"))
 				if accountID == "" {
 					return nil, errors.New(
 						"CLOUDFLARE_ACCOUNT_ID is required when " +
 							"JEVLINT_PROVIDER=cloudflare",
 					)
 				}
+				if !isCloudflareAccountID(accountID) {
+					return nil, fmt.Errorf(
+						"CLOUDFLARE_ACCOUNT_ID %q is not a 32-character "+
+							"hex account id",
+						accountID,
+					)
+				}
 				options.Endpoint = cloudflareAIEndpoint(accountID, clefModel)
 			}
 			if options.APIKey == "" {
-				authToken := strings.TrimSpace(getenv("CLOUDFLARE_AUTH_TOKEN"))
-				apiToken := strings.TrimSpace(getenv("CLOUDFLARE_API_TOKEN"))
+				authToken := cleanCredential(getenv("CLOUDFLARE_AUTH_TOKEN"))
+				apiToken := cleanCredential(getenv("CLOUDFLARE_API_TOKEN"))
 				if authToken != "" && apiToken != "" && authToken != apiToken {
 					return nil, errors.New(
 						"CLOUDFLARE_AUTH_TOKEN and CLOUDFLARE_API_TOKEN " +
@@ -251,6 +280,11 @@ func NewTypeSafeFromEnvWithOptions(
 				}
 				token := firstNonEmpty(authToken, apiToken)
 				switch {
+				case strings.HasPrefix(token, "cfk_"):
+					return nil, errors.New(
+						"CLOUDFLARE token looks like a Global API Key " +
+							"(cfk_); create a Workers AI API token instead",
+					)
 				case token != "":
 					options.APIKey = APIKey(token)
 				case customEndpoint:
@@ -263,6 +297,7 @@ func NewTypeSafeFromEnvWithOptions(
 				}
 			}
 			model = clefModel
+			providerID = "cloudflare"
 		default:
 			return nil, fmt.Errorf("unknown JEVLINT_PROVIDER %q", provider)
 		}
@@ -271,8 +306,15 @@ func NewTypeSafeFromEnvWithOptions(
 	if err != nil {
 		return nil, err
 	}
+	client.provider = providerID
 	if model != "" {
 		client.model = model
+	}
+	if warnDefaultWithCloudflare {
+		client.warn(
+			"jevlint: Cloudflare variables are set but JEVLINT_PROVIDER " +
+				"is not cloudflare; using the default provider",
+		)
 	}
 	if client.logf != nil {
 		client.debugf(
@@ -283,6 +325,49 @@ func NewTypeSafeFromEnvWithOptions(
 		)
 	}
 	return client, nil
+}
+
+// cloudflareVariablesSet reports whether any Cloudflare credential variable is
+// present, which usually means the provider was meant to be cloudflare.
+func cloudflareVariablesSet(getenv func(string) string) bool {
+	for _, name := range []string{
+		"CLOUDFLARE_ACCOUNT_ID",
+		"CLOUDFLARE_AUTH_TOKEN",
+		"CLOUDFLARE_API_TOKEN",
+	} {
+		if strings.TrimSpace(getenv(name)) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// isClefModel reports whether a model is one Cloudflare Workers AI serves.
+func isClefModel(model string) bool {
+	return model == defaultClefModel || model == clefFlashModel
+}
+
+// isCloudflareAccountID reports whether value is a 32-character hex id.
+func isCloudflareAccountID(value string) bool {
+	if len(value) != 32 {
+		return false
+	}
+	for _, char := range value {
+		switch {
+		case char >= '0' && char <= '9':
+		case char >= 'a' && char <= 'f':
+		case char >= 'A' && char <= 'F':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// cleanCredential trims whitespace and stray quote characters that a shell or
+// clipboard can leave around a value.
+func cleanCredential(value string) string {
+	return strings.Trim(strings.TrimSpace(value), `"'`)
 }
 
 // describeCredential names the kind of credential without revealing it.
@@ -363,6 +448,13 @@ func (client *TypeSafe) debugf(format string, args ...any) {
 	}
 }
 
+// warn writes one warning when a warning sink is configured.
+func (client *TypeSafe) warn(format string, args ...any) {
+	if client.warnf != nil {
+		client.warnf(format, args...)
+	}
+}
+
 // debugBody renders a body for logging, capped so a large code state stays
 // readable while still showing where it was cut off.
 func debugBody(body []byte) string {
@@ -386,7 +478,7 @@ func NewTypeSafe(options TypeSafeOptions) (*TypeSafe, error) {
 	}
 	parsedURL, err := url.Parse(baseURL)
 	if err != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
-		return nil, fmt.Errorf("invalid TypeSafe base URL %q", baseURL)
+		return nil, fmt.Errorf("invalid base URL %q", baseURL)
 	}
 
 	endpoint := strings.TrimSpace(options.Endpoint)
@@ -430,6 +522,7 @@ func NewTypeSafe(options TypeSafeOptions) (*TypeSafe, error) {
 		cache:      options.Cache,
 		refresh:    options.Refresh,
 		logf:       options.Logf,
+		warnf:      options.Warnf,
 		inflight:   make(map[string]*evaluationCall),
 	}, nil
 }
@@ -547,15 +640,56 @@ func (client *TypeSafe) requestBody(batch Batch) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if client.provider == "cloudflare" {
+		if err := validateCloudflareQuestions(questions); err != nil {
+			return nil, err
+		}
+	}
 	body, err := json.Marshal(systemOneRequest{
 		Model:     client.model,
 		State:     requestStateFrom(batch.CodeUnit),
 		Questions: questions,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("encode TypeSafe request: %w", err)
+		return nil, fmt.Errorf("encode request: %w", err)
+	}
+	if client.provider == "cloudflare" && len(body) > maxCloudflareBodyBytes {
+		return nil, fmt.Errorf(
+			"request body is %d bytes, over Cloudflare's %d-byte limit",
+			len(body),
+			maxCloudflareBodyBytes,
+		)
 	}
 	return body, nil
+}
+
+// cloudflareQuestionID matches the question ids Cloudflare accepts.
+var cloudflareQuestionID = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,100}$`)
+
+// validateCloudflareQuestions checks a batch against Cloudflare's limits.
+func validateCloudflareQuestions(questions map[string]question) error {
+	if len(questions) > maxCloudflareQuestions {
+		return fmt.Errorf(
+			"Cloudflare accepts at most %d questions per request, got %d",
+			maxCloudflareQuestions,
+			len(questions),
+		)
+	}
+	ids := make([]string, 0, len(questions))
+	for id := range questions {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		if !cloudflareQuestionID.MatchString(id) {
+			return fmt.Errorf(
+				"rule id %q cannot be sent to Cloudflare; ids allow "+
+					"letters, digits, '_', '.', and '-', up to 100 characters",
+				id,
+			)
+		}
+	}
+	return nil
 }
 
 // requestStateFrom builds the sent state from a piece of code.
@@ -632,7 +766,7 @@ func decodeResults(
 ) (map[string]Result, error) {
 	var response envelopeResponse
 	if err := json.Unmarshal(responseBody, &response); err != nil {
-		return nil, fmt.Errorf("decode TypeSafe response: %w", err)
+		return nil, fmt.Errorf("decode response: %w", err)
 	}
 	answers := response.Answers
 	if answers == nil && response.Result != nil {
@@ -640,41 +774,41 @@ func decodeResults(
 		answers = response.Result.Answers
 	}
 	if answers == nil {
-		return nil, errors.New("decode TypeSafe response: answers are missing")
+		return nil, errors.New("decode response: answers are missing")
 	}
 
 	results := make(map[string]Result, len(rules))
 	for _, rule := range rules {
 		answer, ok := answers[rule.ID]
 		if !ok {
-			return nil, fmt.Errorf("decode TypeSafe response: answer for rule %q is missing", rule.ID)
+			return nil, fmt.Errorf("decode response: answer for rule %q is missing", rule.ID)
 		}
 		if answer.Type != questionTypeChoice {
 			return nil, fmt.Errorf(
-				"decode TypeSafe response: answer for rule %q has unsupported type",
+				"decode response: answer for rule %q has unsupported type",
 				rule.ID,
 			)
 		}
 		if answer.Confidence == nil {
 			return nil, fmt.Errorf(
-				"decode TypeSafe response: confidence for rule %q is missing",
+				"decode response: confidence for rule %q is missing",
 				rule.ID,
 			)
 		}
 
 		status, err := ParseStatus(answer.Choice)
 		if err != nil {
-			return nil, fmt.Errorf("decode TypeSafe response: rule %q: %w", rule.ID, err)
+			return nil, fmt.Errorf("decode response: rule %q: %w", rule.ID, err)
 		}
 		if status == StatusSkip && !rule.AllowSkip {
 			return nil, fmt.Errorf(
-				"decode TypeSafe response: rule %q returned skip without allowSkip",
+				"decode response: rule %q returned skip without allowSkip",
 				rule.ID,
 			)
 		}
 		if status == StatusAbstain && !rule.AllowAbstain {
 			return nil, fmt.Errorf(
-				"decode TypeSafe response: rule %q returned abstain without allowAbstain",
+				"decode response: rule %q returned abstain without allowAbstain",
 				rule.ID,
 			)
 		}
@@ -683,7 +817,7 @@ func decodeResults(
 			Confidence: *answer.Confidence,
 		}
 		if err := result.Validate(); err != nil {
-			return nil, fmt.Errorf("decode TypeSafe response: rule %q: %w", rule.ID, err)
+			return nil, fmt.Errorf("decode response: rule %q: %w", rule.ID, err)
 		}
 		results[rule.ID] = result
 	}
@@ -720,7 +854,7 @@ func (client *TypeSafe) perform(ctx context.Context, body []byte) ([]byte, error
 				return nil, ctx.Err()
 			}
 			if attempt >= client.maxRetries {
-				return nil, fmt.Errorf("TypeSafe request failed: %w", err)
+				return nil, fmt.Errorf("request failed: %w", err)
 			}
 			if sleepErr := client.sleep(ctx, retryDelay(attempt, nil)); sleepErr != nil {
 				return nil, sleepErr
@@ -757,7 +891,7 @@ func (client *TypeSafe) newRequest(
 		bytes.NewReader(body),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("create TypeSafe request: %w", err)
+		return nil, fmt.Errorf("create request: %w", err)
 	}
 	request.Header.Set("Authorization", "Bearer "+client.apiKey)
 	request.Header.Set("Accept", "application/json")
@@ -785,10 +919,10 @@ func readResponse(response *http.Response) ([]byte, error) {
 	body, readErr := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes))
 	closeErr := response.Body.Close()
 	if readErr != nil {
-		return nil, fmt.Errorf("read TypeSafe response: %w", readErr)
+		return nil, fmt.Errorf("read response: %w", readErr)
 	}
 	if closeErr != nil {
-		return nil, fmt.Errorf("close TypeSafe response: %w", closeErr)
+		return nil, fmt.Errorf("close response: %w", closeErr)
 	}
 	return body, nil
 }
@@ -865,22 +999,68 @@ func sleepContext(ctx context.Context, duration time.Duration) error {
 	}
 }
 
+// serviceErrorBody covers the error shapes of both services: Jev's
+// {"error": "..."} and Cloudflare's {"errors": [{"code": ..., "message": ...}]}.
+type serviceErrorBody struct {
+	Error  string `json:"error"`
+	Errors []struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	} `json:"errors"`
+}
+
 // responseError builds an error from a failed response.
 func responseError(status int, headers http.Header, body []byte) error {
-	message := strings.TrimSpace(string(body))
-	var payload struct {
-		Error string `json:"error"`
+	message := ""
+	code := 0
+	var payload serviceErrorBody
+	if json.Unmarshal(body, &payload) == nil {
+		switch {
+		case payload.Error != "":
+			message = payload.Error
+		case len(payload.Errors) > 0:
+			message = payload.Errors[0].Message
+			code = payload.Errors[0].Code
+		}
 	}
-	if json.Unmarshal(body, &payload) == nil && payload.Error != "" {
-		message = payload.Error
+	if message == "" {
+		message = strings.TrimSpace(string(body))
 	}
 	if message == "" {
 		message = http.StatusText(status)
 	}
-
-	requestID := headers.Get("x-typesafe-request-id")
-	if requestID != "" {
-		return fmt.Errorf("TypeSafe API returned %d: %s (request %s)", status, message, requestID)
+	switch {
+	case code != 0 && errorHint(code) != "":
+		message = fmt.Sprintf("%s (code %d: %s)", message, code, errorHint(code))
+	case code != 0:
+		message = fmt.Sprintf("%s (code %d)", message, code)
 	}
-	return fmt.Errorf("TypeSafe API returned %d: %s", status, message)
+
+	requestID := firstNonEmpty(
+		headers.Get("x-typesafe-request-id"),
+		headers.Get("cf-ray"),
+	)
+	if requestID != "" {
+		return fmt.Errorf(
+			"decision service returned %d: %s (request %s)",
+			status,
+			message,
+			requestID,
+		)
+	}
+	return fmt.Errorf("decision service returned %d: %s", status, message)
+}
+
+// errorHint turns a Cloudflare error code into an actionable hint.
+func errorHint(code int) string {
+	switch code {
+	case 10000:
+		return "check the Cloudflare API token and its Workers AI permission"
+	case 7003:
+		return "check CLOUDFLARE_ACCOUNT_ID"
+	case 6003, 6111:
+		return "the Authorization header was malformed"
+	default:
+		return ""
+	}
 }
