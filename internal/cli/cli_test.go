@@ -806,6 +806,32 @@ func TestLoadDotEnvMissingFileIsFine(t *testing.T) {
 	}
 }
 
+func TestLoadDotEnvDirMissingFileIsFine(t *testing.T) {
+	if err := loadDotEnvDir(t.TempDir()); err != nil {
+		t.Fatalf("loadDotEnvDir() error = %v", err)
+	}
+	if err := loadDotEnvDir(""); err != nil {
+		t.Fatalf("loadDotEnvDir(\"\") error = %v", err)
+	}
+}
+
+func TestLoadDotEnvDirLoadsFile(t *testing.T) {
+	name := "JEVLINT_DOTENV_DIR_TEST_VALUE"
+	restoreDotEnvVar(t, name)
+	os.Unsetenv(name)
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(name+"=from-config-dir\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := loadDotEnvDir(dir); err != nil {
+		t.Fatalf("loadDotEnvDir() error = %v", err)
+	}
+	if got := os.Getenv(name); got != "from-config-dir" {
+		t.Fatalf("%s = %q, want from-config-dir", name, got)
+	}
+}
+
 func restoreDotEnvVar(t *testing.T, name string) {
 	t.Helper()
 	if original, ok := os.LookupEnv(name); ok {

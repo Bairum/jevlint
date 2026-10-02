@@ -23,6 +23,8 @@ import (
 const usage = `Usage:
   jevlint check [flags] [paths...]
   jevlint eval [flags]
+  jevlint init [flags]
+  jevlint doctor [flags]
   jevlint plugin init|install|list|update|remove [args]
   jevlint version
 
@@ -70,7 +72,9 @@ Flags:
   --verbose             show per-unit Jev decisions
 `
 
-const pluginUsage = `Usage:
+// pluginUsage returns the help text for `jevlint plugin`.
+func pluginUsage() string {
+	return `Usage:
   jevlint plugin init <owner/name> [directory]
   jevlint plugin install <github-url>
   jevlint plugin list
@@ -79,12 +83,14 @@ const pluginUsage = `Usage:
 
 Init flags:
   --languages list      comma-separated languages (default "go")
+                        supported: ` + strings.Join(supportedLanguages(), ", ") + `
   --dir path            output directory (default: the pack name)
   --force               write into a non-empty directory
 
 Flags:
   --config path         rule configuration (default "jevlint.json")
 `
+}
 
 const (
 	exitSuccess     = 0
@@ -99,6 +105,8 @@ const (
 	commandUnknown cliCommand = iota
 	commandCheck
 	commandEval
+	commandInit
+	commandDoctor
 	commandPlugin
 	commandHelp
 	commandVersion
@@ -188,6 +196,10 @@ func parseCLICommand(name string) cliCommand {
 		return commandCheck
 	case "eval":
 		return commandEval
+	case "init":
+		return commandInit
+	case "doctor":
+		return commandDoctor
 	case "plugin":
 		return commandPlugin
 	case "-h", "--help":
@@ -206,6 +218,10 @@ func (command cliCommand) String() string {
 		return "check"
 	case commandEval:
 		return "eval"
+	case commandInit:
+		return "init"
+	case commandDoctor:
+		return "doctor"
 	case commandPlugin:
 		return "plugin"
 	case commandHelp:
@@ -273,6 +289,12 @@ func Run(
 	if dispatch := handleSpecialCommand(args[0], stdout, stderr); dispatch.handled {
 		return dispatch.exitCode
 	}
+	if command == commandInit {
+		return executeInit(args[1:], stdout, stderr)
+	}
+	if command == commandDoctor {
+		return executeDoctor(ctx, args[1:], stdout, stderr)
+	}
 	if command == commandPlugin {
 		return executePlugin(args[1:], stdout, stderr, os.UserCacheDir)
 	}
@@ -315,7 +337,7 @@ func handleSpecialCommand(
 	case commandVersion:
 		fmt.Fprintf(stdout, "jevlint %s\n", Version())
 		return commandDispatch{exitCode: exitSuccess, handled: true}
-	case commandCheck, commandEval, commandPlugin:
+	case commandCheck, commandEval, commandInit, commandDoctor, commandPlugin:
 		return commandDispatch{exitCode: exitSuccess, handled: false}
 	default:
 		fmt.Fprintf(stderr, "jevlint: unknown command %q\n\n%s", command, usage)
@@ -533,6 +555,26 @@ func loadDotEnv() error {
 	return nil
 }
 
+// loadDotEnvDir loads .env from a directory when present, so a config outside
+// the working directory can carry its own credentials. Variables already set in
+// the environment win.
+func loadDotEnvDir(dir string) error {
+	if dir == "" {
+		return nil
+	}
+	path := filepath.Join(dir, ".env")
+	if _, err := os.Stat(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	if err := godotenv.Load(path); err != nil {
+		return fmt.Errorf("load %s: %w", path, err)
+	}
+	return nil
+}
+
 // debugLogger returns a request logger when JEVLINT_DEBUG is set. It writes to
 // stderr so it never mixes with JSON output on stdout. Credentials are never
 // logged.
@@ -554,6 +596,10 @@ func loadProject(
 	absoluteConfig, err := filepath.Abs(configPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "jevlint: resolve config path: %v\n", err)
+		return "", config.Config{}, nil, nil, exitUsageError
+	}
+	if err := loadDotEnvDir(filepath.Dir(absoluteConfig)); err != nil {
+		fmt.Fprintf(stderr, "jevlint: %v\n", err)
 		return "", config.Config{}, nil, nil, exitUsageError
 	}
 	cfg, err := config.Load(absoluteConfig)

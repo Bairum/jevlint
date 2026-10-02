@@ -301,6 +301,45 @@ func describeCredential(key string) string {
 	return fmt.Sprintf("%s (len %d)", kind, len(key))
 }
 
+// Endpoint returns the resolved request URL.
+func (client *TypeSafe) Endpoint() string {
+	return client.endpoint
+}
+
+// Model returns the resolved model name.
+func (client *TypeSafe) Model() string {
+	return client.model
+}
+
+// CredentialKind describes the credential without revealing it.
+func (client *TypeSafe) CredentialKind() string {
+	return describeCredential(client.apiKey)
+}
+
+// Ping verifies that the service answers a trivial request. It always makes a
+// live call, ignoring any cache.
+func (client *TypeSafe) Ping(ctx context.Context) error {
+	batch := Batch{
+		Rules: []config.Rule{{
+			ID:          "jevlint-doctor",
+			Description: "A connectivity check. This rule always passes.",
+			Severity:    config.SeverityInfo,
+		}},
+		CodeUnit: parsing.CodeUnit{
+			Kind:     parsing.CodeKindFunction,
+			Name:     "jevlintDoctor",
+			Language: parsing.SourceLanguageGo,
+			Path:     "jevlint-doctor.go",
+			Source:   "func jevlintDoctor() {}",
+		},
+	}
+	saved := client.cache
+	client.cache = nil
+	_, err := client.Evaluate(ctx, batch)
+	client.cache = saved
+	return err
+}
+
 // cloudflareAIEndpoint builds the Workers AI URL for one Clef model.
 func cloudflareAIEndpoint(accountID string, model string) string {
 	return defaultCloudflareAPIURL + "/accounts/" + url.PathEscape(accountID) +
@@ -338,10 +377,7 @@ func debugBody(body []byte) string {
 func NewTypeSafe(options TypeSafeOptions) (*TypeSafe, error) {
 	apiKey := strings.TrimSpace(string(options.APIKey))
 	if apiKey == "" {
-		return nil, errors.New(
-			"an API key is required: set TYPESAFE_API_KEY, or use " +
-				"JEVLINT_PROVIDER=cloudflare with CLOUDFLARE_AUTH_TOKEN",
-		)
+		return nil, errors.New("an API key is required: set TYPESAFE_API_KEY")
 	}
 
 	baseURL := strings.TrimRight(strings.TrimSpace(string(options.BaseURL)), "/")
