@@ -20,8 +20,7 @@ func initUsage() string {
 	return `Usage:
   jevlint init [flags]
 
-Writes a starter jevlint.json (with the languages detected in the project)
-and a .env template.
+Writes a starter jevlint.json with the languages detected in the project.
 
 Flags:
   --config path      rule configuration to create (default "jevlint.json")
@@ -43,24 +42,16 @@ func supportedLanguages() []string {
 	return languages
 }
 
-// envTemplate is the starter .env written by `jevlint init`.
-const envTemplate = `# Jevlint credentials.
-# Get a TypeSafe API key from https://console.typesafe.ai/settings/keys
-TYPESAFE_API_KEY=
-`
-
 // defaultInitLanguage is used when the project has no detectable source files.
 const defaultInitLanguage = "go"
 
 // initReport is the machine-readable result of `jevlint init --json`.
 type initReport struct {
 	Config    string   `json:"config"`
-	Env       string   `json:"env"`
-	Gitignore bool     `json:"gitignore"`
 	Languages []string `json:"languages"`
 }
 
-// executeInit writes a starter config and .env for a project.
+// executeInit writes a starter config for a project.
 func executeInit(args []string, stdout io.Writer, stderr io.Writer) int {
 	flags := flag.NewFlagSet("init", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -129,25 +120,11 @@ func executeInit(args []string, stdout io.Writer, stderr io.Writer) int {
 		return exitUsageError
 	}
 
-	envPath := filepath.Join(root, ".env")
-	envCreated := false
-	if _, err := os.Stat(envPath); err == nil && !*force {
-		// Keep the existing file.
-	} else if err := os.WriteFile(envPath, []byte(envTemplate), 0o600); err != nil {
-		fmt.Fprintf(stderr, "jevlint: write %s: %v\n", envPath, err)
-		return exitUsageError
-	} else {
-		envCreated = true
-	}
-	gitignoreChanged := ensureGitignoreEnv(root)
-
 	if *jsonOutput {
 		encoder := json.NewEncoder(stdout)
 		encoder.SetIndent("", "  ")
 		if err := encoder.Encode(initReport{
 			Config:    absolute,
-			Env:       envPath,
-			Gitignore: gitignoreChanged,
 			Languages: selected,
 		}); err != nil {
 			fmt.Fprintf(stderr, "jevlint: write output: %v\n", err)
@@ -165,20 +142,11 @@ func executeInit(args []string, stdout io.Writer, stderr io.Writer) int {
 		)
 	}
 	fmt.Fprintf(stdout, "created %s (languages: %s)\n", absolute, strings.Join(selected, ", "))
-	if envCreated {
-		fmt.Fprintf(stdout, "created %s\n", envPath)
-	} else {
-		fmt.Fprintf(stdout, "kept    %s\n", envPath)
-	}
-	if gitignoreChanged {
-		fmt.Fprintln(stdout, "added   .env to .gitignore")
-	}
 
 	fmt.Fprintln(stdout)
 	fmt.Fprintln(stdout, "Next:")
 	fmt.Fprintln(stdout, "  1. Create a TypeSafe API key: https://console.typesafe.ai/settings/keys")
 	fmt.Fprintln(stdout, "  2. Export it: export TYPESAFE_API_KEY=apikey_...")
-	fmt.Fprintln(stdout, "     (or put TYPESAFE_API_KEY=apikey_... in .env)")
 	fmt.Fprintf(stdout, "  3. Add rules to %s or install a pack.\n", filepath.Base(absolute))
 	fmt.Fprintln(stdout, "  4. Run: jevlint check .")
 	fmt.Fprintln(stdout, "  5. Verify setup: jevlint doctor")
@@ -233,28 +201,4 @@ var ignoredInitDirs = map[string]struct{}{
 func ignoredInitDir(name string) bool {
 	_, ok := ignoredInitDirs[name]
 	return ok
-}
-
-// ensureGitignoreEnv adds .env to .gitignore, creating it when missing. It
-// reports whether it wrote the file.
-func ensureGitignoreEnv(root string) bool {
-	path := filepath.Join(root, ".gitignore")
-	data, err := os.ReadFile(path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return false
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.TrimSpace(line) == ".env" {
-			return false
-		}
-	}
-	contents := string(data)
-	if contents != "" && !strings.HasSuffix(contents, "\n") {
-		contents += "\n"
-	}
-	contents += ".env\n"
-	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
-		return false
-	}
-	return true
 }

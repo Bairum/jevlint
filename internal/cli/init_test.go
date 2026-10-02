@@ -14,9 +14,6 @@ func TestInitWritesStarterFiles(t *testing.T) {
 	dir := t.TempDir()
 	writeProjectFile(t, dir, "a.go", "package sample\n\nfunc A() {}\n")
 	writeProjectFile(t, dir, "b.ts", "export function b() {}\n")
-	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("node_modules\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	t.Chdir(dir)
 
 	var stdout, stderr bytes.Buffer
@@ -40,15 +37,36 @@ func TestInitWritesStarterFiles(t *testing.T) {
 		}
 	}
 
-	if _, err := os.Stat(filepath.Join(dir, ".env")); err != nil {
-		t.Errorf(".env was not created: %v", err)
+	if _, err := os.Stat(filepath.Join(dir, ".env")); !os.IsNotExist(err) {
+		t.Errorf("init should not create .env (stat err = %v)", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".gitignore")); !os.IsNotExist(err) {
+		t.Errorf("init should not create .gitignore (stat err = %v)", err)
+	}
+}
+
+func TestInitLeavesGitignoreAlone(t *testing.T) {
+	dir := t.TempDir()
+	writeProjectFile(t, dir, "a.go", "package sample\n")
+	const original = "node_modules\n"
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+
+	var stdout, stderr bytes.Buffer
+	if code := runCLI(context.Background(), []string{"init"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("init exit = %d; stderr = %q", code, stderr.String())
 	}
 	ignore, err := os.ReadFile(filepath.Join(dir, ".gitignore"))
 	if err != nil {
-		t.Fatalf("read .gitignore: %v", err)
+		t.Fatal(err)
 	}
-	if !strings.Contains(string(ignore), ".env") {
-		t.Errorf(".gitignore = %q, want it to include .env", ignore)
+	if string(ignore) != original {
+		t.Fatalf(".gitignore = %q, want it unchanged", ignore)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".env")); !os.IsNotExist(err) {
+		t.Errorf("init should not create .env (stat err = %v)", err)
 	}
 }
 
@@ -87,14 +105,12 @@ func TestInitJSONOutput(t *testing.T) {
 	}
 	var report struct {
 		Config    string   `json:"config"`
-		Env       string   `json:"env"`
-		Gitignore bool     `json:"gitignore"`
 		Languages []string `json:"languages"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
 		t.Fatalf("decode init JSON: %v\n%s", err, stdout.String())
 	}
-	if !strings.HasSuffix(report.Config, "jevlint.json") || report.Env == "" || !report.Gitignore {
+	if !strings.HasSuffix(report.Config, "jevlint.json") {
 		t.Fatalf("report = %#v", report)
 	}
 	if len(report.Languages) != 1 || report.Languages[0] != "go" {

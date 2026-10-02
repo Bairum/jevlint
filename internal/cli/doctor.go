@@ -70,10 +70,6 @@ func executeDoctor(
 		checks = append(checks, doctorCheck{Name: "config", Detail: err.Error()})
 		healthy = false
 	} else {
-		if err := loadDotEnvDir(filepath.Dir(absolute)); err != nil {
-			fmt.Fprintf(stderr, "jevlint: %v\n", err)
-			return exitUsageError
-		}
 		if cfg, err := config.Load(absolute); err != nil {
 			checks = append(checks, doctorCheck{Name: "config", Detail: err.Error()})
 			healthy = false
