@@ -161,12 +161,12 @@ func TestTypeSafeEvaluateExplainsRegionContext(t *testing.T) {
 func TestTypeSafeCacheKeyTracksExactEvaluationInput(t *testing.T) {
 	t.Parallel()
 
-	client, err := NewTypeSafe(TypeSafeOptions{
+	client, err := NewClient(Options{
 		APIKey:  "sk-one",
 		BaseURL: "https://one.example",
 	})
 	if err != nil {
-		t.Fatalf("NewTypeSafe() error = %v", err)
+		t.Fatalf("NewClient() error = %v", err)
 	}
 	client.model = "jev-one"
 	body, err := client.requestBody(testBatch())
@@ -276,19 +276,19 @@ func TestTypeSafeCacheKeyTracksExactEvaluationInput(t *testing.T) {
 	}
 
 	for name, test := range map[string]struct {
-		options TypeSafeOptions
+		options Options
 		model   string
 	}{
 		"endpoint": {
-			options: TypeSafeOptions{APIKey: "sk-one", BaseURL: "https://two.example"},
+			options: Options{APIKey: "sk-one", BaseURL: "https://two.example"},
 			model:   "jev-one",
 		},
 		"model": {
-			options: TypeSafeOptions{APIKey: "sk-one", BaseURL: "https://one.example"},
+			options: Options{APIKey: "sk-one", BaseURL: "https://one.example"},
 			model:   "jev-two",
 		},
 		"credential": {
-			options: TypeSafeOptions{APIKey: "sk-two", BaseURL: "https://one.example"},
+			options: Options{APIKey: "sk-two", BaseURL: "https://one.example"},
 			model:   "jev-one",
 		},
 	} {
@@ -296,9 +296,9 @@ func TestTypeSafeCacheKeyTracksExactEvaluationInput(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			other, err := NewTypeSafe(test.options)
+			other, err := NewClient(test.options)
 			if err != nil {
-				t.Fatalf("NewTypeSafe() error = %v", err)
+				t.Fatalf("NewClient() error = %v", err)
 			}
 			other.model = test.model
 			if otherKey := other.cacheKey(body); otherKey == key {
@@ -696,7 +696,7 @@ func TestTypeSafeEvaluateRetriesRateLimit(t *testing.T) {
 			http.Error(writer, `{"error":"slow down"}`, http.StatusTooManyRequests)
 			return
 		}
-		if got := request.Header.Get("X-TypeSafe-Retry-Count"); got != "1" {
+		if got := request.Header.Get("X-Jevlint-Retry-Count"); got != "1" {
 			t.Errorf("retry count = %q", got)
 		}
 		fmt.Fprint(writer, `{
@@ -741,237 +741,6 @@ func TestTypeSafeErrorIncludesRequestID(t *testing.T) {
 	}
 }
 
-func TestNewTypeSafeRequiresAPIKey(t *testing.T) {
-	t.Parallel()
-
-	if _, err := NewTypeSafe(TypeSafeOptions{}); err == nil {
-		t.Fatal("NewTypeSafe() error = nil")
-	}
-}
-
-func TestNewTypeSafeFromEnvUsesCloudflareClef(t *testing.T) {
-	t.Parallel()
-
-	env := map[string]string{
-		"JEVLINT_PROVIDER":      "cloudflare",
-		"CLOUDFLARE_ACCOUNT_ID": "e81a7093dc03d8bc6da9f0332d444b8f",
-		"CLOUDFLARE_AUTH_TOKEN": "cf-token",
-	}
-	client, err := NewTypeSafeFromEnvWithOptions(
-		TypeSafeOptions{HTTPClient: http.DefaultClient},
-		func(key string) string { return env[key] },
-	)
-	if err != nil {
-		t.Fatalf("NewTypeSafeFromEnvWithOptions() error = %v", err)
-	}
-	want := "https://api.cloudflare.com/client/v4/accounts/e81a7093dc03d8bc6da9f0332d444b8f" +
-		"/ai/run/@cf/cloudflare/clef"
-	if client.endpoint != want {
-		t.Errorf("endpoint = %q, want %q", client.endpoint, want)
-	}
-	if client.model != "clef" {
-		t.Errorf("model = %q, want clef", client.model)
-	}
-	if client.apiKey != "cf-token" {
-		t.Errorf("apiKey = %q, want cf-token", client.apiKey)
-	}
-}
-
-func TestNewTypeSafeFromEnvCloudflareClefFlash(t *testing.T) {
-	t.Parallel()
-
-	env := map[string]string{
-		"JEVLINT_PROVIDER":      "clef",
-		"CLOUDFLARE_ACCOUNT_ID": "e81a7093dc03d8bc6da9f0332d444b8f",
-		"CLOUDFLARE_API_TOKEN":  "cf-token",
-		"CLEF_MODEL":            "clef-flash",
-	}
-	client, err := NewTypeSafeFromEnvWithOptions(
-		TypeSafeOptions{},
-		func(key string) string { return env[key] },
-	)
-	if err != nil {
-		t.Fatalf("NewTypeSafeFromEnvWithOptions() error = %v", err)
-	}
-	if !strings.HasSuffix(client.endpoint, "/@cf/cloudflare/clef-flash") {
-		t.Errorf("endpoint = %q", client.endpoint)
-	}
-	if client.model != "clef-flash" {
-		t.Errorf("model = %q, want clef-flash", client.model)
-	}
-}
-
-func TestNewTypeSafeFromEnvCloudflareRejectsConflictingTokens(t *testing.T) {
-	t.Parallel()
-
-	env := map[string]string{
-		"JEVLINT_PROVIDER":      "cloudflare",
-		"CLOUDFLARE_ACCOUNT_ID": "e81a7093dc03d8bc6da9f0332d444b8f",
-		"CLOUDFLARE_AUTH_TOKEN": "one-token",
-		"CLOUDFLARE_API_TOKEN":  "another-token",
-	}
-	_, err := NewTypeSafeFromEnvWithOptions(
-		TypeSafeOptions{},
-		func(key string) string { return env[key] },
-	)
-	if err == nil || !strings.Contains(err.Error(), "set only one") {
-		t.Fatalf("error = %v, want a conflicting token error", err)
-	}
-}
-
-func TestNewTypeSafeFromEnvCloudflareAcceptsMatchingTokens(t *testing.T) {
-	t.Parallel()
-
-	env := map[string]string{
-		"JEVLINT_PROVIDER":      "cloudflare",
-		"CLOUDFLARE_ACCOUNT_ID": "e81a7093dc03d8bc6da9f0332d444b8f",
-		"CLOUDFLARE_AUTH_TOKEN": "cf-token",
-		"CLOUDFLARE_API_TOKEN":  "cf-token",
-	}
-	client, err := NewTypeSafeFromEnvWithOptions(
-		TypeSafeOptions{},
-		func(key string) string { return env[key] },
-	)
-	if err != nil {
-		t.Fatalf("NewTypeSafeFromEnvWithOptions() error = %v", err)
-	}
-	if client.apiKey != "cf-token" {
-		t.Fatalf("apiKey = %q, want cf-token", client.apiKey)
-	}
-}
-
-func TestNewTypeSafeFromEnvCloudflarePrefersCloudflareToken(t *testing.T) {
-	t.Parallel()
-
-	env := map[string]string{
-		"JEVLINT_PROVIDER":      "cloudflare",
-		"CLOUDFLARE_ACCOUNT_ID": "e81a7093dc03d8bc6da9f0332d444b8f",
-		"CLOUDFLARE_AUTH_TOKEN": "cf-token",
-		"TYPESAFE_API_KEY":      "stale-typesafe-key",
-	}
-	client, err := NewTypeSafeFromEnvWithOptions(
-		TypeSafeOptions{},
-		func(key string) string { return env[key] },
-	)
-	if err != nil {
-		t.Fatalf("NewTypeSafeFromEnvWithOptions() error = %v", err)
-	}
-	if client.apiKey != "cf-token" {
-		t.Fatalf("apiKey = %q, want the Cloudflare token", client.apiKey)
-	}
-}
-
-func TestNewTypeSafeFromEnvCloudflareRejectsTypesafeKeyAlone(t *testing.T) {
-	t.Parallel()
-
-	env := map[string]string{
-		"JEVLINT_PROVIDER":      "cloudflare",
-		"CLOUDFLARE_ACCOUNT_ID": "e81a7093dc03d8bc6da9f0332d444b8f",
-		"TYPESAFE_API_KEY":      "stale-typesafe-key",
-	}
-	_, err := NewTypeSafeFromEnvWithOptions(
-		TypeSafeOptions{},
-		func(key string) string { return env[key] },
-	)
-	if err == nil || !strings.Contains(err.Error(), "CLOUDFLARE_AUTH_TOKEN") {
-		t.Fatalf("error = %v, want a missing token error", err)
-	}
-}
-
-func TestNewTypeSafeFromEnvCloudflareCustomEndpointUsesEnvKey(t *testing.T) {
-	t.Parallel()
-
-	env := map[string]string{
-		"JEVLINT_PROVIDER":  "cloudflare",
-		"TYPESAFE_ENDPOINT": "https://clef.internal/v1/systemone",
-		"TYPESAFE_API_KEY":  "custom-key",
-		"CLEF_MODEL":        "clef-flash",
-	}
-	client, err := NewTypeSafeFromEnvWithOptions(
-		TypeSafeOptions{},
-		func(key string) string { return env[key] },
-	)
-	if err != nil {
-		t.Fatalf("NewTypeSafeFromEnvWithOptions() error = %v", err)
-	}
-	if client.endpoint != "https://clef.internal/v1/systemone" {
-		t.Fatalf("endpoint = %q", client.endpoint)
-	}
-	if client.apiKey != "custom-key" {
-		t.Fatalf("apiKey = %q, want the custom key", client.apiKey)
-	}
-	if client.model != "clef-flash" {
-		t.Fatalf("model = %q, want clef-flash", client.model)
-	}
-}
-
-func TestNewTypeSafeFromEnvCloudflareRequiresCredentials(t *testing.T) {
-	t.Parallel()
-
-	tests := map[string]map[string]string{
-		"missing account": {
-			"JEVLINT_PROVIDER":      "cloudflare",
-			"CLOUDFLARE_AUTH_TOKEN": "cf-token",
-		},
-		"missing token": {
-			"JEVLINT_PROVIDER":      "cloudflare",
-			"CLOUDFLARE_ACCOUNT_ID": "e81a7093dc03d8bc6da9f0332d444b8f",
-		},
-	}
-	for name, env := range tests {
-		name, env := name, env
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			_, err := NewTypeSafeFromEnvWithOptions(
-				TypeSafeOptions{},
-				func(key string) string { return env[key] },
-			)
-			if err == nil || !strings.Contains(err.Error(), "CLOUDFLARE_") {
-				t.Fatalf("error = %v, want a Cloudflare credential error", err)
-			}
-		})
-	}
-}
-
-func TestNewTypeSafeFromEnvEndpointOverride(t *testing.T) {
-	t.Parallel()
-
-	env := map[string]string{
-		"TYPESAFE_ENDPOINT": "https://clef.example/v1/systemone",
-		"TYPESAFE_API_KEY":  "sk-custom",
-	}
-	client, err := NewTypeSafeFromEnvWithOptions(
-		TypeSafeOptions{},
-		func(key string) string { return env[key] },
-	)
-	if err != nil {
-		t.Fatalf("NewTypeSafeFromEnvWithOptions() error = %v", err)
-	}
-	if client.endpoint != "https://clef.example/v1/systemone" {
-		t.Errorf("endpoint = %q", client.endpoint)
-	}
-	if client.model != defaultModel {
-		t.Errorf("model = %q, want %q", client.model, defaultModel)
-	}
-}
-
-func TestNewTypeSafeFromEnvRejectsUnknownProvider(t *testing.T) {
-	t.Parallel()
-
-	env := map[string]string{
-		"JEVLINT_PROVIDER": "banana",
-		"TYPESAFE_API_KEY": "sk-test",
-	}
-	_, err := NewTypeSafeFromEnvWithOptions(
-		TypeSafeOptions{},
-		func(key string) string { return env[key] },
-	)
-	if err == nil || !strings.Contains(err.Error(), "JEVLINT_PROVIDER") {
-		t.Fatalf("error = %v, want an unknown provider error", err)
-	}
-}
-
 func TestTypeSafeEndpointOverrideUsesFullURL(t *testing.T) {
 	t.Parallel()
 
@@ -988,13 +757,13 @@ func TestTypeSafeEndpointOverrideUsesFullURL(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewTypeSafe(TypeSafeOptions{
+	client, err := NewClient(Options{
 		APIKey:     "sk-test",
 		Endpoint:   server.URL + "/custom/clef",
 		HTTPClient: server.Client(),
 	})
 	if err != nil {
-		t.Fatalf("NewTypeSafe() error = %v", err)
+		t.Fatalf("NewClient() error = %v", err)
 	}
 	client.model = "clef"
 	if _, err := client.Evaluate(context.Background(), testBatch()); err != nil {
@@ -1016,7 +785,7 @@ func TestTypeSafeDebugLogRedactsCredential(t *testing.T) {
 	defer server.Close()
 
 	var logs strings.Builder
-	client, err := NewTypeSafe(TypeSafeOptions{
+	client, err := NewClient(Options{
 		APIKey:     "sk-super-secret",
 		BaseURL:    ServiceURL(server.URL),
 		HTTPClient: server.Client(),
@@ -1025,7 +794,7 @@ func TestTypeSafeDebugLogRedactsCredential(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("NewTypeSafe() error = %v", err)
+		t.Fatalf("NewClient() error = %v", err)
 	}
 	client.model = "clef"
 	if _, err := client.Evaluate(context.Background(), testBatch()); err != nil {
@@ -1048,231 +817,21 @@ func TestTypeSafeDebugLogRedactsCredential(t *testing.T) {
 	}
 }
 
-func TestDecodeResultsUnwrapsCloudflareEnvelope(t *testing.T) {
-	t.Parallel()
-
-	rules := []config.Rule{{ID: "database-joins"}, {ID: "semicolons"}}
-	body := []byte(`{
-		"result": {
-			"model": "clef",
-			"answers": {
-				"database-joins": {"type": "choice", "choice": "fail", "confidence": 0.91},
-				"semicolons": {"type": "choice", "choice": "pass", "confidence": 0.87}
-			},
-			"usage": {"input_tokens": 10, "output_tokens": 0}
-		},
-		"success": true,
-		"errors": [],
-		"messages": []
-	}`)
-	results, err := decodeResults(body, rules)
-	if err != nil {
-		t.Fatalf("decodeResults() error = %v", err)
-	}
-	if results["database-joins"].Status != StatusFail ||
-		results["semicolons"].Status != StatusPass {
-		t.Fatalf("decodeResults() = %#v", results)
-	}
-}
-
-func TestDecodeResultsReadsTopLevelAnswers(t *testing.T) {
-	t.Parallel()
-
-	rules := []config.Rule{{ID: "database-joins"}}
-	body := []byte(`{"answers":{"database-joins":{"type":"choice","choice":"pass","confidence":1}}}`)
-	results, err := decodeResults(body, rules)
-	if err != nil {
-		t.Fatalf("decodeResults() error = %v", err)
-	}
-	if results["database-joins"].Status != StatusPass {
-		t.Fatalf("decodeResults() = %#v", results)
-	}
-}
-
-func TestNewTypeSafeRejectsInvalidEndpoint(t *testing.T) {
-	t.Parallel()
-
-	if _, err := NewTypeSafe(TypeSafeOptions{APIKey: "sk-test", Endpoint: "not-a-url"}); err == nil {
-		t.Fatal("NewTypeSafe() error = nil, want an invalid endpoint error")
-	}
-}
-
-func TestResponseErrorParsesCloudflareEnvelope(t *testing.T) {
-	t.Parallel()
-
-	headers := http.Header{}
-	headers.Set("cf-ray", "8abc123-FRA")
-	body := []byte(`{"result":null,"success":false,"errors":[{"code":10000,"message":"Authentication error"}],"messages":[]}`)
-	err := responseError(http.StatusUnauthorized, headers, body)
-	message := err.Error()
-	for _, want := range []string{"10000", "Authentication error", "Workers AI permission", "8abc123-FRA"} {
-		if !strings.Contains(message, want) {
-			t.Errorf("responseError() = %q, want it to contain %q", message, want)
-		}
-	}
-}
-
-func TestResponseErrorHintsRoutingCode(t *testing.T) {
-	t.Parallel()
-
-	body := []byte(`{"success":false,"errors":[{"code":7003,"message":"Could not route"}],"messages":[]}`)
-	err := responseError(http.StatusNotFound, http.Header{}, body)
-	if !strings.Contains(err.Error(), "CLOUDFLARE_ACCOUNT_ID") {
-		t.Fatalf("responseError() = %v, want an account-id hint", err)
-	}
-}
-
-func TestResponseErrorReadsJevError(t *testing.T) {
-	t.Parallel()
-
-	err := responseError(http.StatusUnauthorized, http.Header{}, []byte(`{"error":"invalid key"}`))
-	if !strings.Contains(err.Error(), "invalid key") {
-		t.Fatalf("responseError() = %v, want the Jev error message", err)
-	}
-}
-
-func TestNewTypeSafeFromEnvCloudflareRejectsBadAccountID(t *testing.T) {
-	t.Parallel()
-
-	env := map[string]string{
-		"JEVLINT_PROVIDER":      "cloudflare",
-		"CLOUDFLARE_ACCOUNT_ID": "not-hex",
-		"CLOUDFLARE_AUTH_TOKEN": "cfut_test",
-	}
-	_, err := NewTypeSafeFromEnvWithOptions(TypeSafeOptions{}, func(key string) string { return env[key] })
-	if err == nil || !strings.Contains(err.Error(), "32-character") {
-		t.Fatalf("error = %v, want an account-id error", err)
-	}
-}
-
-func TestNewTypeSafeFromEnvCloudflareRejectsBadModel(t *testing.T) {
-	t.Parallel()
-
-	env := map[string]string{
-		"JEVLINT_PROVIDER":      "cloudflare",
-		"CLOUDFLARE_ACCOUNT_ID": "e81a7093dc03d8bc6da9f0332d444b8f",
-		"CLOUDFLARE_AUTH_TOKEN": "cfut_test",
-		"CLEF_MODEL":            "llama-3",
-	}
-	_, err := NewTypeSafeFromEnvWithOptions(TypeSafeOptions{}, func(key string) string { return env[key] })
-	if err == nil || !strings.Contains(err.Error(), "CLEF_MODEL") {
-		t.Fatalf("error = %v, want a model error", err)
-	}
-}
-
-func TestNewTypeSafeFromEnvCloudflareRejectsGlobalKey(t *testing.T) {
-	t.Parallel()
-
-	env := map[string]string{
-		"JEVLINT_PROVIDER":      "cloudflare",
-		"CLOUDFLARE_ACCOUNT_ID": "e81a7093dc03d8bc6da9f0332d444b8f",
-		"CLOUDFLARE_AUTH_TOKEN": "cfk_" + strings.Repeat("a", 48),
-	}
-	_, err := NewTypeSafeFromEnvWithOptions(TypeSafeOptions{}, func(key string) string { return env[key] })
-	if err == nil || !strings.Contains(err.Error(), "Global API Key") {
-		t.Fatalf("error = %v, want a global-key error", err)
-	}
-}
-
-func TestNewTypeSafeFromEnvCloudflareStripsQuotes(t *testing.T) {
-	t.Parallel()
-
-	env := map[string]string{
-		"JEVLINT_PROVIDER":      "cloudflare",
-		"CLOUDFLARE_ACCOUNT_ID": `"e81a7093dc03d8bc6da9f0332d444b8f"`,
-		"CLOUDFLARE_AUTH_TOKEN": `"cfut_secret"`,
-	}
-	client, err := NewTypeSafeFromEnvWithOptions(TypeSafeOptions{}, func(key string) string { return env[key] })
-	if err != nil {
-		t.Fatalf("NewTypeSafeFromEnvWithOptions() error = %v", err)
-	}
-	if client.apiKey != "cfut_secret" {
-		t.Fatalf("apiKey = %q, want the unquoted token", client.apiKey)
-	}
-	if !strings.Contains(client.endpoint, "e81a7093dc03d8bc6da9f0332d444b8f") {
-		t.Fatalf("endpoint = %q", client.endpoint)
-	}
-}
-
-func TestRequestBodyEnforcesCloudflareLimits(t *testing.T) {
-	t.Parallel()
-
-	client, err := NewTypeSafe(TypeSafeOptions{
-		APIKey:   "cfut_test",
-		Endpoint: "https://example.test/clef",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	client.provider = "cloudflare"
-	unit := parsing.CodeUnit{
-		Kind:     parsing.CodeKindFunction,
-		Name:     "f",
-		Language: parsing.SourceLanguageGo,
-		Path:     "f.go",
-		Source:   "func f() {}",
-	}
-
-	tooMany := make([]config.Rule, maxCloudflareQuestions+1)
-	for index := range tooMany {
-		tooMany[index] = config.Rule{ID: fmt.Sprintf("r%d", index)}
-	}
-	if _, err := client.requestBody(Batch{Rules: tooMany, CodeUnit: unit}); err == nil ||
-		!strings.Contains(err.Error(), "at most 64") {
-		t.Fatalf("requestBody() error = %v, want a question-count error", err)
-	}
-
-	badID := []config.Rule{{ID: "not valid!"}}
-	if _, err := client.requestBody(Batch{Rules: badID, CodeUnit: unit}); err == nil ||
-		!strings.Contains(err.Error(), "cannot be sent to Cloudflare") {
-		t.Fatalf("requestBody() error = %v, want a rule-id error", err)
-	}
-
-	if _, err := client.requestBody(Batch{Rules: []config.Rule{{ID: "ok"}}, CodeUnit: unit}); err != nil {
-		t.Fatalf("requestBody() error = %v, want success", err)
-	}
-}
-
-func TestNewTypeSafeFromEnvWarnsOnCloudflareVarMismatch(t *testing.T) {
-	t.Parallel()
-
-	var warnings []string
-	env := map[string]string{
-		"TYPESAFE_API_KEY":      "apikey_test",
-		"CLOUDFLARE_AUTH_TOKEN": "cfut_test",
-	}
-	client, err := NewTypeSafeFromEnvWithOptions(
-		TypeSafeOptions{Warnf: func(format string, args ...any) {
-			warnings = append(warnings, fmt.Sprintf(format, args...))
-		}},
-		func(key string) string { return env[key] },
-	)
-	if err != nil {
-		t.Fatalf("NewTypeSafeFromEnvWithOptions() error = %v", err)
-	}
-	if client.provider != "" {
-		t.Fatalf("provider = %q, want the default", client.provider)
-	}
-	if len(warnings) != 1 || !strings.Contains(warnings[0], "JEVLINT_PROVIDER") {
-		t.Fatalf("warnings = %#v", warnings)
-	}
-}
-
 func newTestClient(
 	t *testing.T,
 	server *httptest.Server,
 	sleep func(context.Context, time.Duration) error,
-) *TypeSafe {
+) *Client {
 	t.Helper()
 
-	client, err := NewTypeSafe(TypeSafeOptions{
+	client, err := NewClient(Options{
 		APIKey:     "sk-test",
 		BaseURL:    ServiceURL(server.URL),
 		HTTPClient: server.Client(),
 		Sleep:      sleep,
 	})
 	if err != nil {
-		t.Fatalf("NewTypeSafe() error = %v", err)
+		t.Fatalf("NewClient() error = %v", err)
 	}
 	client.model = "jev-test"
 	return client
@@ -1283,10 +842,10 @@ func newCachedTestClient(
 	server *httptest.Server,
 	cache ResultCache,
 	refresh bool,
-) *TypeSafe {
+) *Client {
 	t.Helper()
 
-	client, err := NewTypeSafe(TypeSafeOptions{
+	client, err := NewClient(Options{
 		APIKey:     "sk-test",
 		BaseURL:    ServiceURL(server.URL),
 		HTTPClient: server.Client(),
@@ -1294,7 +853,7 @@ func newCachedTestClient(
 		Refresh:    refresh,
 	})
 	if err != nil {
-		t.Fatalf("NewTypeSafe() error = %v", err)
+		t.Fatalf("NewClient() error = %v", err)
 	}
 	client.model = "jev-test"
 	return client

@@ -87,8 +87,8 @@ func executeDoctor(
 		}
 	}
 
-	client, err := evaluation.NewTypeSafeFromEnvWithOptions(
-		evaluation.TypeSafeOptions{
+	client, err := evaluation.NewClientFromEnv(
+		evaluation.Options{
 			Logf:  debugLogger(stderr),
 			Warnf: warnLogger(stderr),
 		},

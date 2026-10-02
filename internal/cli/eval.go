@@ -151,8 +151,8 @@ func executeEval(
 	if exitCode != 0 {
 		return exitCode
 	}
-	evaluator, err := evaluation.NewTypeSafeFromEnvWithOptions(
-		evaluation.TypeSafeOptions{
+	evaluator, err := evaluation.NewClientFromEnv(
+		evaluation.Options{
 			Cache:   resultCache,
 			Refresh: options.eval.cache.shouldRefresh(),
 			Logf:    debugLogger(stderr),

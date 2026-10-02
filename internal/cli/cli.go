@@ -517,8 +517,8 @@ func loadRun(
 	if exitCode != 0 {
 		return loadedRun{}, exitCode
 	}
-	evaluator, err := evaluation.NewTypeSafeFromEnvWithOptions(
-		evaluation.TypeSafeOptions{
+	evaluator, err := evaluation.NewClientFromEnv(
+		evaluation.Options{
 			Cache:   resultCache,
 			Refresh: options.check.cache.shouldRefresh(),
 			Logf:    debugLogger(stderr),
