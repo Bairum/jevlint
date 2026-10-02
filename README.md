@@ -8,9 +8,7 @@ code units, then asks Jev whether each one passes.
 - Go 1.26 or newer
 - CGO enabled
 - A C compiler
-- A Jev/SystemOne-compatible API key: a TypeSafe API key from
-  <https://console.typesafe.ai/settings/keys>, or a Cloudflare API token for
-  the hosted Clef models.
+- A TypeSafe API key from <https://console.typesafe.ai/settings/keys>
 
 ## Run
 
@@ -52,10 +50,7 @@ need to export anything. Create it next to where you run Jevlint:
 
 ```sh
 cat > .env <<'EOF'
-JEVLINT_PROVIDER=cloudflare
-CLOUDFLARE_ACCOUNT_ID=your-account-id
-CLOUDFLARE_AUTH_TOKEN=your-cloudflare-api-token
-CLEF_MODEL=clef
+TYPESAFE_API_KEY=apikey_...
 EOF
 ```
 
@@ -72,7 +67,7 @@ and an optional `export` prefix works.
   directory of `jevlint.json`. Run from the project root, or put `.env`
   wherever you run.
 - **Precedence:** values already set in the environment win over `.env`, so
-  `CLOUDFLARE_AUTH_TOKEN=... jevlint check .` overrides the file.
+  `TYPESAFE_API_KEY=... jevlint check .` overrides the file.
 - **Keep it secret:** add `.env` to `.gitignore`; it holds an API token.
 - **Errors are fatal:** a malformed `.env` stops the run instead of silently
   falling back.
@@ -80,37 +75,19 @@ and an optional `export` prefix works.
   credential kind (never the value), the request body, and the response to
   stderr.
 
-To use TypeSafe's Jev instead of Clef, put this in `./.env`:
-
-```sh
-TYPESAFE_API_KEY=apikey_...
-```
-
 ### Providers
 
-By default Jevlint sends requests to TypeSafe's Jev at
+Jevlint sends requests to TypeSafe's Jev at
 `https://api.typesafe.ai/v1/systemone`.
 
 | Variable | Meaning |
 | --- | --- |
-| `TYPESAFE_API_KEY` | API key. Required unless using Cloudflare. |
+| `TYPESAFE_API_KEY` | API key. |
 | `TYPESAFE_BASE_URL` | Service base URL. Defaults to `https://api.typesafe.ai`. |
 | `TYPESAFE_DEFAULT_MODEL` | Model name. Defaults to `jev-latest`. |
 | `TYPESAFE_ENDPOINT` | Full request URL, bypassing `TYPESAFE_BASE_URL`. |
 
-To use the hosted [Clef decision models on Cloudflare Workers
-AI](https://developers.cloudflare.com/workers-ai/models/clef), set
-`JEVLINT_PROVIDER=cloudflare`:
-
-| Variable | Meaning |
-| --- | --- |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account id. |
-| `CLOUDFLARE_AUTH_TOKEN` or `CLOUDFLARE_API_TOKEN` | Cloudflare API token. |
-| `CLEF_MODEL` | `clef` (default) or `clef-flash`. |
-
-Clef speaks the same request and response shape as Jev, so rules, findings,
-and caching work unchanged. Set `TYPESAFE_ENDPOINT` to target any other
-SystemOne-compatible service.
+Set `TYPESAFE_ENDPOINT` to target another SystemOne-compatible service.
 
 ## Rules
 
