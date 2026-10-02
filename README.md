@@ -80,10 +80,6 @@ go run ./cmd/jevlint eval --rule database-joins --format json
 | `--format text\|json` | Select human-readable or machine-readable output. Defaults to `text`. |
 | `--refresh-cache` | Reevaluate code and replace matching cached results. |
 
-```sh
-go build -o jevlint ./cmd/jevlint
-```
-
 ## Configuration
 
 Jevlint reads `jevlint.json` for rules. Credentials and provider settings come
