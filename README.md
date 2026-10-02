@@ -17,7 +17,7 @@ from the project root:
 
 ```sh
 go run ./cmd/jevlint check .
-go run ./cmd/jevlint check --format json
+go run ./cmd/jevlint check --format json .
 go run ./cmd/jevlint check --concurrency 8 . 
 go run ./cmd/jevlint check --refresh-cache .
 go run ./cmd/jevlint eval
