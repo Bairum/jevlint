@@ -8,7 +8,9 @@ code units, then asks Jev whether each one passes.
 - Go 1.26 or newer
 - CGO enabled
 - A C compiler
-- A TypeSafe API key from <https://console.typesafe.ai/settings/keys>
+- A Jev/SystemOne-compatible API key: a TypeSafe API key from
+  <https://console.typesafe.ai/settings/keys>, or a Cloudflare API token for
+  the hosted Clef models.
 
 ## Run
 
@@ -16,8 +18,8 @@ code units, then asks Jev whether each one passes.
 export TYPESAFE_API_KEY="apikey_..."
 
 go run ./cmd/jevlint check .
-go run ./cmd/jevlint check --format json src
-go run ./cmd/jevlint check --concurrency 8 src
+go run ./cmd/jevlint check --format json
+go run ./cmd/jevlint check --concurrency 8 . 
 go run ./cmd/jevlint check --refresh-cache .
 go run ./cmd/jevlint eval
 go run ./cmd/jevlint eval --rule database-joins --format json
@@ -38,6 +40,56 @@ go build -o jevlint ./cmd/jevlint
 ```
 
 Set `TYPESAFE_BASE_URL` or `TYPESAFE_DEFAULT_MODEL` to override the API defaults.
+
+### Providers
+
+By default Jevlint sends requests to TypeSafe's Jev at
+`https://api.typesafe.ai/v1/systemone`.
+
+| Variable | Meaning |
+| --- | --- |
+| `TYPESAFE_API_KEY` | API key. Required unless using Cloudflare. |
+| `TYPESAFE_BASE_URL` | Service base URL. Defaults to `https://api.typesafe.ai`. |
+| `TYPESAFE_DEFAULT_MODEL` | Model name. Defaults to `jev-latest`. |
+| `TYPESAFE_ENDPOINT` | Full request URL, bypassing `TYPESAFE_BASE_URL`. |
+
+To use the hosted [Clef decision models on Cloudflare Workers
+AI](https://developers.cloudflare.com/workers-ai/models/clef) instead, set
+`JEVLINT_PROVIDER=cloudflare` and:
+
+| Variable | Meaning |
+| --- | --- |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account id. |
+| `CLOUDFLARE_AUTH_TOKEN` or `CLOUDFLARE_API_TOKEN` | Cloudflare API token. |
+| `CLEF_MODEL` | `clef` (default) or `clef-flash`. |
+
+```sh
+export JEVLINT_PROVIDER=cloudflare
+export CLOUDFLARE_ACCOUNT_ID="..."
+export CLOUDFLARE_AUTH_TOKEN="..."
+export CLEF_MODEL=clef
+go run ./cmd/jevlint check .
+```
+
+Clef speaks the same request and response shape as Jev, so rules, findings,
+and caching work unchanged. Set `TYPESAFE_ENDPOINT` to target any other
+SystemOne-compatible service.
+
+Jevlint loads a `.env` file from the working directory when one is present, so
+you can keep credentials out of the shell:
+
+```sh
+# .env  (add ".env" to .gitignore)
+JEVLINT_PROVIDER=cloudflare
+CLOUDFLARE_ACCOUNT_ID=...
+CLOUDFLARE_AUTH_TOKEN=...
+CLEF_MODEL=clef
+```
+
+Values already set in the environment take precedence over `.env`.
+
+Set `JEVLINT_DEBUG=1` to print each request URL, the credential kind (never the
+value), the request body, and the response to stderr.
 
 ## Rules
 
