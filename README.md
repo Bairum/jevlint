@@ -3,19 +3,65 @@
 Jevlint checks code against plain-language rules. It uses Tree-sitter to extract
 code units, then asks Jev whether each one passes.
 
+## Install
+
+Download a prebuilt binary from
+[Releases](https://github.com/codegirl-007/jevlint/releases) — `linux` and
+`macos` on `amd64`/`arm64`, and `windows` on `amd64` — unpack it, and put
+`jevlint` on your `PATH`.
+
+Or install with Go:
+
+```sh
+go install github.com/codegirl-007/jevlint/cmd/jevlint@latest
+```
+
+## Getting started
+
+```sh
+cd your-project
+jevlint init                          # write a starter jevlint.json
+export TYPESAFE_API_KEY=apikey_...    # from console.typesafe.ai
+jevlint doctor                        # verify the config and credentials
+jevlint check .
+```
+
+`init` detects the languages in the project and writes a starter
+`jevlint.json`. Add rules to `jevlint.json` (or install a pack) before the
+first check.
+
 ## Requirements
+
+Building from source (or installing with `go install`) needs:
 
 - Go 1.26 or newer
 - CGO enabled
 - A C compiler
-- A TypeSafe API key from <https://console.typesafe.ai/settings/keys>
+
+Running checks needs a TypeSafe API key from
+<https://console.typesafe.ai/settings/keys>.
+
+## Commands
+
+| Command | Description |
+| --- | --- |
+| `jevlint init` | Write a starter `jevlint.json` for the project. |
+| `jevlint doctor` | Check that the config loads and the credentials work. |
+| `jevlint check [paths...]` | Check code against the rules. |
+| `jevlint eval` | Score rules against fixtures in `jevlint-evals.json`. |
+| `jevlint plugin ...` | Manage rule packs. |
+| `jevlint version` | Print the version. |
+
+`init` and `doctor` accept `--json` for machine-readable output.
 
 ## Run
 
-Put your credentials in `./.env` (see [Configuration](#configuration)), then run
-from the project root:
+Set `TYPESAFE_API_KEY` in your environment (see
+[Configuration](#configuration)), then run from the project root:
 
 ```sh
+go run ./cmd/jevlint init
+go run ./cmd/jevlint doctor
 go run ./cmd/jevlint check .
 go run ./cmd/jevlint check --format json .
 go run ./cmd/jevlint check --concurrency 8 . 
@@ -40,38 +86,18 @@ go build -o jevlint ./cmd/jevlint
 
 ## Configuration
 
-Jevlint reads `jevlint.json` for rules and a `.env` file for credentials and
-provider settings.
-
-### Set up `./.env`
-
-Jevlint loads `./.env` from the working directory automatically, so you do not
-need to export anything. Create it next to where you run Jevlint:
+Jevlint reads `jevlint.json` for rules. Credentials and provider settings come
+from environment variables.
 
 ```sh
-cat > .env <<'EOF'
-TYPESAFE_API_KEY=apikey_...
-EOF
+export TYPESAFE_API_KEY=apikey_...
 ```
 
-Then run from the same directory:
+`init` writes only `jevlint.json`; it does not create or modify any other file.
 
-```sh
-jevlint check .
-```
-
-The file is one `KEY=VALUE` per line. Blank lines and `#` comments are ignored,
-and an optional `export` prefix works.
-
-- **Where it is read:** the working directory you run Jevlint from, not the
-  directory of `jevlint.json`. Run from the project root, or put `.env`
-  wherever you run.
-- **Precedence:** values already set in the environment win over `.env`, so
-  `TYPESAFE_API_KEY=... jevlint check .` overrides the file.
-- **Keep it secret:** add `.env` to `.gitignore`; it holds an API token.
-- **Errors are fatal:** a malformed `.env` stops the run instead of silently
-  falling back.
-- **Debugging:** add `JEVLINT_DEBUG=1` to print each request URL, the
+- **Keep it secret:** export the key from your shell profile or a secret
+  manager. Jevlint never writes credentials into the project.
+- **Debugging:** set `JEVLINT_DEBUG=1` to print each request URL, the
   credential kind (never the value), the request body, and the response to
   stderr.
 

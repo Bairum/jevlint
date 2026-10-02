@@ -291,6 +291,17 @@ func validateCallQuery(
 	return nil, fmt.Errorf("%s call query must capture @call", languageName)
 }
 
+// PresetExtensions returns the default file extensions for each built-in
+// language preset, keyed by preset name.
+func PresetExtensions() map[string][]string {
+	presets := languagePresets()
+	extensions := make(map[string][]string, len(presets))
+	for name, preset := range presets {
+		extensions[name] = append([]string(nil), preset.extensions...)
+	}
+	return extensions
+}
+
 // languagePresets returns the built in settings for each language.
 func languagePresets() map[string]languagePreset {
 	typescriptComments := []string{"comment"}

@@ -18,7 +18,7 @@ func executePlugin(
 	userCacheDir func() (string, error),
 ) int {
 	if len(args) == 0 {
-		fmt.Fprint(stderr, pluginUsage)
+		fmt.Fprint(stderr, pluginUsage())
 		return exitUsageError
 	}
 	switch args[0] {
@@ -33,10 +33,10 @@ func executePlugin(
 	case "remove":
 		return pluginRemove(args[1:], stdout, stderr)
 	case "-h", "--help":
-		fmt.Fprint(stderr, pluginUsage)
+		fmt.Fprint(stderr, pluginUsage())
 		return exitSuccess
 	default:
-		fmt.Fprintf(stderr, "jevlint: unknown plugin command %q\n\n%s", args[0], pluginUsage)
+		fmt.Fprintf(stderr, "jevlint: unknown plugin command %q\n\n%s", args[0], pluginUsage())
 		return exitUsageError
 	}
 }
@@ -210,7 +210,7 @@ func pluginRemove(args []string, stdout io.Writer, stderr io.Writer) int {
 func pluginInit(args []string, stdout io.Writer, stderr io.Writer) int {
 	for _, arg := range args {
 		if arg == "-h" || arg == "--help" {
-			fmt.Fprint(stderr, pluginUsage)
+			fmt.Fprint(stderr, pluginUsage())
 			return exitSuccess
 		}
 	}
@@ -276,7 +276,7 @@ func parsePluginInitArgs(args []string, stderr io.Writer) (pluginInitOptions, in
 		}
 	}
 	if len(positional) < 1 || len(positional) > 2 {
-		fmt.Fprint(stderr, pluginUsage)
+		fmt.Fprint(stderr, pluginUsage())
 		return pluginInitOptions{}, exitUsageError
 	}
 	options.id = positional[0]
@@ -322,7 +322,7 @@ func parsePluginArgs(args []string, minPositional int, stderr io.Writer) (string
 		}
 	}
 	if len(positional) < minPositional {
-		fmt.Fprint(stderr, pluginUsage)
+		fmt.Fprint(stderr, pluginUsage())
 		return "", nil, exitUsageError
 	}
 	return configPath, positional, exitSuccess

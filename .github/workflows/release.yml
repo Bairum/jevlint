@@ -1,0 +1,114 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-amd64
+            os: ubuntu-latest
+          - name: linux-arm64
+            os: ubuntu-24.04-arm
+          - name: darwin-amd64
+            os: macos-15-intel
+          - name: darwin-arm64
+            os: macos-14
+          - name: windows-amd64
+            os: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install a C compiler (Windows)
+        if: runner.os == 'Windows'
+        run: choco install mingw --no-progress -y
+        shell: pwsh
+
+      - name: Build
+        shell: bash
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}"
+          ext=""
+          if [ "${RUNNER_OS}" = "Windows" ]; then ext=".exe"; fi
+          mkdir -p dist
+          go build -trimpath \
+            -ldflags "-s -w -X github.com/codegirl-007/jevlint/internal/cli.version=${version}" \
+            -o "dist/jevlint${ext}" ./cmd/jevlint
+
+      - name: Package (unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="jevlint_${GITHUB_REF_NAME}_${{ matrix.name }}"
+          mkdir -p "package/${name}"
+          cp dist/jevlint "package/${name}/"
+          if [ -f README.md ]; then cp README.md "package/${name}/"; fi
+          if [ -f LICENSE ]; then cp LICENSE "package/${name}/"; fi
+          tar -C package -czf "dist/${name}.tar.gz" "${name}"
+          rm -rf package
+
+      - name: Package (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $name = "jevlint_${env:GITHUB_REF_NAME}_${{ matrix.name }}"
+          New-Item -ItemType Directory -Force -Path "package/$name" | Out-Null
+          Copy-Item dist/jevlint.exe "package/$name/"
+          if (Test-Path README.md) { Copy-Item README.md "package/$name/" }
+          if (Test-Path LICENSE) { Copy-Item LICENSE "package/$name/" }
+          Compress-Archive -Path "package/$name" -DestinationPath "dist/$name.zip" -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.name }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+          if-no-files-found: error
+
+  release:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum * > checksums.txt
+          cat checksums.txt
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*
+          generate_release_notes: true

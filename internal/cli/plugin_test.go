@@ -310,6 +310,19 @@ func passingRulesServer(t *testing.T, ids ...string) *httptest.Server {
 	return server
 }
 
+func TestPluginUsageListsSupportedLanguages(t *testing.T) {
+	t.Parallel()
+
+	var stdout, stderr bytes.Buffer
+	if code := runCLI(context.Background(), []string{"plugin"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("plugin with no args exit = %d, want 2", code)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "supported:") || !strings.Contains(out, "typescript") {
+		t.Fatalf("plugin usage missing supported languages:\n%s", out)
+	}
+}
+
 func TestEvalDefaultFileIsJeVlintEvalsJSON(t *testing.T) {
 	t.Parallel()
 	if evals.DefaultFile != "jevlint-evals.json" {
