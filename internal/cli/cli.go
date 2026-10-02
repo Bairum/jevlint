@@ -17,6 +17,7 @@ import (
 	"github.com/codegirl-007/jevlint/internal/packs"
 	"github.com/codegirl-007/jevlint/internal/parsing"
 	"github.com/codegirl-007/jevlint/internal/runner"
+	"github.com/joho/godotenv"
 )
 
 const usage = `Usage:
@@ -264,6 +265,10 @@ func Run(
 		fmt.Fprint(stderr, usage)
 		return exitUsageError
 	}
+	if err := loadDotEnv(); err != nil {
+		fmt.Fprintf(stderr, "jevlint: %v\n", err)
+		return exitUsageError
+	}
 	command := parseCLICommand(args[0])
 	if dispatch := handleSpecialCommand(args[0], stdout, stderr); dispatch.handled {
 		return dispatch.exitCode
@@ -499,6 +504,7 @@ func loadRun(
 		evaluation.TypeSafeOptions{
 			Cache:   resultCache,
 			Refresh: options.check.cache.shouldRefresh(),
+			Logf:    debugLogger(stderr),
 		},
 		os.Getenv,
 	)
@@ -513,6 +519,30 @@ func loadRun(
 		extractor:      extractor,
 		evaluator:      evaluator,
 	}, exitSuccess
+}
+
+// loadDotEnv loads the variables from a .env file in the working directory, if
+// present. Variables already set in the environment win.
+func loadDotEnv() error {
+	if err := godotenv.Load(); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("load .env: %w", err)
+	}
+	return nil
+}
+
+// debugLogger returns a request logger when JEVLINT_DEBUG is set. It writes to
+// stderr so it never mixes with JSON output on stdout. Credentials are never
+// logged.
+func debugLogger(stderr io.Writer) func(string, ...any) {
+	if strings.TrimSpace(os.Getenv("JEVLINT_DEBUG")) == "" {
+		return nil
+	}
+	return func(format string, args ...any) {
+		fmt.Fprintf(stderr, format+"\n", args...)
+	}
 }
 
 // loadProject loads the config and builds the parser.

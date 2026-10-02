@@ -22,23 +22,26 @@ import (
 )
 
 const (
-	defaultBaseURL      = "https://api.typesafe.ai"
-	defaultModel        = "jev-latest"
-	defaultTimeout      = 10 * time.Second
-	defaultMaxRetries   = 2
-	maxResponseBytes    = 1 << 20
-	cacheKeyVersion     = "typesafe-evaluation-v1"
-	answerTypeChoice    = "choice"
-	httpSuccessMin      = 200
-	httpSuccessLimit    = 300
-	retryBackoffBase    = 500 * time.Millisecond
-	retryBackoffCap     = 5 * time.Second
-	retryAfterHeaderMax = time.Minute
-	criterionPass       = "The code complies with the rule, or an explicit exception applies."
-	criterionFail       = "The code violates the rule, and no explicit exception applies."
-	criterionSkip       = "The rule's subject is not present in this unit; the rule does not apply."
-	criterionAbstain    = "The rule is relevant, but the supplied code does not contain enough context to decide pass or fail."
-	minimumBatchRules   = 1
+	defaultBaseURL          = "https://api.typesafe.ai"
+	defaultModel            = "jev-latest"
+	defaultCloudflareAPIURL = "https://api.cloudflare.com/client/v4"
+	defaultClefModel        = "clef"
+	defaultTimeout          = 10 * time.Second
+	defaultMaxRetries       = 2
+	maxResponseBytes        = 1 << 20
+	maxDebugBodyBytes       = 16 << 10
+	cacheKeyVersion         = "typesafe-evaluation-v1"
+	answerTypeChoice        = "choice"
+	httpSuccessMin          = 200
+	httpSuccessLimit        = 300
+	retryBackoffBase        = 500 * time.Millisecond
+	retryBackoffCap         = 5 * time.Second
+	retryAfterHeaderMax     = time.Minute
+	criterionPass           = "The code complies with the rule, or an explicit exception applies."
+	criterionFail           = "The code violates the rule, and no explicit exception applies."
+	criterionSkip           = "The rule's subject is not present in this unit; the rule does not apply."
+	criterionAbstain        = "The rule is relevant, but the supplied code does not contain enough context to decide pass or fail."
+	minimumBatchRules       = 1
 )
 
 // APIKey is the credential sent to the service.
@@ -49,25 +52,32 @@ type ServiceURL string
 
 // TypeSafeOptions holds the settings for a client.
 type TypeSafeOptions struct {
-	APIKey     APIKey
+	APIKey APIKey
+	// Endpoint is the full request URL. When empty, BaseURL plus
+	// "/v1/systemone" is used.
+	Endpoint   string
 	BaseURL    ServiceURL
 	HTTPClient *http.Client
 	MaxRetries int
 	Sleep      func(context.Context, time.Duration) error
 	Cache      ResultCache
 	Refresh    bool
+	// Logf, when set, receives request and response debug lines. The
+	// Authorization header is never logged.
+	Logf func(format string, args ...any)
 }
 
-// TypeSafe is a client for the Jev service.
+// TypeSafe is a client for a Jev/SystemOne compatible decision service.
 type TypeSafe struct {
 	apiKey      string
-	baseURL     string
+	endpoint    string
 	model       string
 	httpClient  *http.Client
 	maxRetries  int
 	sleep       func(context.Context, time.Duration) error
 	cache       ResultCache
 	refresh     bool
+	logf        func(string, ...any)
 	inflightMu  sync.Mutex
 	inflight    map[string]*evaluationCall
 	cacheHits   atomic.Uint64
@@ -108,6 +118,13 @@ type question struct {
 // systemOneResponse is the body returned by the service.
 type systemOneResponse struct {
 	Answers map[string]choiceAnswer `json:"answers"`
+}
+
+// envelopeResponse handles hosts such as Cloudflare Workers AI that wrap the
+// SystemOne body in a "result" field.
+type envelopeResponse struct {
+	Answers map[string]choiceAnswer `json:"answers"`
+	Result  *systemOneResponse      `json:"result"`
 }
 
 // choiceAnswer is the service answer for one rule.
@@ -174,35 +191,157 @@ func (kind *questionType) UnmarshalJSON(data []byte) error {
 }
 
 // NewTypeSafeFromEnvWithOptions reads the environment and builds a client.
+//
+// Two providers are supported. The default talks to a Jev/SystemOne
+// compatible service (TypeSafe by default) using TYPESAFE_API_KEY,
+// TYPESAFE_BASE_URL, and TYPESAFE_DEFAULT_MODEL. Set
+// JEVLINT_PROVIDER=cloudflare to talk to the Clef models hosted on Cloudflare
+// Workers AI using CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_AUTH_TOKEN (or
+// CLOUDFLARE_API_TOKEN), with CLEF_MODEL selecting "clef" or "clef-flash".
+// TYPESAFE_ENDPOINT overrides the request URL for any provider.
 func NewTypeSafeFromEnvWithOptions(
 	options TypeSafeOptions,
 	getenv func(string) string,
 ) (*TypeSafe, error) {
+	model := ""
 	if getenv != nil {
-		if options.APIKey == "" {
-			options.APIKey = APIKey(getenv("TYPESAFE_API_KEY"))
+		if options.Endpoint == "" {
+			options.Endpoint = strings.TrimSpace(getenv("TYPESAFE_ENDPOINT"))
 		}
 		if options.BaseURL == "" {
 			options.BaseURL = ServiceURL(getenv("TYPESAFE_BASE_URL"))
+		}
+		model = strings.TrimSpace(getenv("TYPESAFE_DEFAULT_MODEL"))
+		typesafeKey := APIKey(strings.TrimSpace(getenv("TYPESAFE_API_KEY")))
+
+		provider := strings.ToLower(strings.TrimSpace(getenv("JEVLINT_PROVIDER")))
+		switch provider {
+		case "", "typesafe", "jev":
+			if options.APIKey == "" {
+				options.APIKey = typesafeKey
+			}
+		case "cloudflare", "clef":
+			clefModel := firstNonEmpty(
+				strings.TrimSpace(getenv("CLEF_MODEL")),
+				model,
+				defaultClefModel,
+			)
+			// A caller-supplied endpoint may point at a self-hosted
+			// SystemOne service, so it is the only case where a non
+			// Cloudflare key is accepted.
+			customEndpoint := options.Endpoint != ""
+			if !customEndpoint {
+				accountID := strings.TrimSpace(getenv("CLOUDFLARE_ACCOUNT_ID"))
+				if accountID == "" {
+					return nil, errors.New(
+						"CLOUDFLARE_ACCOUNT_ID is required when " +
+							"JEVLINT_PROVIDER=cloudflare",
+					)
+				}
+				options.Endpoint = cloudflareAIEndpoint(accountID, clefModel)
+			}
+			if options.APIKey == "" {
+				authToken := strings.TrimSpace(getenv("CLOUDFLARE_AUTH_TOKEN"))
+				apiToken := strings.TrimSpace(getenv("CLOUDFLARE_API_TOKEN"))
+				if authToken != "" && apiToken != "" && authToken != apiToken {
+					return nil, errors.New(
+						"CLOUDFLARE_AUTH_TOKEN and CLOUDFLARE_API_TOKEN " +
+							"are set to different values; set only one",
+					)
+				}
+				token := firstNonEmpty(authToken, apiToken)
+				switch {
+				case token != "":
+					options.APIKey = APIKey(token)
+				case customEndpoint:
+					options.APIKey = typesafeKey
+				default:
+					return nil, errors.New(
+						"CLOUDFLARE_AUTH_TOKEN is required when " +
+							"JEVLINT_PROVIDER=cloudflare",
+					)
+				}
+			}
+			model = clefModel
+		default:
+			return nil, fmt.Errorf("unknown JEVLINT_PROVIDER %q", provider)
 		}
 	}
 	client, err := NewTypeSafe(options)
 	if err != nil {
 		return nil, err
 	}
-	if getenv != nil {
-		if model := strings.TrimSpace(getenv("TYPESAFE_DEFAULT_MODEL")); model != "" {
-			client.model = model
-		}
+	if model != "" {
+		client.model = model
+	}
+	if client.logf != nil {
+		client.debugf(
+			"jevlint: using endpoint=%s model=%s credential=%s",
+			client.endpoint,
+			client.model,
+			describeCredential(client.apiKey),
+		)
 	}
 	return client, nil
+}
+
+// describeCredential names the kind of credential without revealing it.
+func describeCredential(key string) string {
+	kind := "unknown"
+	switch {
+	case strings.HasPrefix(key, "apikey_"):
+		kind = "typesafe-key"
+	case strings.HasPrefix(key, "cfut_"):
+		kind = "cloudflare user token"
+	case strings.HasPrefix(key, "cfat_"):
+		kind = "cloudflare account token"
+	case strings.HasPrefix(key, "cfk_"):
+		kind = "cloudflare global key"
+	}
+	return fmt.Sprintf("%s (len %d)", kind, len(key))
+}
+
+// cloudflareAIEndpoint builds the Workers AI URL for one Clef model.
+func cloudflareAIEndpoint(accountID string, model string) string {
+	return defaultCloudflareAPIURL + "/accounts/" + url.PathEscape(accountID) +
+		"/ai/run/@cf/cloudflare/" + url.PathEscape(model)
+}
+
+// firstNonEmpty returns the first non-empty value, or "".
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+// debugf writes one debug line when request logging is enabled.
+func (client *TypeSafe) debugf(format string, args ...any) {
+	if client.logf != nil {
+		client.logf(format, args...)
+	}
+}
+
+// debugBody renders a body for logging, capped so a large code state stays
+// readable while still showing where it was cut off.
+func debugBody(body []byte) string {
+	if len(body) <= maxDebugBodyBytes {
+		return string(body)
+	}
+	return string(body[:maxDebugBodyBytes]) +
+		fmt.Sprintf("\n... (truncated %d bytes)", len(body)-maxDebugBodyBytes)
 }
 
 // NewTypeSafe builds a client from the given settings.
 func NewTypeSafe(options TypeSafeOptions) (*TypeSafe, error) {
 	apiKey := strings.TrimSpace(string(options.APIKey))
 	if apiKey == "" {
-		return nil, errors.New("TYPESAFE_API_KEY is required")
+		return nil, errors.New(
+			"an API key is required: set TYPESAFE_API_KEY, or use " +
+				"JEVLINT_PROVIDER=cloudflare with CLOUDFLARE_AUTH_TOKEN",
+		)
 	}
 
 	baseURL := strings.TrimRight(strings.TrimSpace(string(options.BaseURL)), "/")
@@ -212,6 +351,17 @@ func NewTypeSafe(options TypeSafeOptions) (*TypeSafe, error) {
 	parsedURL, err := url.Parse(baseURL)
 	if err != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
 		return nil, fmt.Errorf("invalid TypeSafe base URL %q", baseURL)
+	}
+
+	endpoint := strings.TrimSpace(options.Endpoint)
+	if endpoint != "" {
+		parsedEndpoint, endpointErr := url.Parse(endpoint)
+		if endpointErr != nil || parsedEndpoint.Scheme == "" ||
+			parsedEndpoint.Host == "" {
+			return nil, fmt.Errorf("invalid endpoint %q", endpoint)
+		}
+	} else {
+		endpoint = baseURL + "/v1/systemone"
 	}
 
 	model := defaultModel
@@ -236,13 +386,14 @@ func NewTypeSafe(options TypeSafeOptions) (*TypeSafe, error) {
 
 	return &TypeSafe{
 		apiKey:     apiKey,
-		baseURL:    baseURL,
+		endpoint:   endpoint,
 		model:      model,
 		httpClient: httpClient,
 		maxRetries: maxRetries,
 		sleep:      sleep,
 		cache:      options.Cache,
 		refresh:    options.Refresh,
+		logf:       options.Logf,
 		inflight:   make(map[string]*evaluationCall),
 	}, nil
 }
@@ -443,17 +594,22 @@ func decodeResults(
 	responseBody []byte,
 	rules []config.Rule,
 ) (map[string]Result, error) {
-	var response systemOneResponse
+	var response envelopeResponse
 	if err := json.Unmarshal(responseBody, &response); err != nil {
 		return nil, fmt.Errorf("decode TypeSafe response: %w", err)
 	}
-	if response.Answers == nil {
+	answers := response.Answers
+	if answers == nil && response.Result != nil {
+		// Cloudflare Workers AI returns {"result":{"answers":...}}.
+		answers = response.Result.Answers
+	}
+	if answers == nil {
 		return nil, errors.New("decode TypeSafe response: answers are missing")
 	}
 
 	results := make(map[string]Result, len(rules))
 	for _, rule := range rules {
-		answer, ok := response.Answers[rule.ID]
+		answer, ok := answers[rule.ID]
 		if !ok {
 			return nil, fmt.Errorf("decode TypeSafe response: answer for rule %q is missing", rule.ID)
 		}
@@ -504,7 +660,7 @@ func (client *TypeSafe) cacheKey(body []byte) string {
 	hash := sha256.New()
 	for _, part := range [][]byte{
 		[]byte(cacheKeyVersion),
-		[]byte(client.baseURL),
+		[]byte(client.endpoint),
 		[]byte(client.model),
 		[]byte(fmt.Sprintf("%x", credential)),
 		body,
@@ -539,6 +695,7 @@ func (client *TypeSafe) perform(ctx context.Context, body []byte) ([]byte, error
 		if err != nil {
 			return nil, err
 		}
+		client.debugf("jevlint: response %s: %s", response.Status, debugBody(responseBody))
 		if response.StatusCode >= httpSuccessMin && response.StatusCode < httpSuccessLimit {
 			return responseBody, nil
 		}
@@ -560,7 +717,7 @@ func (client *TypeSafe) newRequest(
 	request, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
-		client.baseURL+"/v1/systemone",
+		client.endpoint,
 		bytes.NewReader(body),
 	)
 	if err != nil {
@@ -574,6 +731,15 @@ func (client *TypeSafe) newRequest(
 	request.Header.Set("X-TypeSafe-Runtime", runtime.Version())
 	if attempt > 0 {
 		request.Header.Set("X-TypeSafe-Retry-Count", strconv.Itoa(attempt))
+	}
+	if client.logf != nil {
+		client.debugf("jevlint: request POST %s", client.endpoint)
+		client.debugf(
+			"jevlint: request headers: Content-Type=%s Accept=%s Authorization=Bearer <redacted>",
+			request.Header.Get("Content-Type"),
+			request.Header.Get("Accept"),
+		)
+		client.debugf("jevlint: request body: %s", debugBody(body))
 	}
 	return request, nil
 }

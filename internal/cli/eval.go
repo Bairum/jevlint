@@ -155,6 +155,7 @@ func executeEval(
 		evaluation.TypeSafeOptions{
 			Cache:   resultCache,
 			Refresh: options.eval.cache.shouldRefresh(),
+			Logf:    debugLogger(stderr),
 		},
 		os.Getenv,
 	)

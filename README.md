@@ -14,9 +14,10 @@ code units, then asks Jev whether each one passes.
 
 ## Run
 
-```sh
-export TYPESAFE_API_KEY="apikey_..."
+Put your credentials in `./.env` (see [Configuration](#configuration)), then run
+from the project root:
 
+```sh
 go run ./cmd/jevlint check .
 go run ./cmd/jevlint check --format json
 go run ./cmd/jevlint check --concurrency 8 . 
@@ -39,7 +40,51 @@ go run ./cmd/jevlint eval --rule database-joins --format json
 go build -o jevlint ./cmd/jevlint
 ```
 
-Set `TYPESAFE_BASE_URL` or `TYPESAFE_DEFAULT_MODEL` to override the API defaults.
+## Configuration
+
+Jevlint reads `jevlint.json` for rules and a `.env` file for credentials and
+provider settings.
+
+### Set up `./.env`
+
+Jevlint loads `./.env` from the working directory automatically, so you do not
+need to export anything. Create it next to where you run Jevlint:
+
+```sh
+cat > .env <<'EOF'
+JEVLINT_PROVIDER=cloudflare
+CLOUDFLARE_ACCOUNT_ID=your-account-id
+CLOUDFLARE_AUTH_TOKEN=your-cloudflare-api-token
+CLEF_MODEL=clef
+EOF
+```
+
+Then run from the same directory:
+
+```sh
+jevlint check .
+```
+
+The file is one `KEY=VALUE` per line. Blank lines and `#` comments are ignored,
+and an optional `export` prefix works.
+
+- **Where it is read:** the working directory you run Jevlint from, not the
+  directory of `jevlint.json`. Run from the project root, or put `.env`
+  wherever you run.
+- **Precedence:** values already set in the environment win over `.env`, so
+  `CLOUDFLARE_AUTH_TOKEN=... jevlint check .` overrides the file.
+- **Keep it secret:** add `.env` to `.gitignore`; it holds an API token.
+- **Errors are fatal:** a malformed `.env` stops the run instead of silently
+  falling back.
+- **Debugging:** add `JEVLINT_DEBUG=1` to print each request URL, the
+  credential kind (never the value), the request body, and the response to
+  stderr.
+
+To use TypeSafe's Jev instead of Clef, put this in `./.env`:
+
+```sh
+TYPESAFE_API_KEY=apikey_...
+```
 
 ### Providers
 
@@ -54,8 +99,8 @@ By default Jevlint sends requests to TypeSafe's Jev at
 | `TYPESAFE_ENDPOINT` | Full request URL, bypassing `TYPESAFE_BASE_URL`. |
 
 To use the hosted [Clef decision models on Cloudflare Workers
-AI](https://developers.cloudflare.com/workers-ai/models/clef) instead, set
-`JEVLINT_PROVIDER=cloudflare` and:
+AI](https://developers.cloudflare.com/workers-ai/models/clef), set
+`JEVLINT_PROVIDER=cloudflare`:
 
 | Variable | Meaning |
 | --- | --- |
@@ -63,33 +108,9 @@ AI](https://developers.cloudflare.com/workers-ai/models/clef) instead, set
 | `CLOUDFLARE_AUTH_TOKEN` or `CLOUDFLARE_API_TOKEN` | Cloudflare API token. |
 | `CLEF_MODEL` | `clef` (default) or `clef-flash`. |
 
-```sh
-export JEVLINT_PROVIDER=cloudflare
-export CLOUDFLARE_ACCOUNT_ID="..."
-export CLOUDFLARE_AUTH_TOKEN="..."
-export CLEF_MODEL=clef
-go run ./cmd/jevlint check .
-```
-
 Clef speaks the same request and response shape as Jev, so rules, findings,
 and caching work unchanged. Set `TYPESAFE_ENDPOINT` to target any other
 SystemOne-compatible service.
-
-Jevlint loads a `.env` file from the working directory when one is present, so
-you can keep credentials out of the shell:
-
-```sh
-# .env  (add ".env" to .gitignore)
-JEVLINT_PROVIDER=cloudflare
-CLOUDFLARE_ACCOUNT_ID=...
-CLOUDFLARE_AUTH_TOKEN=...
-CLEF_MODEL=clef
-```
-
-Values already set in the environment take precedence over `.env`.
-
-Set `JEVLINT_DEBUG=1` to print each request URL, the credential kind (never the
-value), the request body, and the response to stderr.
 
 ## Rules
 
