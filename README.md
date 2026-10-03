@@ -100,13 +100,14 @@ export TYPESAFE_API_KEY=apikey_...
 ### Providers
 
 Jevlint selects a provider from `JEVLINT_PROVIDER`: `typesafe`, `jev`,
-`cloudflare`, or `clef` (default: `typesafe`). The default talks to TypeSafe's
-Jev at `https://api.typesafe.ai/v1/systemone`. `cloudflare`/`clef` use
-Cloudflare Workers AI instead (see below).
+`cloudflare`, `clef`, or `openrouter` (default: `typesafe`). The default talks
+to TypeSafe's Jev at `https://api.typesafe.ai/v1/systemone`.
+`cloudflare`/`clef` use Cloudflare Workers AI, and `openrouter` uses Jev
+through OpenRouter (see below).
 
 | Variable | Meaning |
 | --- | --- |
-| `JEVLINT_PROVIDER` | Provider: `typesafe`, `jev`, `cloudflare`, or `clef` (default: `typesafe`). |
+| `JEVLINT_PROVIDER` | Provider: `typesafe`, `jev`, `cloudflare`, `clef`, or `openrouter` (default: `typesafe`). |
 | `TYPESAFE_API_KEY` | API key. |
 | `TYPESAFE_BASE_URL` | Service base URL. Defaults to `https://api.typesafe.ai`. |
 | `TYPESAFE_DEFAULT_MODEL` | Model name. Defaults to `jev-latest`. |
@@ -154,6 +155,31 @@ for details.
 
 Clef has the same request and response shape as Jev, so rules, findings, and
 caching work unchanged.
+
+#### OpenRouter (Jev)
+
+[OpenRouter](https://openrouter.ai) serves Jev through a System One endpoint, so
+you can run Jevlint with an OpenRouter key and OpenRouter billing instead of a
+TypeSafe account. Set `JEVLINT_PROVIDER=openrouter`:
+
+```sh
+export JEVLINT_PROVIDER=openrouter
+export OPENROUTER_API_KEY=sk-or-...
+export OPENROUTER_MODEL=typesafe/jev-1.13   # or ~typesafe/jev-latest
+```
+
+| Variable | Meaning |
+| --- | --- |
+| `OPENROUTER_API_KEY` | OpenRouter API key. |
+| `OPENROUTER_MODEL` | Model id. Defaults to `typesafe/jev-1.13`. |
+| `OPENROUTER_BASE_URL` | Service base URL. Defaults to `https://openrouter.ai/api`. |
+| `OPENROUTER_SITE_URL` | Optional; sent as the `HTTP-Referer` attribution header. |
+
+Requests go to `https://openrouter.ai/api/v1/systemone`, and the
+`X-Title: jevlint` attribution header is sent. Create a key at
+<https://openrouter.ai/settings/keys>. Jev is a decision model with the same
+request and response shape as TypeSafe's Jev, so rules, findings, and caching
+work unchanged.
 
 ## Rules
 

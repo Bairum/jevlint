@@ -173,6 +173,9 @@ func (CloudflareProvider) DescribeCredential(key string) string {
 	}
 }
 
+// Headers returns no extra request headers.
+func (CloudflareProvider) Headers() map[string]string { return nil }
+
 // cloudflareQuestionID matches the question ids Cloudflare accepts.
 var cloudflareQuestionID = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,100}$`)
 
