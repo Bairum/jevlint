@@ -27,6 +27,8 @@ type Provider interface {
 	ResponseError(status int, headers http.Header, body []byte) error
 	// DescribeCredential names the credential without revealing it.
 	DescribeCredential(key string) string
+	// Headers returns extra request headers for this provider, or nil.
+	Headers() map[string]string
 }
 
 // NewClientFromEnv selects a provider from the environment and builds a client.
@@ -53,11 +55,19 @@ func NewClientFromEnv(options Options, getenv func(string) string) (*Client, err
 	if err != nil {
 		return nil, err
 	}
-	if name == "" && cloudflareVariablesSet(getenv) {
-		client.warn(
-			"jevlint: Cloudflare variables are set but JEVLINT_PROVIDER " +
-				"is not cloudflare; using the default provider",
-		)
+	if name == "" {
+		if cloudflareVariablesSet(getenv) {
+			client.warn(
+				"jevlint: Cloudflare variables are set but JEVLINT_PROVIDER " +
+					"is not cloudflare; using the default provider",
+			)
+		}
+		if openRouterVariablesSet(getenv) {
+			client.warn(
+				"jevlint: OPENROUTER_* variables are set but JEVLINT_PROVIDER " +
+					"is not openrouter; using the default provider",
+			)
+		}
 	}
 	if client.logf != nil {
 		client.debugf(
@@ -78,6 +88,8 @@ func providerByName(name string) (Provider, error) {
 		return TypeSafeProvider{}, nil
 	case "cloudflare", "clef":
 		return CloudflareProvider{}, nil
+	case "openrouter":
+		return &OpenRouterProvider{}, nil
 	default:
 		return nil, fmt.Errorf("unknown JEVLINT_PROVIDER %q", name)
 	}
@@ -99,10 +111,11 @@ func cleanCredential(value string) string {
 	return strings.Trim(strings.TrimSpace(value), `"'`)
 }
 
-// serviceErrorBody covers the error shapes of both services: Jev's
-// {"error": "..."} and Cloudflare's {"errors": [{"code": ..., "message": ...}]}.
+// serviceErrorBody covers the error shapes of the services we talk to:
+// Jev's {"error": "..."}, Cloudflare's {"errors": [{"code", "message"}]}, and
+// OpenRouter's {"error": {"message", "code"}}.
 type serviceErrorBody struct {
-	Error  string `json:"error"`
+	Error  json.RawMessage `json:"error"`
 	Errors []struct {
 		Code    int    `json:"code"`
 		Message string `json:"message"`
@@ -113,14 +126,34 @@ type serviceErrorBody struct {
 func parseServiceError(body []byte) (string, int) {
 	var payload serviceErrorBody
 	if json.Unmarshal(body, &payload) == nil {
-		switch {
-		case payload.Error != "":
-			return payload.Error, 0
-		case len(payload.Errors) > 0:
+		if message, code, ok := parseErrorField(payload.Error); ok {
+			return message, code
+		}
+		if len(payload.Errors) > 0 {
 			return payload.Errors[0].Message, payload.Errors[0].Code
 		}
 	}
 	return strings.TrimSpace(string(body)), 0
+}
+
+// parseErrorField reads an `error` value that is either a string or an object
+// with `message` and `code`.
+func parseErrorField(raw json.RawMessage) (string, int, bool) {
+	if len(raw) == 0 {
+		return "", 0, false
+	}
+	var message string
+	if json.Unmarshal(raw, &message) == nil && message != "" {
+		return message, 0, true
+	}
+	var object struct {
+		Message string `json:"message"`
+		Code    int    `json:"code"`
+	}
+	if json.Unmarshal(raw, &object) == nil && (object.Message != "" || object.Code != 0) {
+		return object.Message, object.Code, true
+	}
+	return "", 0, false
 }
 
 // serviceError builds the shared "decision service returned" error.

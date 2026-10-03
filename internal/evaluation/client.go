@@ -638,6 +638,11 @@ func (client *Client) newRequest(
 	request.Header.Set("User-Agent", "github.com/codegirl-007/jevlint/0.1.0")
 	request.Header.Set("X-Jevlint-SDK", "github.com/codegirl-007/jevlint/0.1.0")
 	request.Header.Set("X-Jevlint-Runtime", runtime.Version())
+	for key, value := range client.provider.Headers() {
+		if value != "" {
+			request.Header.Set(key, value)
+		}
+	}
 	if attempt > 0 {
 		request.Header.Set("X-Jevlint-Retry-Count", strconv.Itoa(attempt))
 	}

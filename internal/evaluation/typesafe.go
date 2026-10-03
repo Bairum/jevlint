@@ -74,6 +74,9 @@ func (TypeSafeProvider) DescribeCredential(key string) string {
 	return fmt.Sprintf("unknown (len %d)", len(key))
 }
 
+// Headers returns no extra request headers.
+func (TypeSafeProvider) Headers() map[string]string { return nil }
+
 // systemOneResponse is the body returned by a Jev/SystemOne service.
 type systemOneResponse struct {
 	Answers map[string]choiceAnswer `json:"answers"`
