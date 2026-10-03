@@ -517,11 +517,12 @@ func loadRun(
 	if exitCode != 0 {
 		return loadedRun{}, exitCode
 	}
-	evaluator, err := evaluation.NewTypeSafeFromEnvWithOptions(
-		evaluation.TypeSafeOptions{
+	evaluator, err := evaluation.NewClientFromEnv(
+		evaluation.Options{
 			Cache:   resultCache,
 			Refresh: options.check.cache.shouldRefresh(),
 			Logf:    debugLogger(stderr),
+			Warnf:   warnLogger(stderr),
 		},
 		os.Getenv,
 	)
@@ -545,6 +546,13 @@ func debugLogger(stderr io.Writer) func(string, ...any) {
 	if strings.TrimSpace(os.Getenv("JEVLINT_DEBUG")) == "" {
 		return nil
 	}
+	return func(format string, args ...any) {
+		fmt.Fprintf(stderr, format+"\n", args...)
+	}
+}
+
+// warnLogger writes warnings to stderr.
+func warnLogger(stderr io.Writer) func(string, ...any) {
 	return func(format string, args ...any) {
 		fmt.Fprintf(stderr, format+"\n", args...)
 	}
