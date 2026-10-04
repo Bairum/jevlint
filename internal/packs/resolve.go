@@ -69,7 +69,7 @@ func Install(
 	if err != nil {
 		return config.PackRef{}, fmt.Errorf("resolve user cache directory: %w", err)
 	}
-	checkout, err := cloneSpec(parsed)
+	checkout, err := cloneSpec(parsed, "")
 	if err != nil {
 		return config.PackRef{}, err
 	}
@@ -105,7 +105,7 @@ func Install(
 
 func fetchRef(ref config.PackRef, dest string) error {
 	parsed := Spec{Source: ref.Source, Ref: ref.SHA, Path: ref.Path}
-	checkout, err := cloneSpec(parsed)
+	checkout, err := cloneSpec(parsed, ref.SHA)
 	if err != nil {
 		return fmt.Errorf("fetch pack %q: %w", ref.ID, err)
 	}
@@ -125,7 +125,7 @@ type checkout struct {
 	sha string
 }
 
-func cloneSpec(spec Spec) (checkout, error) {
+func cloneSpec(spec Spec, pin string) (checkout, error) {
 	parent, err := os.MkdirTemp("", "jevlint-pack-")
 	if err != nil {
 		return checkout{}, fmt.Errorf("create pack checkout: %w", err)
@@ -135,16 +135,40 @@ func cloneSpec(spec Spec) (checkout, error) {
 		os.RemoveAll(parent)
 		return checkout{}, err
 	}
-	if spec.Ref != "" {
-		if err := runGit(dir, "checkout", spec.Ref); err != nil {
+	ref := spec.Ref
+	if pin == "" && ref != "" {
+		// Explicit installs may select remote branches as well as tags.
+		if err := runGit(dir, "checkout", ref); err != nil {
 			os.RemoveAll(parent)
 			return checkout{}, err
 		}
+		ref = "HEAD"
 	}
-	sha, err := gitOutput(dir, "rev-parse", "HEAD")
+	if ref == "" {
+		ref = "HEAD"
+	}
+	// Peel to an actual commit before checkout; a SHA-shaped branch is not a pin.
+	commit, err := gitOutput(dir, "rev-parse", "--verify", "--end-of-options", ref+"^{commit}")
 	if err != nil {
 		os.RemoveAll(parent)
 		return checkout{}, err
+	}
+	if pin != "" && !strings.EqualFold(commit, pin) {
+		os.RemoveAll(parent)
+		return checkout{}, fmt.Errorf("pack commit %s does not match pin %s", commit, pin)
+	}
+	if err := runGit(dir, "checkout", "--detach", commit); err != nil {
+		os.RemoveAll(parent)
+		return checkout{}, err
+	}
+	sha, err := gitOutput(dir, "rev-parse", "--verify", "HEAD^{commit}")
+	if err != nil {
+		os.RemoveAll(parent)
+		return checkout{}, err
+	}
+	if !strings.EqualFold(sha, commit) || (pin != "" && !strings.EqualFold(sha, pin)) {
+		os.RemoveAll(parent)
+		return checkout{}, fmt.Errorf("pack checkout %s does not match commit %s", sha, commit)
 	}
 	return checkout{dir: dir, sha: sha}, nil
 }

@@ -397,10 +397,26 @@ func validatePackRefs(refs []PackRef) error {
 		if strings.TrimSpace(ref.SHA) == "" {
 			return fmt.Errorf("%s.sha is required", prefix)
 		}
+		if err := ValidatePackSHA(ref.SHA); err != nil {
+			return fmt.Errorf("%s.sha: %w", prefix, err)
+		}
 		if _, exists := seen[ref.ID]; exists {
 			return fmt.Errorf("duplicate pack id %q", ref.ID)
 		}
 		seen[ref.ID] = struct{}{}
+	}
+	return nil
+}
+
+// ValidatePackSHA accepts full hexadecimal Git SHA-1 or SHA-256 object IDs.
+func ValidatePackSHA(sha string) error {
+	if len(sha) != 40 && len(sha) != 64 {
+		return fmt.Errorf("invalid pack sha %q; want a full Git commit ID", sha)
+	}
+	for _, c := range sha {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+			return fmt.Errorf("invalid pack sha %q; want a full Git commit ID", sha)
+		}
 	}
 	return nil
 }

@@ -33,6 +33,7 @@ type Case struct {
 	File   string `json:"file"`
 	Expect Expect `json:"expect"`
 	abs    string
+	root   string
 }
 
 // Document is the set of eval cases loaded from a file.
@@ -129,9 +130,14 @@ func Load(
 		return Document{}, fmt.Errorf("evals %q has no cases", path)
 	}
 	root := filepath.Dir(absolute)
+	fixtures, err := os.OpenRoot(root)
+	if err != nil {
+		return Document{}, fmt.Errorf("open eval fixture root %q: %w", root, err)
+	}
+	defer fixtures.Close()
 	seen := make(map[caseIdentity]struct{}, len(document.Cases))
 	for index := range document.Cases {
-		if err := prepareCase(&document.Cases[index], root, cfg, extractor, seen); err != nil {
+		if err := prepareCase(&document.Cases[index], fixtures, cfg, extractor, seen); err != nil {
 			return Document{}, err
 		}
 	}
@@ -166,7 +172,7 @@ func (document Document) FilterRule(ruleID string) (Document, error) {
 // prepareCase checks one case and records the full path of its fixture.
 func prepareCase(
 	evalCase *Case,
-	root string,
+	root *os.Root,
 	cfg config.Config,
 	extractor *parsing.Extractor,
 	seen map[caseIdentity]struct{},
@@ -183,17 +189,19 @@ func prepareCase(
 	if _, ok := ruleByID(cfg, evalCase.Rule); !ok {
 		return fmt.Errorf("unknown eval rule %q", evalCase.Rule)
 	}
-	absolute, err := filepath.Abs(filepath.Join(root, evalCase.File))
-	if err != nil {
-		return fmt.Errorf("resolve fixture %q: %w", evalCase.File, err)
+	if !filepath.IsLocal(evalCase.File) {
+		return fmt.Errorf("eval fixture %q must be relative to the eval document directory", evalCase.File)
 	}
-	absolute = filepath.Clean(absolute)
-	info, err := os.Stat(absolute)
+	absolute := filepath.Join(root.Name(), evalCase.File)
+	info, err := root.Stat(filepath.Clean(evalCase.File))
 	if err != nil {
 		return fmt.Errorf("eval fixture %q: %w", evalCase.File, err)
 	}
 	if info.IsDir() {
 		return fmt.Errorf("eval fixture %q is a directory", evalCase.File)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("eval fixture %q is not a regular file", evalCase.File)
 	}
 	if !extractor.Supports(absolute) {
 		return fmt.Errorf(
@@ -211,6 +219,7 @@ func prepareCase(
 	}
 	seen[identity] = struct{}{}
 	evalCase.abs = absolute
+	evalCase.root = root.Name()
 	return nil
 }
 

@@ -19,7 +19,7 @@ func TestMergeOverlaysPackRule(t *testing.T) {
 		Packs: []config.PackRef{{
 			ID:     "database-joins",
 			Source: "local",
-			SHA:    "abc",
+			SHA:    strings.Repeat("a", 40),
 		}},
 		Rules: []config.Rule{{
 			ID:            "database-joins",
@@ -64,7 +64,7 @@ func TestMergePackOnlyRules(t *testing.T) {
 
 	project := config.Config{
 		Languages: map[string]config.Language{"go": {}},
-		Packs:     []config.PackRef{{ID: "database-joins", Source: "local", SHA: "abc"}},
+		Packs:     []config.PackRef{{ID: "database-joins", Source: "local", SHA: strings.Repeat("a", 40)}},
 	}
 	loaded := []Loaded{{
 		Ref:      project.Packs[0],

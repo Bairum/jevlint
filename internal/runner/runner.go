@@ -3,9 +3,11 @@ package runner
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"sync"
 
@@ -33,7 +35,7 @@ type Runner struct {
 
 // Options holds the settings for a run.
 type Options struct {
-	Root          string
+	Root          string // Source reads are confined to this directory.
 	Paths         []string
 	Concurrency   int
 	SourceOverlay map[string][]byte
@@ -148,14 +150,19 @@ func (runner Runner) Evaluate(ctx context.Context, cfg config.Config, options Op
 	if err != nil {
 		return Report{}, err
 	}
-	files, err := discover(setup.root, setup.paths, runner.Extractor)
+	root, err := os.OpenRoot(setup.root)
+	if err != nil {
+		return Report{}, fmt.Errorf("open project root: %w", err)
+	}
+	defer root.Close()
+	files, err := discover(ctx, root, setup.paths, runner.Extractor)
 	if err != nil {
 		return Report{}, err
 	}
 	report, jobs, err := runner.planEvaluations(
 		ctx,
 		cfg,
-		setup.root,
+		root,
 		files,
 		setup.sourceOverlay,
 	)
@@ -249,7 +256,7 @@ func (runner Runner) prepareCheck(options Options) (checkSetup, error) {
 func (runner Runner) planEvaluations(
 	ctx context.Context,
 	cfg config.Config,
-	root string,
+	root *os.Root,
 	files []string,
 	sourceOverlay map[string][]byte,
 ) (Report, []evaluationJob, error) {
@@ -287,7 +294,11 @@ func (runner Runner) planEvaluations(
 		report.ScannedFiles++
 		report.SourcePaths = append(report.SourcePaths, planned.relative)
 		report.CodeUnits += len(planned.units)
-		jobs = append(jobs, jobsForUnits(planned.units, planned.applicable)...)
+		fileJobs, err := jobsForUnits(planned.units, planned.applicable)
+		if err != nil {
+			return Report{}, nil, err
+		}
+		jobs = append(jobs, fileJobs...)
 	}
 	return report, jobs, nil
 }
@@ -295,12 +306,12 @@ func (runner Runner) planEvaluations(
 // extractFile reads one file and records the rules that apply to it.
 func (runner Runner) extractFile(
 	cfg config.Config,
-	root string,
+	root *os.Root,
 	file string,
 	sourceOverlay map[string][]byte,
 	needCallees bool,
 ) (plannedFile, error) {
-	relative, err := relativeProjectPath(root, file)
+	relative, err := relativeProjectPath(root.Name(), file)
 	if err != nil {
 		return plannedFile{}, err
 	}
@@ -317,7 +328,7 @@ func (runner Runner) extractFile(
 	if len(applicable) == 0 && !needCallees {
 		return plannedFile{}, nil
 	}
-	source, err := readOverlayOrFile(file, relative, sourceOverlay)
+	source, err := readOverlayOrFile(root, relative, sourceOverlay)
 	if err != nil {
 		if len(applicable) == 0 {
 			return plannedFile{}, nil
@@ -378,19 +389,34 @@ func relativeProjectPath(root string, file string) (string, error) {
 			err,
 		)
 	}
+	if !filepath.IsLocal(relative) {
+		return "", fmt.Errorf("source path %q is outside project root", file)
+	}
 	return filepath.ToSlash(relative), nil
 }
 
 // readOverlayOrFile reads a file from the given source or from disk.
 func readOverlayOrFile(
-	file string,
+	root *os.Root,
 	relative string,
 	sourceOverlay map[string][]byte,
 ) ([]byte, error) {
 	if source, ok := sourceOverlay[relative]; ok {
 		return source, nil
 	}
-	source, err := os.ReadFile(file)
+	file, err := root.Open(filepath.FromSlash(relative))
+	if err != nil {
+		return nil, fmt.Errorf("read %q: %w", relative, err)
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("inspect %q: %w", relative, err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("source %q is not a regular file", relative)
+	}
+	source, err := io.ReadAll(file)
 	if err != nil {
 		return nil, fmt.Errorf("read %q: %w", relative, err)
 	}
@@ -398,29 +424,63 @@ func readOverlayOrFile(
 }
 
 // jobsForUnits builds the work for each code unit and its rules.
-func jobsForUnits(units []parsing.CodeUnit, rules []config.Rule) []evaluationJob {
+func jobsForUnits(units []parsing.CodeUnit, rules []config.Rule) ([]evaluationJob, error) {
 	jobs := make([]evaluationJob, 0, len(units))
 	for _, unit := range units {
 		ordinary := make([]config.Rule, 0, len(rules))
-		enriched := make([]config.Rule, 0, len(rules))
+		enriched := make([]evaluationJob, 0)
 		for _, rule := range rules {
 			if !appliesToKind(rule, unit.Kind) {
 				continue
 			}
-			if rule.Context.Callees {
-				enriched = append(enriched, rule)
+			if !rule.Context.Callees {
+				ordinary = append(ordinary, rule)
 				continue
 			}
-			ordinary = append(ordinary, rule)
+			callees, err := allowedCallees(unit.Resolved, rule)
+			if err != nil {
+				return nil, err
+			}
+			group := -1
+			// ponytail: quadratic in rule groups; index contexts if large rule sets warrant it.
+			for i := range enriched {
+				if slices.Equal(enriched[i].unit.Callees, callees) {
+					group = i
+					break
+				}
+			}
+			if group >= 0 {
+				enriched[group].rules = append(enriched[group].rules, rule)
+			} else {
+				enrichedUnit := unit
+				enrichedUnit.Callees = callees
+				enriched = append(enriched, evaluationJob{rules: []config.Rule{rule}, unit: enrichedUnit})
+			}
 		}
 		if len(ordinary) > 0 {
 			jobs = append(jobs, evaluationJob{rules: ordinary, unit: unit})
 		}
-		if len(enriched) > 0 {
-			jobs = append(jobs, evaluationJob{rules: enriched, unit: unit})
+		jobs = append(jobs, enriched...)
+	}
+	return jobs, nil
+}
+
+// allowedCallees filters forbidden source before applying the context quotas.
+func allowedCallees(resolved []parsing.CalleeContext, rule config.Rule) ([]parsing.CalleeContext, error) {
+	if len(rule.Exclude) == 0 {
+		return parsing.ExpandCallees(resolved), nil
+	}
+	allowed := make([]parsing.CalleeContext, 0, len(resolved))
+	for _, callee := range resolved {
+		excluded, err := scoping.Excluded(rule, callee.Path)
+		if err != nil {
+			return nil, err
+		}
+		if !excluded {
+			allowed = append(allowed, callee)
 		}
 	}
-	return jobs
+	return parsing.ExpandCallees(allowed), nil
 }
 
 // selectClosestRegions picks each wanted region once, from its closest parent.
@@ -653,7 +713,7 @@ func evaluateJob(
 ) (evaluationOutcome, error) {
 	results, err := evaluator.Evaluate(ctx, evaluation.Batch{
 		Rules:    job.rules,
-		CodeUnit: requestUnit(job),
+		CodeUnit: job.unit,
 	})
 	if err != nil {
 		return evaluationOutcome{}, fmt.Errorf(
@@ -732,14 +792,6 @@ func directUnitLocations(unit parsing.CodeUnit) []Location {
 	}}
 }
 
-// requestUnit adds the called functions when the rules ask for them.
-func requestUnit(job evaluationJob) parsing.CodeUnit {
-	if rulesWantCallees(job.rules) {
-		return parsing.WithCalleeContext(job.unit)
-	}
-	return job.unit
-}
-
 // localizeFindings points at the exact places inside failed units.
 func localizeFindings(
 	ctx context.Context,
@@ -811,7 +863,11 @@ func evaluateLocalizationJob(
 		RelatedTypes: job.parent.RelatedTypes,
 	}
 	if job.rule.Context.Callees {
-		candidate.Callees = parsing.ExpandCallees(job.parent.Resolved)
+		callees, err := allowedCallees(job.parent.Resolved, job.rule)
+		if err != nil {
+			return localizationOutcome{}, err
+		}
+		candidate.Callees = callees
 	}
 	results, err := evaluator.Evaluate(ctx, evaluation.Batch{
 		Rules:    []config.Rule{job.rule},
@@ -883,49 +939,64 @@ func (report Report) HasFailures() bool {
 }
 
 // discover lists the supported files under the requested paths.
-func discover(root string, requested []string, extractor *parsing.Extractor) ([]string, error) {
+func discover(ctx context.Context, root *os.Root, requested []string, extractor *parsing.Extractor) ([]string, error) {
 	seen := make(map[string]struct{})
+	explicit := make(map[string]struct{})
+	broad := false
 	for _, requestedPath := range requested {
-		if err := discoverRequestedPath(
-			root,
-			requestedPath,
-			extractor,
-			seen,
-		); err != nil {
+		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
+		walked, err := discoverRequestedPath(root, requestedPath, extractor, seen, explicit)
+		if err != nil {
+			return nil, err
+		}
+		broad = broad || walked
+	}
+	if broad {
+		if err := removeGitIgnored(ctx, root.Name(), seen, explicit); err != nil {
+			return nil, err
+		}
+	}
+	for file := range explicit {
+		seen[file] = struct{}{}
 	}
 	return sortedDiscoveredFiles(seen), nil
 }
 
 // discoverRequestedPath lists the supported files under one path.
 func discoverRequestedPath(
-	root string,
+	root *os.Root,
 	requestedPath string,
 	extractor *parsing.Extractor,
 	seen map[string]struct{},
-) error {
-	path := resolveRequestedPath(root, requestedPath)
-	info, err := os.Stat(path)
+	explicit map[string]struct{},
+) (bool, error) {
+	path := resolveRequestedPath(root.Name(), requestedPath)
+	relative, err := relativeProjectPath(root.Name(), path)
 	if err != nil {
-		return fmt.Errorf("inspect %q: %w", requestedPath, err)
+		return false, err
+	}
+	info, err := root.Stat(filepath.FromSlash(relative))
+	if err != nil {
+		return false, fmt.Errorf("inspect %q: %w", requestedPath, err)
 	}
 	if !info.IsDir() {
-		if extractor.Supports(path) {
-			seen[path] = struct{}{}
+		if info.Mode().IsRegular() && extractor.Supports(path) {
+			explicit[path] = struct{}{}
 		}
-		return nil
+		return false, nil
 	}
-	if err := filepath.WalkDir(path, func(
+	if err := fs.WalkDir(root.FS(), relative, func(
 		candidate string,
 		entry fs.DirEntry,
 		walkErr error,
 	) error {
-		return collectWalkEntry(path, candidate, entry, walkErr, extractor, seen)
+		return collectWalkEntry(root, relative, candidate, entry, walkErr, extractor, seen)
 	}); err != nil {
-		return fmt.Errorf("walk %q: %w", requestedPath, err)
+		return true, fmt.Errorf("walk %q: %w", requestedPath, err)
 	}
-	return nil
+	return true, nil
 }
 
 // resolveRequestedPath turns a requested path into a full path.
@@ -938,7 +1009,8 @@ func resolveRequestedPath(root string, requestedPath string) string {
 
 // collectWalkEntry adds a file from a directory walk and skips ignored folders.
 func collectWalkEntry(
-	root string,
+	root *os.Root,
+	walkRoot string,
 	candidate string,
 	entry fs.DirEntry,
 	walkErr error,
@@ -949,15 +1021,23 @@ func collectWalkEntry(
 		return walkErr
 	}
 	if entry.IsDir() {
-		if candidate != root {
+		if candidate != walkRoot {
 			if _, ignored := ignoredDirectoryNames[entry.Name()]; ignored {
 				return filepath.SkipDir
 			}
 		}
 		return nil
 	}
-	if entry.Type().IsRegular() && extractor.Supports(candidate) {
-		seen[candidate] = struct{}{}
+	if entry.Type()&fs.ModeSymlink != 0 {
+		info, err := root.Stat(filepath.FromSlash(candidate))
+		if err != nil || !info.Mode().IsRegular() {
+			return nil
+		}
+	} else if !entry.Type().IsRegular() {
+		return nil
+	}
+	if extractor.Supports(candidate) {
+		seen[filepath.Join(root.Name(), filepath.FromSlash(candidate))] = struct{}{}
 	}
 	return nil
 }

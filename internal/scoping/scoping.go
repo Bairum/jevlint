@@ -30,14 +30,22 @@ func Applies(rule config.Rule, path string) (bool, error) {
 		return false, nil
 	}
 
+	excluded, err := Excluded(rule, path)
+	return !excluded, err
+}
+
+// Excluded reports whether a rule forbids a file, independently of Include.
+func Excluded(rule config.Rule, path string) (bool, error) {
+	path = filepath.ToSlash(filepath.Clean(path))
+	path = strings.TrimPrefix(path, "./")
 	for _, pattern := range rule.Exclude {
 		matches, err := doublestar.Match(filepath.ToSlash(pattern), path)
 		if err != nil {
 			return false, fmt.Errorf("rule %q exclude pattern %q: %w", rule.ID, pattern, err)
 		}
 		if matches {
-			return false, nil
+			return true, nil
 		}
 	}
-	return true, nil
+	return false, nil
 }
