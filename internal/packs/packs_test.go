@@ -2,6 +2,7 @@ package packs
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -252,6 +253,144 @@ func TestParseSpecGitHubTree(t *testing.T) {
 		spec.Ref != "main" ||
 		spec.Path != "packs/joins" {
 		t.Fatalf("spec = %#v", spec)
+	}
+}
+
+func TestCloneSpecResolvesSlashRefsInTreeURLs(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is required for pack install tests")
+	}
+	t.Parallel()
+
+	repo := writePackRepo(t,
+		`{"version": 1, "id": "codegirl-007/joins", "languages": ["go"]}`,
+		`{"rules": [{"id": "joins", "description": "Join in the database.", "severity": "error", "kinds": ["function"]}]}`,
+	)
+	packsRunGit(t, repo, "checkout", "-q", "-b", "feat/rust-packs")
+	if err := os.MkdirAll(filepath.Join(repo, "packs", "core"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	packsRunGit(t, repo, "mv", ManifestFile, defaultRulesFile, "packs/core/")
+	packsRunGit(t, repo, "commit", "-q", "-m", "move pack")
+	packsRunGit(t, repo, "tag", "v1/stable")
+	packsRunGit(t, repo, "checkout", "-q", "main")
+
+	tests := []struct {
+		tail     string
+		wantRef  string
+		wantPath string
+	}{
+		{"feat/rust-packs/packs/core", "feat/rust-packs", "packs/core"},
+		{"v1/stable/packs/core", "v1/stable", "packs/core"},
+		{"main", "main", ""},
+	}
+	for _, test := range tests {
+		t.Run(test.tail, func(t *testing.T) {
+			t.Parallel()
+			checkout, err := cloneSpec(Spec{Source: repo, treeSegments: strings.Split(test.tail, "/")}, "")
+			if err != nil {
+				t.Fatalf("cloneSpec() error = %v", err)
+			}
+			defer os.RemoveAll(filepath.Dir(checkout.dir))
+			if checkout.spec.Ref != test.wantRef || checkout.spec.Path != test.wantPath {
+				t.Fatalf("ref, path = %q, %q; want %q, %q", checkout.spec.Ref, checkout.spec.Path, test.wantRef, test.wantPath)
+			}
+			if _, err := LoadDir(filepath.Join(checkout.dir, filepath.FromSlash(test.wantPath))); err != nil {
+				t.Fatalf("pack not at resolved path: %v", err)
+			}
+		})
+	}
+
+	if _, err := cloneSpec(Spec{Source: repo, treeSegments: []string{"missing", "packs", "core"}}, ""); err == nil ||
+		!strings.Contains(err.Error(), "no branch, tag or commit") {
+		t.Fatalf("cloneSpec() error = %v, want an unknown-ref error", err)
+	}
+}
+
+// A branch and a tag may share a name and point to different commits. Both
+// tree URLs and stored refs (used by plugin update) must install the commit
+// that resolution chose, not whatever git checkout's own lookup prefers.
+func TestCloneSpecInstallsResolvedCommitWhenBranchAndTagCollide(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is required for pack install tests")
+	}
+	t.Parallel()
+
+	repo := writePackRepo(t,
+		`{"version": 1, "id": "codegirl-007/joins", "languages": ["go"]}`,
+		`{"rules": [{"id": "joins", "description": "Join in the database.", "severity": "error", "kinds": ["function"]}]}`,
+	)
+	packsRunGit(t, repo, "tag", "release/next")
+	packsRunGit(t, repo, "checkout", "-q", "-b", "release/next")
+	packsRunGit(t, repo, "commit", "-q", "--allow-empty", "-m", "branch moves past the tag")
+	branch, err := gitOutput(repo, "rev-parse", "refs/heads/release/next")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tag, err := gitOutput(repo, "rev-parse", "refs/tags/release/next^{commit}")
+	if err != nil || tag == branch {
+		t.Fatalf("tag = %q, branch = %q, err = %v; want distinct commits", tag, branch, err)
+	}
+	packsRunGit(t, repo, "checkout", "-q", "main")
+
+	for name, spec := range map[string]Spec{
+		"tree url":   {Source: repo, treeSegments: []string{"release", "next"}},
+		"stored ref": {Source: repo, Ref: "release/next"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			checkout, err := cloneSpec(spec, "")
+			if err != nil {
+				t.Fatalf("cloneSpec() error = %v", err)
+			}
+			defer os.RemoveAll(filepath.Dir(checkout.dir))
+			if checkout.sha != branch || checkout.spec.Ref != "release/next" {
+				t.Fatalf("sha, ref = %s, %q; want branch commit %s, %q (tag commit is %s)", checkout.sha, checkout.spec.Ref, branch, "release/next", tag)
+			}
+		})
+	}
+}
+
+// Cache rehydration must install the pinned object itself. A publisher can
+// create a branch or tag named exactly like the pinned SHA that points at
+// other content; it must never replace the pinned tree.
+func TestFetchRefIgnoresRefsNamedLikeThePinnedCommit(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is required for pack install tests")
+	}
+	t.Parallel()
+
+	const manifest = `{"version": 1, "id": "codegirl-007/joins", "languages": ["go"]}`
+	rules := func(description string) string {
+		return `{"rules": [{"id": "joins", "description": "` + description + `", "severity": "error", "kinds": ["function"]}]}`
+	}
+	for _, kind := range []string{"branch", "tag"} {
+		t.Run(kind, func(t *testing.T) {
+			t.Parallel()
+			repo := writePackRepo(t, manifest, rules("Pinned rules."))
+			pinned, err := gitOutput(repo, "rev-parse", "HEAD")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(repo, defaultRulesFile), []byte(rules("Replacement rules.")), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			packsRunGit(t, repo, "commit", "-q", "-am", "replacement")
+			packsRunGit(t, repo, kind, pinned, "HEAD")
+
+			dest := filepath.Join(t.TempDir(), "pack")
+			ref := config.PackRef{ID: "codegirl-007/joins", Source: repo, SHA: pinned}
+			if err := fetchRef(ref, dest); err != nil {
+				t.Fatalf("fetchRef() error = %v", err)
+			}
+			data, err := os.ReadFile(filepath.Join(dest, defaultRulesFile))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(data), "Pinned rules.") {
+				t.Fatalf("rehydrated rules = %s, want the pinned commit's content", data)
+			}
+		})
 	}
 }
 

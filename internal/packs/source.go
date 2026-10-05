@@ -12,6 +12,10 @@ type Spec struct {
 	Source string
 	Ref    string
 	Path   string
+	// treeSegments is a GitHub tree URL's "<ref>/<path>" tail. Ref names may
+	// contain slashes, so Ref and Path are a first-segment guess until the
+	// clone resolves them.
+	treeSegments []string
 }
 
 func ParseSpec(raw string) (Spec, error) {
@@ -51,7 +55,7 @@ func parseGitHubTreeURL(raw string) (Spec, error) {
 	source := "https://github.com/" + parts[0] + "/" + parts[1] + ".git"
 	ref := parts[3]
 	path := strings.Join(parts[4:], "/")
-	return Spec{Source: source, Ref: ref, Path: path}, nil
+	return Spec{Source: source, Ref: ref, Path: path, treeSegments: parts[3:]}, nil
 }
 
 func splitSourceRefPath(raw string) (string, string, string) {

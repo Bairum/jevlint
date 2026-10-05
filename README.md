@@ -580,6 +580,11 @@ go run ./cmd/jevlint plugin update
 go run ./cmd/jevlint plugin remove codegirl-007/database-joins
 ```
 
+Tree URLs may name branches or tags that contain slashes, such as
+`.../tree/feat/new-rules/packs/mine`: the longest leading part of the path that
+names a branch, tag or commit in the repository is the ref, and the rest is the
+pack path.
+
 ### Primary Rust suite
 
 The first-class Rust suite lives in [`packs/`](packs/), separate from the
