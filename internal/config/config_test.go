@@ -37,6 +37,35 @@ func TestDecodeValidConfig(t *testing.T) {
 	}
 }
 
+func TestValidateSourceMatch(t *testing.T) {
+	t.Parallel()
+
+	for _, partial := range []bool{false, true} {
+		for _, pattern := range []string{"", " ", "[", `\bunsafe\b`} {
+			cfg := Config{
+				Languages: map[string]Language{"rust": {}},
+				Rules:     []Rule{{ID: "subject", SourceMatch: []string{pattern}}},
+			}
+			if partial {
+				cfg.Packs = []PackRef{{
+					ID: "org/rules", Source: "local", SHA: strings.Repeat("a", 40),
+				}}
+			} else {
+				cfg.Rules[0].Description = "A rule."
+				cfg.Rules[0].Severity = SeverityWarning
+			}
+			err := cfg.Validate()
+			if pattern == `\bunsafe\b` {
+				if err != nil {
+					t.Fatalf("partial=%v valid pattern: %v", partial, err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), "sourceMatch[0]") {
+				t.Fatalf("partial=%v pattern=%q error=%v", partial, pattern, err)
+			}
+		}
+	}
+}
+
 func TestParseTargetKindAndSeverity(t *testing.T) {
 	t.Parallel()
 

@@ -24,12 +24,14 @@ type Manifest struct {
 	Languages []string `json:"languages,omitempty"`
 	Rules     string   `json:"rules,omitempty"`
 	Evals     string   `json:"evals,omitempty"`
+	Guidance  string   `json:"guidance,omitempty"`
 }
 
 type Loaded struct {
 	Ref      config.PackRef
 	Manifest Manifest
 	Rules    []config.Rule
+	Guidance string
 	Dir      string
 }
 
@@ -99,9 +101,22 @@ func LoadDir(dir string) (Loaded, error) {
 	if err != nil {
 		return Loaded{}, fmt.Errorf("pack %q: %w", manifest.ID, err)
 	}
+	var guidance string
+	if manifest.Guidance != "" {
+		path, err := safeJoin(absolute, manifest.Guidance)
+		if err != nil {
+			return Loaded{}, fmt.Errorf("pack %q: %w", manifest.ID, err)
+		}
+		text, err := os.ReadFile(path)
+		if err != nil {
+			return Loaded{}, fmt.Errorf("pack %q: read guidance: %w", manifest.ID, err)
+		}
+		guidance = string(text)
+	}
 	return Loaded{
 		Manifest: manifest,
 		Rules:    rules,
+		Guidance: guidance,
 		Dir:      absolute,
 	}, nil
 }
@@ -138,7 +153,7 @@ func loadManifest(path string) (Manifest, error) {
 	if err := validatePackID(manifest.ID); err != nil {
 		return Manifest{}, err
 	}
-	for _, name := range []string{manifest.Rules, manifest.Evals} {
+	for _, name := range []string{manifest.Rules, manifest.Evals, manifest.Guidance} {
 		if name == "" {
 			continue
 		}
@@ -196,6 +211,9 @@ func Merge(project config.Config, loaded []Loaded) (config.Config, error) {
 					rule.ID,
 				)
 			}
+			if rule.Guidance == "" {
+				rule.Guidance = pack.Guidance
+			}
 			byID[rule.ID] = rule
 			order = append(order, rule.ID)
 		}
@@ -243,6 +261,18 @@ func overlayRule(base config.Rule, overlay config.Rule) config.Rule {
 	}
 	if overlay.Exclude != nil {
 		base.Exclude = overlay.Exclude
+	}
+	if overlay.SourceMatch != nil {
+		base.SourceMatch = overlay.SourceMatch
+	}
+	if overlay.Guidance != "" {
+		base.Guidance = overlay.Guidance
+	}
+	if overlay.IncludeTests {
+		base.IncludeTests = true
+	}
+	if overlay.Context.Types {
+		base.Context.Types = true
 	}
 	if overlay.Exceptions != nil {
 		base.Exceptions = overlay.Exceptions

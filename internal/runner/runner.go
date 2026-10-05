@@ -153,9 +153,11 @@ type checkSetup struct {
 
 // plannedFile is a source file and the work it produced.
 type plannedFile struct {
-	relative   string
-	units      []parsing.CodeUnit
-	applicable []config.Rule
+	relative    string
+	units       []parsing.CodeUnit
+	applicable  []config.Rule
+	types       []parsing.TypeDeclaration
+	testModules []parsing.RustModule
 }
 
 // selectedRegion is a region and the size of the unit that holds it.
@@ -292,6 +294,11 @@ func (runner Runner) planEvaluations(
 	sourceOverlay map[string][]byte,
 ) (Report, []evaluationJob, error) {
 	needCallees := rulesWantCallees(cfg.Rules)
+	needTypes := rulesWantTypes(cfg.Rules)
+	sourceMatches, err := compileSourceMatches(cfg.Rules)
+	if err != nil {
+		return Report{}, nil, err
+	}
 	extracted := make([]plannedFile, 0, len(files))
 	for _, file := range files {
 		if err := ctx.Err(); err != nil {
@@ -302,7 +309,7 @@ func (runner Runner) planEvaluations(
 			root,
 			file,
 			sourceOverlay,
-			needCallees,
+			needCallees || needTypes || filepath.Ext(file) == ".rs",
 		)
 		if err != nil {
 			return Report{}, nil, err
@@ -311,6 +318,10 @@ func (runner Runner) planEvaluations(
 			continue
 		}
 		extracted = append(extracted, planned)
+	}
+	markTestModuleFiles(extracted)
+	if needTypes {
+		resolveTypeContext(extracted)
 	}
 	if needCallees {
 		parsing.ResolveCallees(functionUnits(extracted))
@@ -325,7 +336,7 @@ func (runner Runner) planEvaluations(
 		report.ScannedFiles++
 		report.SourcePaths = append(report.SourcePaths, planned.relative)
 		report.CodeUnits += len(planned.units)
-		fileJobs, err := jobsForUnits(planned.units, planned.applicable)
+		fileJobs, err := jobsForUnits(planned.units, planned.applicable, sourceMatches)
 		if err != nil {
 			return Report{}, nil, err
 		}
@@ -340,7 +351,7 @@ func (runner Runner) extractFile(
 	root *os.Root,
 	file string,
 	sourceOverlay map[string][]byte,
-	needCallees bool,
+	needContext bool,
 ) (plannedFile, error) {
 	relative, err := relativeProjectPath(root.Name(), file)
 	if err != nil {
@@ -356,7 +367,7 @@ func (runner Runner) extractFile(
 			applicable = append(applicable, rule)
 		}
 	}
-	if len(applicable) == 0 && !needCallees {
+	if len(applicable) == 0 && !needContext {
 		return plannedFile{}, nil
 	}
 	source, err := readOverlayOrFile(root, relative, sourceOverlay)
@@ -366,13 +377,14 @@ func (runner Runner) extractFile(
 		}
 		return plannedFile{}, err
 	}
-	units, err := runner.Extractor.Extract(relative, source)
+	extracted, err := runner.Extractor.ExtractFile(relative, source)
 	if err != nil {
 		if len(applicable) == 0 {
 			return plannedFile{}, nil
 		}
 		return plannedFile{}, err
 	}
+	units := extracted.Units
 	if len(applicable) > 0 {
 		requested := requestedRegionKinds(applicable)
 		if len(requested) > 0 {
@@ -380,9 +392,11 @@ func (runner Runner) extractFile(
 		}
 	}
 	return plannedFile{
-		relative:   relative,
-		units:      units,
-		applicable: applicable,
+		relative:    relative,
+		units:       units,
+		applicable:  applicable,
+		types:       extracted.Types,
+		testModules: extracted.TestModules,
 	}, nil
 }
 
@@ -455,27 +469,48 @@ func readOverlayOrFile(
 }
 
 // jobsForUnits builds the work for each code unit and its rules.
-func jobsForUnits(units []parsing.CodeUnit, rules []config.Rule) ([]evaluationJob, error) {
+func jobsForUnits(
+	units []parsing.CodeUnit,
+	rules []config.Rule,
+	sourceMatches sourceMatchers,
+) ([]evaluationJob, error) {
 	jobs := make([]evaluationJob, 0, len(units))
 	for _, unit := range units {
 		ordinary := make([]config.Rule, 0, len(rules))
 		enriched := make([]evaluationJob, 0)
 		for _, rule := range rules {
-			if !appliesToKind(rule, unit.Kind) {
+			if !appliesToKind(rule, unit.Kind) ||
+				(unit.Test && !rule.IncludeTests) ||
+				!sourceMatches.matches(rule.ID, unit.Source) {
 				continue
 			}
-			if !rule.Context.Callees {
+			if !rule.Context.Callees && !rule.Context.Types {
 				ordinary = append(ordinary, rule)
 				continue
 			}
-			callees, err := allowedCallees(unit.Resolved, rule)
-			if err != nil {
-				return nil, err
+			enrichedUnit := unit
+			enrichedUnit.Callees = nil
+			if rule.Context.Callees {
+				callees, err := allowedCallees(unit.Resolved, rule)
+				if err != nil {
+					return nil, err
+				}
+				enrichedUnit.Callees = callees
+			}
+			if rule.Context.Types {
+				types, err := allowedTypes(unit, rule)
+				if err != nil {
+					return nil, err
+				}
+				if len(types) > 0 {
+					enrichedUnit.RelatedTypes = slices.Concat(unit.RelatedTypes, types)
+				}
 			}
 			group := -1
 			// ponytail: quadratic in rule groups; index contexts if large rule sets warrant it.
 			for i := range enriched {
-				if slices.Equal(enriched[i].unit.Callees, callees) {
+				if slices.Equal(enriched[i].unit.Callees, enrichedUnit.Callees) &&
+					slices.Equal(enriched[i].unit.RelatedTypes, enrichedUnit.RelatedTypes) {
 					group = i
 					break
 				}
@@ -483,8 +518,6 @@ func jobsForUnits(units []parsing.CodeUnit, rules []config.Rule) ([]evaluationJo
 			if group >= 0 {
 				enriched[group].rules = append(enriched[group].rules, rule)
 			} else {
-				enrichedUnit := unit
-				enrichedUnit.Callees = callees
 				enriched = append(enriched, evaluationJob{rules: []config.Rule{rule}, unit: enrichedUnit})
 			}
 		}
@@ -616,20 +649,22 @@ func regionCodeUnit(
 	kind parsing.CodeKind,
 ) parsing.CodeUnit {
 	return parsing.CodeUnit{
-		Kind:         kind,
-		Name:         parent.Name + ":" + string(region.Kind),
-		Language:     parent.Language,
-		Path:         parent.Path,
-		Source:       region.Source,
-		ParentSource: parent.Source,
-		RegionKind:   region.Kind,
-		StartLine:    region.StartLine,
-		EndLine:      region.EndLine,
-		StartColumn:  region.StartColumn,
-		EndColumn:    region.EndColumn,
-		StartByte:    region.StartByte,
-		EndByte:      region.EndByte,
-		RelatedTypes: parent.RelatedTypes,
+		Kind:           kind,
+		Name:           parent.Name + ":" + string(region.Kind),
+		Language:       parent.Language,
+		Path:           parent.Path,
+		Test:           parent.Test,
+		Source:         region.Source,
+		ParentSource:   parent.Source,
+		RegionKind:     region.Kind,
+		StartLine:      region.StartLine,
+		EndLine:        region.EndLine,
+		StartColumn:    region.StartColumn,
+		EndColumn:      region.EndColumn,
+		StartByte:      region.StartByte,
+		EndByte:        region.EndByte,
+		RelatedTypes:   parent.RelatedTypes,
+		TypeCandidates: parent.TypeCandidates,
 	}
 }
 
@@ -945,6 +980,7 @@ func evaluateLocalizationJob(
 		Name:         job.parent.Name + ":" + string(job.region.Kind),
 		Language:     job.parent.Language,
 		Path:         job.parent.Path,
+		Test:         job.parent.Test,
 		Source:       job.region.Source,
 		ParentSource: job.parent.Source,
 		StartLine:    job.region.StartLine,
