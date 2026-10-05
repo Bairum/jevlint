@@ -156,6 +156,9 @@
       "id": "stringly-typed-control-flow",
       "description": "Fail strings used as a closed set of control-flow, mode, type, or state values when misspellings or unsupported values could silently change behavior. Prefer enums, named constants, literal unions, tagged types, or equivalent language features. Free-form user input, external protocol values, serialization formats, database values, and genuinely open-ended strings pass.",
       "severity": "warning",
+      "exceptions": [
+        "Strings or byte codes defined by an external or cross-language wire protocol are validated or exhaustively mapped before controlling behavior."
+      ],
       "kinds": ["function", "type"],
       "context": {
         "callees": true
@@ -245,6 +248,11 @@
       "id": "magic-domain-values",
       "description": "Fail unexplained literal values when they encode a meaningful domain rule, mode, threshold, timeout, status, sentinel, or business concept and a named constant or type would communicate the meaning better. Obvious values such as zero, one, empty strings, simple loop bounds, formatting literals, and values whose meaning is immediately clear from local context pass.",
       "severity": "warning",
+      "exceptions": [
+        "Numerical coefficients, clamp bounds, and parity constants implement a documented calculation or invariant.",
+        "Fixed buffer dimensions match a documented schema.",
+        "Literal values express test expectations."
+      ],
       "kinds": ["function"],
       "context": {
         "callees": true
