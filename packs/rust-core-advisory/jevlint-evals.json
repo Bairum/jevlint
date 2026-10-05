@@ -194,6 +194,30 @@
       "expect": "pass"
     },
     {
+      "name": "rust-advisory-partial-mutation-before-error-caller-discarded-scratch-buffer",
+      "rule": "rust-advisory-partial-mutation-before-error",
+      "file": "fixtures/rust-advisory-partial-mutation-before-error/caller-discarded-scratch-buffer.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-partial-mutation-before-error-caller-discarded-output-buffer",
+      "rule": "rust-advisory-partial-mutation-before-error",
+      "file": "fixtures/rust-advisory-partial-mutation-before-error/caller-discarded-output-buffer.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-partial-mutation-before-error-temporary-working-lease",
+      "rule": "rust-advisory-partial-mutation-before-error",
+      "file": "fixtures/rust-advisory-partial-mutation-before-error/temporary-working-lease.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-partial-mutation-before-error-caller-visible-reuse",
+      "rule": "rust-advisory-partial-mutation-before-error",
+      "file": "fixtures/rust-advisory-partial-mutation-before-error/caller-visible-reuse.rs",
+      "expect": "fail"
+    },
+    {
       "name": "rust-advisory-unbounded-read-real-vector-gelf-bug",
       "rule": "rust-advisory-unbounded-read",
       "file": "fixtures/rust-advisory-unbounded-read/real-vector-gelf-bug.rs",

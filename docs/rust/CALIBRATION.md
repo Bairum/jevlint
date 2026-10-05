@@ -53,6 +53,111 @@ For eight independent blind defects in a held-out Rust workspace (43 files), thr
 
 **Do not rely on this pack for unsafe recall.** Retain manual contract/ownership review and the existing [project-owned tooling lanes](TOOLING.md#separate-optional-layers), with [tooling research limits](research/tooling.md#5-optional-established-tool-layers): targeted supported Miri tests (most FFI is unsupported; only exercised executions are checked), supported ASan/LSan lanes with coordinated native/FFI instrumentation, debug-assertion builds exercising raw-pointer extent/lifetime paths, and explicit Python reference-count assertions for leaks or double decrefs. These are recommendations, not checks executed here or additions to the native baseline script; none proves soundness.
 
+## Core and advisory refresh (2026-10-05)
+
+The table above is the original six-pack baseline. The current core/advisory
+refresh used three uncached real-provider runs at the unchanged global floor
+0.8, with shared pack guidance and opaque fixture names. Core has 140 cases;
+Advisory has 68. Core's final error-cause row replaces its preliminary samples
+with three targeted runs after clarifying direct error-category mapping; the
+other core rows retain the full-pack runs. Advisory evaluated its entire final
+pack three times. These are per-run reporting metrics, not majority-pass
+specificity; below-floor failures remain unreported.
+
+| Pack | Rule | Reported defects / fail decisions | Recall @0.8 | Unreported clean cases / pass decisions | Specificity @0.8 |
+| --- | --- | --- | --- | --- | --- |
+| rust-core | `rust-expected-failure-panics` | 12/15 | 0.80 | 24/27 | 0.89 |
+| rust-core | `rust-error-cause-loss` | 9/18 | 0.50 | 27/30 | 0.90 |
+| rust-core | `rust-conversion-contract` | 12/15 | 0.80 | 26/30 | 0.87 |
+| rust-core | `rust-validation-bypass` | 0/15 | 0.00 | 21/21 | 1.00 |
+| rust-core | `rust-partial-state-on-error` | 9/15 | 0.60 | 30/30 | 1.00 |
+| rust-core | `rust-buffered-output-completion` | 15/18 | 0.83 | 30/33 | 0.91 |
+| rust-core | `rust-fallible-drop` | 14/15 | 0.93 | 24/24 | 1.00 |
+| rust-core | `rust-unbounded-input-buffering` | 12/15 | 0.80 | 21/24 | 0.88 |
+| rust-core | `rust-exclusive-create-race` | 15/15 | 1.00 | 15/21 | 0.71 |
+| rust-core | `rust-shared-clone-isolation` | 3/15 | 0.20 | 21/24 | 0.88 |
+| rust-core-advisory | `rust-advisory-input-panics` | 12/15 | 0.80 | 18/18 | 1.00 |
+| rust-core-advisory | `rust-advisory-error-kind-erasure` | 6/12 | 0.50 | 18/18 | 1.00 |
+| rust-core-advisory | `rust-advisory-partial-mutation-before-error` | 15/18 | 0.83 | 27/27 | 1.00 |
+| rust-core-advisory | `rust-advisory-unbounded-read` | 12/12 | 1.00 | 15/15 | 1.00 |
+| rust-core-advisory | `rust-advisory-check-then-create` | 12/15 | 0.80 | 15/15 | 1.00 |
+| rust-core-advisory | `rust-advisory-unflushed-bufwriter` | 14/15 | 0.93 | 24/24 | 1.00 |
+
+**Not a no-regression result.** Advisory reporting recall/specificity did not
+regress. Core cause-loss recall is 0.50 versus baseline 0.53 on the expanded
+corpus; on the original five failing cases it is 6/15 (0.40). Its new collapsed
+error mapper failed 3/3 at 0.86/0.89/0.89 and the faithful mapper passed 3/3.
+Unchanged core fallible-drop and shared-clone recall measured 0.93 and 0.20
+versus 1.00 and 0.27. Those rules were not modified to fit these samples.
+Core recorded 37 mismatches, 70 inconclusive cases, 92 below-floor units, no
+abstentions/provider errors and four flipped cases (2.86%); Advisory recorded
+four mismatches, 18 inconclusive cases, 22 below-floor units, no
+abstentions/provider errors and two flipped cases (2.94%). Calibration commands
+therefore did not pass the runner's zero-mismatch criterion.
+
+The baseline override recommendations above were not refitted. In particular,
+the old partial-mutation 0.70 override is withdrawn after narrowing: keep 0.8.
+Neither pack ships a rule-level floor.
+
+### Held-out private workspace measurements
+
+On a held-out private Rust workspace (43 files, 958 units), broadening
+the error-cause applicability filter selects **357 → 381** non-test function
+units (+24, +6.72%). A one-rule uncached scan costs **357 → 381 model requests**
+and took 14.002 → 15.010 seconds; the CLI does not expose token or dollar cost.
+This counts actual units passing the source filter, not occurrences of error
+tokens. The final combined core/advisory scans each performed 2,526 rule-unit
+evaluations batched into 1,278 uncached model requests.
+
+| Clean workspace | Reported | Below floor, all core/advisory | Partial-mutation advisory below floor | Error-cause below floor |
+| --- | --- | --- | --- | --- |
+| Original recorded all-pack scan, core/advisory subset | 1 | 41 | 28 | 11 |
+| Final run 1 | 0 | 22 | 7 | 14 |
+| Final run 2 | 0 | 22 | 7 | 14 |
+| Final run 3 | 0 | 23 | 6 | 15 |
+
+No new reported finding appeared. The original reported mutation finding is
+gone; residual below-floor review noise remains. Do not equate the fixture
+specificity with production precision.
+
+The seeded error-category mapper is now selected in the seeded workspace. Three **full-workspace** uncached
+scans with error-cause and both mutation rules evaluated 384 error-cause units
+per run, but yielded **0/3 seeded error-category mapper reports**: pass/pass/fail, with the failure at
+**0.34**. `check` does not expose confidence for passes. These runs discovered
+all 43 files (965 units) for bounded cross-file context and each used 847
+rule-unit evaluations / 415 model requests. Earlier targeted-file scans judged
+the seeded error-category mapper fail 3/3 at **0.60/0.62/0.64**; filter-only wording measured
+0.30/0.30/0.39. A targeted file changes the discovered declaration/context set,
+so it is not the final held-out result. Jevlint's provider protocol supplies
+choice/confidence only; no textual confidence explanation is available.
+Recognition improved on the isolated boundary but remains context-sensitive
+and fails the majority reporting target. No confidence floor was lowered.
+
+In the full seeded scans the seeded atomicity violation's core rule reports 3/3; the narrowed advisory only
+co-fails below floor at **0.71/0.73/0.72**, adding no held-out seed detection.
+Removal was rejected because a controlled comparison on the original 11
+advisory mutation fixtures measured 11/15 reported defects for advisory versus
+0/15 for strict, with no reported clean-case findings from either rule.
+
+Reproduction (configs are written inside each detached project's
+workspace; copy both packs' rule arrays and inherit each rule's
+`guidance.md`, matching installation):
+
+```sh
+python3 scripts/check-rust-packs.py --eval --repeat 3 --pack rust-core \
+  --jevlint <binary> --summary <summary>
+# After the final direct-mapping wording change, repeat three times:
+jevlint eval --config <config> --evals <evals> --refresh-cache --format json --verbose
+# Repeat three times from the project root. Clean: both full packs.
+# Seeded: error-cause and both mutation rules; omit paths to retain discovery.
+jevlint check --config <config> --refresh-cache --format json --show-below-floor
+# Earlier targeted seeded error-category mapper comparison, not the final full-workspace evidence:
+jevlint check --config <config> --refresh-cache --format json --show-below-floor <targeted-file>
+```
+
+Advisory comparison/final eval commands and opaque-fixture copying are recorded
+in its [README](../../packs/rust-core-advisory/README.md#partial-mutation-decision-and-provider-refresh-2026-10-05).
+
 ## Reproduce
 
 From the repository checkout, with Cargo, Python 3.9+, a built Jevlint binary and its real provider credentials configured:

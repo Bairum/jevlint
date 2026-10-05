@@ -23,7 +23,7 @@
     },
     {
       "id": "rust-error-cause-loss",
-      "description": "Apply at a visible error abstraction boundary where callers need actionable cause/context. Fail when a reachable lower error is erased or misclassified so recovery/diagnosis promised by the boundary is impossible; show the lost identity/resource and the misleading outcome. Retaining a useful error directly or via source is sufficient.",
+      "description": "Apply at a visible error abstraction boundary where callers need actionable cause/context. Fail when a reachable lower error is erased or misclassified so recovery/diagnosis promised by the boundary is impossible; show the lost identity/resource and the misleading outcome. Direct error-to-error mapping is also a boundary: merging causes that the visible contract explicitly requires callers to distinguish is cause loss, even without Result or an Error trait implementation. That explicit diagnostic distinction suffices without a complete caller body. Retaining a useful error directly or via source is sufficient.",
       "severity": "warning",
       "include": ["**/*.rs"],
       "kinds": [
@@ -35,7 +35,9 @@
         "\\bfn\\s+source\\s*\\(",
         "\\bmap_err\\s*\\(",
         "\\?",
-        "\\bErr\\s*\\("
+        "\\bErr\\s*\\(",
+        "\\b(?:[A-Za-z_][A-Za-z0-9_]*)?(?:Error|Err)\\b",
+        "\\bfn\\s+from\\s*\\("
       ],
       "context": {"types": true},
       "exceptions": [

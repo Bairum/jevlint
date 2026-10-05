@@ -29,7 +29,7 @@
     },
     {
       "id": "rust-advisory-partial-mutation-before-error",
-      "description": "Advisory: infer a caller-state preservation preference for a function returning Result that accepts caller-visible &mut state. Fail when it mutates that state before a later reachable fallible ? and returns Err without restoring the mutation, staging it locally, or making partial-progress semantics explicit. Identify the mutation, fallible operation and observable state on Err. Explicit transaction documentation is not required, but this is a review heuristic, not a claim that all Result functions must be atomic or that safe-code inconsistency is undefined behavior.",
+      "description": "Advisory: infer a preservation preference for pre-existing application state that remains observable or reusable after a Result-returning operation fails. Fail when a mutation before a later reachable fallible operation leaves caller-visible state partly replaced, cleared or persisted on Err without rollback, staging or explicit partial-progress semantics. Identify the mutation, failure and concrete retained-state observation, using supplied fields, methods or callers; explicit transaction documentation is not required. A mutable reference alone does not establish retained application state. Scratch/output buffers and temporary working leases are not transactional by default: require evidence that failed contents are retained and consumed as valid application state, not merely that a helper appends before ?. This is a review heuristic, not a requirement that every Result function be atomic or a claim of undefined behavior.",
       "severity": "info",
       "include": ["**/*.rs"],
       "kinds": ["function"],
@@ -39,7 +39,9 @@
       "exceptions": [
         "Documented partial progress, including a visible API with an explicit partial-append contract, is legitimate.",
         "Rollback or invariant-restoration that actually runs on every relevant error path is legitimate; poisoning alone is not rollback.",
-        "Fallible work staged in local state before committing to caller state, or termination that prevents caller reuse, is legitimate."
+        "Fallible work staged in local state before committing to caller state, or termination that prevents caller reuse, is legitimate.",
+        "Caller-discarded scratch or output buffers, outputs published only on success, and temporary leases whose failed contents are dropped or reset are legitimate even when a helper receives them by mutable reference.",
+        "Do not invent a caller that consumes failed scratch/output contents. Pass when only temporary-buffer mutation is shown without evidence of retained-state misuse; this does not excuse clearing or replacing pre-existing caller application state."
       ]
     },
     {
