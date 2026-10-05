@@ -1,0 +1,833 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "client-port-parse-expect",
+      "rule": "rust-expected-failure-panics",
+      "file": "fixtures/rust-expected-failure-panics/fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "remote-upload-limit-assert",
+      "rule": "rust-expected-failure-panics",
+      "file": "fixtures/rust-expected-failure-panics/fail-assert.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "client-read-explicit-panic",
+      "rule": "rust-expected-failure-panics",
+      "file": "fixtures/rust-expected-failure-panics/fail-panic.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "client-port-parse-result",
+      "rule": "rust-expected-failure-panics",
+      "file": "fixtures/rust-expected-failure-panics/pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "built-in-port-proved-invariant",
+      "rule": "rust-expected-failure-panics",
+      "file": "fixtures/rust-expected-failure-panics/exception.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "fatal-administrator-startup-port",
+      "rule": "rust-expected-failure-panics",
+      "file": "fixtures/rust-expected-failure-panics/exception-startup.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "disposable-local-prototype-port",
+      "rule": "rust-expected-failure-panics",
+      "file": "fixtures/rust-expected-failure-panics/exception-prototype.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "documentation-loopback-address-example",
+      "rule": "rust-expected-failure-panics",
+      "file": "fixtures/rust-expected-failure-panics/exception-example.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "internal-scratch-boundary-precondition",
+      "rule": "rust-expected-failure-panics",
+      "file": "fixtures/rust-expected-failure-panics/exception-precondition.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "client-port-without-recoverability-contract",
+      "rule": "rust-expected-failure-panics",
+      "file": "fixtures/rust-expected-failure-panics/no-contract.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "request-service-utf8-expect",
+      "rule": "rust-expected-failure-panics",
+      "file": "fixtures/rust-expected-failure-panics/realistic-fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "request-service-recoverable-utf8",
+      "rule": "rust-expected-failure-panics",
+      "file": "fixtures/rust-expected-failure-panics/realistic-pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "multihash-unsupported-code-expect",
+      "rule": "rust-expected-failure-panics",
+      "file": "fixtures/rust-expected-failure-panics/real-multihash-bug.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "multihash-unsupported-code-decode-error",
+      "rule": "rust-expected-failure-panics",
+      "file": "fixtures/rust-expected-failure-panics/real-multihash-fixed.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "cause-loss-os-error-misclassification",
+      "rule": "rust-error-cause-loss",
+      "file": "fixtures/rust-error-cause-loss/fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "cause-loss-direct-useful-os-error",
+      "rule": "rust-error-cause-loss",
+      "file": "fixtures/rust-error-cause-loss/pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "cause-loss-audited-public-redaction",
+      "rule": "rust-error-cause-loss",
+      "file": "fixtures/rust-error-cause-loss/exception.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "cause-loss-no-visible-recovery-contract",
+      "rule": "rust-error-cause-loss",
+      "file": "fixtures/rust-error-cause-loss/no-contract.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "cause-loss-wrong-resource-identity",
+      "rule": "rust-error-cause-loss",
+      "file": "fixtures/rust-error-cause-loss/fail-resource.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "cause-loss-preserved-resource-and-cause",
+      "rule": "rust-error-cause-loss",
+      "file": "fixtures/rust-error-cause-loss/pass-resource.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "cause-loss-stringified-programmatic-cause",
+      "rule": "rust-error-cause-loss",
+      "file": "fixtures/rust-error-cause-loss/fail-source.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "cause-loss-preserved-programmatic-cause",
+      "rule": "rust-error-cause-loss",
+      "file": "fixtures/rust-error-cause-loss/pass-source.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "cause-loss-domain-policy-rejection",
+      "rule": "rust-error-cause-loss",
+      "file": "fixtures/rust-error-cause-loss/exception-domain.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "cause-loss-boolean-authorization-rejection",
+      "rule": "rust-error-cause-loss",
+      "file": "fixtures/rust-error-cause-loss/exception-boolean.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "cause-loss-real-io-source-skips-leaf",
+      "rule": "rust-error-cause-loss",
+      "file": "fixtures/rust-error-cause-loss/real-io-source-bug.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "cause-loss-real-io-source-retains-leaf",
+      "rule": "rust-error-cause-loss",
+      "file": "fixtures/rust-error-cause-loss/real-io-source-fixed.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "cause-loss-realistic-manifest-misclassification",
+      "rule": "rust-error-cause-loss",
+      "file": "fixtures/rust-error-cause-loss/realistic-fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "cause-loss-realistic-manifest-causal-errors",
+      "rule": "rust-error-cause-loss",
+      "file": "fixtures/rust-error-cause-loss/realistic-pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "conversion-discards-locale",
+      "rule": "rust-conversion-contract",
+      "file": "fixtures/rust-conversion-contract/fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "conversion-preserves-locale",
+      "rule": "rust-conversion-contract",
+      "file": "fixtures/rust-conversion-contract/pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "conversion-narrows-billable-quantity",
+      "rule": "rust-conversion-contract",
+      "file": "fixtures/rust-conversion-contract/fail-narrowing.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "conversion-normalizes-case-sensitive-key",
+      "rule": "rust-conversion-contract",
+      "file": "fixtures/rust-conversion-contract/fail-key-normalization.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "conversion-without-domain-contract",
+      "rule": "rust-conversion-contract",
+      "file": "fixtures/rust-conversion-contract/no-contract.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "conversion-capacity-is-not-value",
+      "rule": "rust-conversion-contract",
+      "file": "fixtures/rust-conversion-contract/exception.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "conversion-named-truncation-and-rounding",
+      "rule": "rust-conversion-contract",
+      "file": "fixtures/rust-conversion-contract/exception-named.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "conversion-fallible-tryfrom",
+      "rule": "rust-conversion-contract",
+      "file": "fixtures/rust-conversion-contract/exception-tryfrom.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "conversion-allocating-text",
+      "rule": "rust-conversion-contract",
+      "file": "fixtures/rust-conversion-contract/exception-allocating.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "conversion-generic-into-bound",
+      "rule": "rust-conversion-contract",
+      "file": "fixtures/rust-conversion-contract/exception-into-bound.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "conversion-panic-shape-belongs-to-specific-rule",
+      "rule": "rust-conversion-contract",
+      "file": "fixtures/rust-conversion-contract/exception-panic-shape.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "conversion-audit-pipeline-tenant-change",
+      "rule": "rust-conversion-contract",
+      "file": "fixtures/rust-conversion-contract/realistic-fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "conversion-audit-pipeline-preserves-event",
+      "rule": "rust-conversion-contract",
+      "file": "fixtures/rust-conversion-contract/realistic-pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "conversion-real-vector-ip-byte-order",
+      "rule": "rust-conversion-contract",
+      "file": "fixtures/rust-conversion-contract/real-vector-ip-aton-bug.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "conversion-real-vector-ip-byte-order-fixed",
+      "rule": "rust-conversion-contract",
+      "file": "fixtures/rust-conversion-contract/real-vector-ip-aton-fixed.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "validation-unchecked-setter-invoice",
+      "rule": "rust-validation-bypass",
+      "file": "fixtures/rust-validation-bypass/fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "validation-exposed-percent-field",
+      "rule": "rust-validation-bypass",
+      "file": "fixtures/rust-validation-bypass/fail-public-field.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "validation-mutable-retry-count",
+      "rule": "rust-validation-bypass",
+      "file": "fixtures/rust-validation-bypass/fail-mutable-accessor.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "validation-unchecked-wire-conversion",
+      "rule": "rust-validation-bypass",
+      "file": "fixtures/rust-validation-bypass/fail-conversion.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "validation-checked-invoice-rate",
+      "rule": "rust-validation-bypass",
+      "file": "fixtures/rust-validation-bypass/pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "validation-passive-wire-dto",
+      "rule": "rust-validation-bypass",
+      "file": "fixtures/rust-validation-bypass/exception.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "validation-no-whole-type-contract",
+      "rule": "rust-validation-bypass",
+      "file": "fixtures/rust-validation-bypass/pass-no-contract.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "validation-required-draft-conversion",
+      "rule": "rust-validation-bypass",
+      "file": "fixtures/rust-validation-bypass/pass-required-intermediate.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "validation-public-constrained-std-type",
+      "rule": "rust-validation-bypass",
+      "file": "fixtures/rust-validation-bypass/pass-constrained-std.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "validation-obligated-unsafe-opt-out",
+      "rule": "rust-validation-bypass",
+      "file": "fixtures/rust-validation-bypass/pass-unsafe-opt-out.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "validation-real-capnp-public-words",
+      "rule": "rust-validation-bypass",
+      "file": "fixtures/rust-validation-bypass/real-capnp-constant-reader-bug.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "validation-real-capnp-restricted-words",
+      "rule": "rust-validation-bypass",
+      "file": "fixtures/rust-validation-bypass/real-capnp-constant-reader-fixed.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-partial-state-on-error-fail",
+      "rule": "rust-partial-state-on-error",
+      "file": "fixtures/rust-partial-state-on-error/fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-partial-state-on-error-pass",
+      "rule": "rust-partial-state-on-error",
+      "file": "fixtures/rust-partial-state-on-error/pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-partial-state-on-error-no-contract",
+      "rule": "rust-partial-state-on-error",
+      "file": "fixtures/rust-partial-state-on-error/no-contract.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-partial-state-on-error-fail-read-to-end",
+      "rule": "rust-partial-state-on-error",
+      "file": "fixtures/rust-partial-state-on-error/fail-read-to-end.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-partial-state-on-error-pass-read-to-end",
+      "rule": "rust-partial-state-on-error",
+      "file": "fixtures/rust-partial-state-on-error/pass-read-to-end.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-partial-state-on-error-pass-read-error",
+      "rule": "rust-partial-state-on-error",
+      "file": "fixtures/rust-partial-state-on-error/pass-read-error.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-partial-state-on-error-exception",
+      "rule": "rust-partial-state-on-error",
+      "file": "fixtures/rust-partial-state-on-error/exception.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-partial-state-on-error-fail-panic",
+      "rule": "rust-partial-state-on-error",
+      "file": "fixtures/rust-partial-state-on-error/fail-panic.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-partial-state-on-error-pass-panic",
+      "rule": "rust-partial-state-on-error",
+      "file": "fixtures/rust-partial-state-on-error/pass-panic.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-partial-state-on-error-exception-termination",
+      "rule": "rust-partial-state-on-error",
+      "file": "fixtures/rust-partial-state-on-error/exception-termination.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-partial-state-on-error-exception-consumed-state",
+      "rule": "rust-partial-state-on-error",
+      "file": "fixtures/rust-partial-state-on-error/exception-consumed-state.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-partial-state-on-error-realistic-fail",
+      "rule": "rust-partial-state-on-error",
+      "file": "fixtures/rust-partial-state-on-error/realistic-fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-partial-state-on-error-realistic-pass",
+      "rule": "rust-partial-state-on-error",
+      "file": "fixtures/rust-partial-state-on-error/realistic-pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-partial-state-on-error-real-miden-store-bug",
+      "rule": "rust-partial-state-on-error",
+      "file": "fixtures/rust-partial-state-on-error/real-miden-store-bug.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-partial-state-on-error-real-miden-store-fixed",
+      "rule": "rust-partial-state-on-error",
+      "file": "fixtures/rust-partial-state-on-error/real-miden-store-fixed.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-buffered-output-completion-fail",
+      "rule": "rust-buffered-output-completion",
+      "file": "fixtures/rust-buffered-output-completion/fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-buffered-output-completion-pass",
+      "rule": "rust-buffered-output-completion",
+      "file": "fixtures/rust-buffered-output-completion/pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-buffered-output-completion-no-contract",
+      "rule": "rust-buffered-output-completion",
+      "file": "fixtures/rust-buffered-output-completion/no-contract.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-buffered-output-completion-fail-unchecked-flush",
+      "rule": "rust-buffered-output-completion",
+      "file": "fixtures/rust-buffered-output-completion/fail-unchecked-flush.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-buffered-output-completion-fail-unchecked-into-inner",
+      "rule": "rust-buffered-output-completion",
+      "file": "fixtures/rust-buffered-output-completion/fail-unchecked-into-inner.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-buffered-output-completion-fail-discarded-ownership",
+      "rule": "rust-buffered-output-completion",
+      "file": "fixtures/rust-buffered-output-completion/fail-discarded-ownership.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-buffered-output-completion-pass-into-inner",
+      "rule": "rust-buffered-output-completion",
+      "file": "fixtures/rust-buffered-output-completion/pass-into-inner.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-buffered-output-completion-exception",
+      "rule": "rust-buffered-output-completion",
+      "file": "fixtures/rust-buffered-output-completion/exception.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-buffered-output-completion-exception-best-effort",
+      "rule": "rust-buffered-output-completion",
+      "file": "fixtures/rust-buffered-output-completion/exception-best-effort.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-buffered-output-completion-exception-empty",
+      "rule": "rust-buffered-output-completion",
+      "file": "fixtures/rust-buffered-output-completion/exception-empty.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-buffered-output-completion-exception-completed",
+      "rule": "rust-buffered-output-completion",
+      "file": "fixtures/rust-buffered-output-completion/exception-completed.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-buffered-output-completion-exception-abandonment",
+      "rule": "rust-buffered-output-completion",
+      "file": "fixtures/rust-buffered-output-completion/exception-abandonment.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-buffered-output-completion-exception-buffer-handoff",
+      "rule": "rust-buffered-output-completion",
+      "file": "fixtures/rust-buffered-output-completion/exception-buffer-handoff.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-buffered-output-completion-realistic-fail",
+      "rule": "rust-buffered-output-completion",
+      "file": "fixtures/rust-buffered-output-completion/realistic-fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-buffered-output-completion-realistic-pass",
+      "rule": "rust-buffered-output-completion",
+      "file": "fixtures/rust-buffered-output-completion/realistic-pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-buffered-output-completion-real-child-pipe-bug",
+      "rule": "rust-buffered-output-completion",
+      "file": "fixtures/rust-buffered-output-completion/real-child-pipe-bug.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-buffered-output-completion-real-child-pipe-fixed",
+      "rule": "rust-buffered-output-completion",
+      "file": "fixtures/rust-buffered-output-completion/real-child-pipe-fixed.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "drop-routine-disconnect-panics",
+      "rule": "rust-fallible-drop",
+      "file": "fixtures/rust-fallible-drop/fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "drop-filesystem-cleanup-panics",
+      "rule": "rust-fallible-drop",
+      "file": "fixtures/rust-fallible-drop/fail-remove.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "drop-worker-join-panics",
+      "rule": "rust-fallible-drop",
+      "file": "fixtures/rust-fallible-drop/fail-worker-join.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "drop-explicit-finish-best-effort",
+      "rule": "rust-fallible-drop",
+      "file": "fixtures/rust-fallible-drop/pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "drop-disposable-best-effort",
+      "rule": "rust-fallible-drop",
+      "file": "fixtures/rust-fallible-drop/exception.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "drop-deliberate-invariant-policy",
+      "rule": "rust-fallible-drop",
+      "file": "fixtures/rust-fallible-drop/exception-invariant.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "drop-infallible-local-cleanup",
+      "rule": "rust-fallible-drop",
+      "file": "fixtures/rust-fallible-drop/exception-infallible.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "drop-ordinary-owned-fields",
+      "rule": "rust-fallible-drop",
+      "file": "fixtures/rust-fallible-drop/exception-owned-fields.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "drop-absent-nonpanicking-contract",
+      "rule": "rust-fallible-drop",
+      "file": "fixtures/rust-fallible-drop/no-contract.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "drop-realistic-journal-failure",
+      "rule": "rust-fallible-drop",
+      "file": "fixtures/rust-fallible-drop/realistic-fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "drop-realistic-journal-clean",
+      "rule": "rust-fallible-drop",
+      "file": "fixtures/rust-fallible-drop/realistic-pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "drop-dropshot-receiver-teardown-bug",
+      "rule": "rust-fallible-drop",
+      "file": "fixtures/rust-fallible-drop/real-dropshot-bug.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "drop-dropshot-receiver-teardown-fixed",
+      "rule": "rust-fallible-drop",
+      "file": "fixtures/rust-fallible-drop/real-dropshot-fixed.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "input-growth-before-cap",
+      "rule": "rust-unbounded-input-buffering",
+      "file": "fixtures/rust-unbounded-input-buffering/fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "input-declared-length-allocation",
+      "rule": "rust-unbounded-input-buffering",
+      "file": "fixtures/rust-unbounded-input-buffering/fail-length-allocation.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "input-truncated-frame-accepted",
+      "rule": "rust-unbounded-input-buffering",
+      "file": "fixtures/rust-unbounded-input-buffering/fail-truncated-frame.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "input-bounded-complete-eof-frame",
+      "rule": "rust-unbounded-input-buffering",
+      "file": "fixtures/rust-unbounded-input-buffering/pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "input-length-checked-before-allocation",
+      "rule": "rust-unbounded-input-buffering",
+      "file": "fixtures/rust-unbounded-input-buffering/pass-length-allocation.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "input-trusted-fixed-data",
+      "rule": "rust-unbounded-input-buffering",
+      "file": "fixtures/rust-unbounded-input-buffering/exception.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "input-upstream-envelope-bound",
+      "rule": "rust-unbounded-input-buffering",
+      "file": "fixtures/rust-unbounded-input-buffering/exception-upstream-bound.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "input-bounded-streaming-state",
+      "rule": "rust-unbounded-input-buffering",
+      "file": "fixtures/rust-unbounded-input-buffering/exception-streaming.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "input-absent-trust-resource-contract",
+      "rule": "rust-unbounded-input-buffering",
+      "file": "fixtures/rust-unbounded-input-buffering/no-contract.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "input-realistic-request-growth",
+      "rule": "rust-unbounded-input-buffering",
+      "file": "fixtures/rust-unbounded-input-buffering/realistic-fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "input-realistic-request-bounded",
+      "rule": "rust-unbounded-input-buffering",
+      "file": "fixtures/rust-unbounded-input-buffering/realistic-pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "input-websocket-advisory-bug",
+      "rule": "rust-unbounded-input-buffering",
+      "file": "fixtures/rust-unbounded-input-buffering/real-websocket-bug.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "input-websocket-advisory-fixed",
+      "rule": "rust-unbounded-input-buffering",
+      "file": "fixtures/rust-unbounded-input-buffering/real-websocket-fixed.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-exclusive-create-race-fail",
+      "rule": "rust-exclusive-create-race",
+      "file": "fixtures/rust-exclusive-create-race/fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-exclusive-create-race-fail-metadata-write",
+      "rule": "rust-exclusive-create-race",
+      "file": "fixtures/rust-exclusive-create-race/fail-metadata-write.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-exclusive-create-race-fail-open-options",
+      "rule": "rust-exclusive-create-race",
+      "file": "fixtures/rust-exclusive-create-race/fail-open-options.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-exclusive-create-race-pass",
+      "rule": "rust-exclusive-create-race",
+      "file": "fixtures/rust-exclusive-create-race/pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-exclusive-create-race-exception",
+      "rule": "rust-exclusive-create-race",
+      "file": "fixtures/rust-exclusive-create-race/exception.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-exclusive-create-race-exception-advisory-check",
+      "rule": "rust-exclusive-create-race",
+      "file": "fixtures/rust-exclusive-create-race/exception-advisory-check.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-exclusive-create-race-exception-private-directory",
+      "rule": "rust-exclusive-create-race",
+      "file": "fixtures/rust-exclusive-create-race/exception-private-directory.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-exclusive-create-race-real-ledgerful-diagnose-bug",
+      "rule": "rust-exclusive-create-race",
+      "file": "fixtures/rust-exclusive-create-race/real-ledgerful-diagnose-bug.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-exclusive-create-race-real-ledgerful-diagnose-fixed",
+      "rule": "rust-exclusive-create-race",
+      "file": "fixtures/rust-exclusive-create-race/real-ledgerful-diagnose-fixed.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-exclusive-create-race-no-contract",
+      "rule": "rust-exclusive-create-race",
+      "file": "fixtures/rust-exclusive-create-race/no-contract.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-exclusive-create-race-realistic-fail",
+      "rule": "rust-exclusive-create-race",
+      "file": "fixtures/rust-exclusive-create-race/realistic-fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-exclusive-create-race-realistic-pass",
+      "rule": "rust-exclusive-create-race",
+      "file": "fixtures/rust-exclusive-create-race/realistic-pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-shared-clone-isolation-fail",
+      "rule": "rust-shared-clone-isolation",
+      "file": "fixtures/rust-shared-clone-isolation/fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-shared-clone-isolation-fail-arc-lock",
+      "rule": "rust-shared-clone-isolation",
+      "file": "fixtures/rust-shared-clone-isolation/fail-arc-lock.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-shared-clone-isolation-fail-nested-handles",
+      "rule": "rust-shared-clone-isolation",
+      "file": "fixtures/rust-shared-clone-isolation/fail-nested-handles.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-shared-clone-isolation-pass",
+      "rule": "rust-shared-clone-isolation",
+      "file": "fixtures/rust-shared-clone-isolation/pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-shared-clone-isolation-exception",
+      "rule": "rust-shared-clone-isolation",
+      "file": "fixtures/rust-shared-clone-isolation/exception.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-shared-clone-isolation-exception-copy-on-write",
+      "rule": "rust-shared-clone-isolation",
+      "file": "fixtures/rust-shared-clone-isolation/exception-copy-on-write.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-shared-clone-isolation-exception-immutable-sharing",
+      "rule": "rust-shared-clone-isolation",
+      "file": "fixtures/rust-shared-clone-isolation/exception-immutable-sharing.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-shared-clone-isolation-exception-deduplication",
+      "rule": "rust-shared-clone-isolation",
+      "file": "fixtures/rust-shared-clone-isolation/exception-deduplication.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-shared-clone-isolation-real-octocrab-body-bug",
+      "rule": "rust-shared-clone-isolation",
+      "file": "fixtures/rust-shared-clone-isolation/real-octocrab-body-bug.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-shared-clone-isolation-real-octocrab-body-fixed",
+      "rule": "rust-shared-clone-isolation",
+      "file": "fixtures/rust-shared-clone-isolation/real-octocrab-body-fixed.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-shared-clone-isolation-no-contract",
+      "rule": "rust-shared-clone-isolation",
+      "file": "fixtures/rust-shared-clone-isolation/no-contract.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-shared-clone-isolation-realistic-fail",
+      "rule": "rust-shared-clone-isolation",
+      "file": "fixtures/rust-shared-clone-isolation/realistic-fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-shared-clone-isolation-realistic-pass",
+      "rule": "rust-shared-clone-isolation",
+      "file": "fixtures/rust-shared-clone-isolation/realistic-pass.rs",
+      "expect": "pass"
+    }
+  ]
+}

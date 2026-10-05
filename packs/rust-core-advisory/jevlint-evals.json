@@ -1,0 +1,389 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "rust-advisory-input-panics-fail-port-expect",
+      "rule": "rust-advisory-input-panics",
+      "file": "fixtures/rust-advisory-input-panics/fail-port-expect.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-input-panics-fail-frame-assert",
+      "rule": "rust-advisory-input-panics",
+      "file": "fixtures/rust-advisory-input-panics/fail-frame-assert.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-input-panics-fail-command-panic",
+      "rule": "rust-advisory-input-panics",
+      "file": "fixtures/rust-advisory-input-panics/fail-command-panic.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-input-panics-real-findutils-width-bug",
+      "rule": "rust-advisory-input-panics",
+      "file": "fixtures/rust-advisory-input-panics/real-findutils-width-bug.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-input-panics-no-contract",
+      "rule": "rust-advisory-input-panics",
+      "file": "fixtures/rust-advisory-input-panics/no-contract.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-input-panics-pass-propagated-port",
+      "rule": "rust-advisory-input-panics",
+      "file": "fixtures/rust-advisory-input-panics/pass-propagated-port.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-input-panics-pass-proved-header",
+      "rule": "rust-advisory-input-panics",
+      "file": "fixtures/rust-advisory-input-panics/pass-proved-header.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-input-panics-pass-fixed-default",
+      "rule": "rust-advisory-input-panics",
+      "file": "fixtures/rust-advisory-input-panics/pass-fixed-default.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-input-panics-pass-programmer-precondition",
+      "rule": "rust-advisory-input-panics",
+      "file": "fixtures/rust-advisory-input-panics/pass-programmer-precondition.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-input-panics-pass-fatal-startup",
+      "rule": "rust-advisory-input-panics",
+      "file": "fixtures/rust-advisory-input-panics/pass-fatal-startup.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-input-panics-real-findutils-width-fixed",
+      "rule": "rust-advisory-input-panics",
+      "file": "fixtures/rust-advisory-input-panics/real-findutils-width-fixed.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-error-kind-erasure-unrelated-kind",
+      "rule": "rust-advisory-error-kind-erasure",
+      "file": "fixtures/rust-advisory-error-kind-erasure/unrelated-kind.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-error-kind-erasure-opaque-message",
+      "rule": "rust-advisory-error-kind-erasure",
+      "file": "fixtures/rust-advisory-error-kind-erasure/opaque-message.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-error-kind-erasure-real-burn-config-read-bug",
+      "rule": "rust-advisory-error-kind-erasure",
+      "file": "fixtures/rust-advisory-error-kind-erasure/real-burn-config-read-bug.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-error-kind-erasure-no-contract",
+      "rule": "rust-advisory-error-kind-erasure",
+      "file": "fixtures/rust-advisory-error-kind-erasure/no-contract.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-error-kind-erasure-real-burn-config-read-fixed",
+      "rule": "rust-advisory-error-kind-erasure",
+      "file": "fixtures/rust-advisory-error-kind-erasure/real-burn-config-read-fixed.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-error-kind-erasure-preserved-kind",
+      "rule": "rust-advisory-error-kind-erasure",
+      "file": "fixtures/rust-advisory-error-kind-erasure/preserved-kind.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-error-kind-erasure-sanitized-diagnostics",
+      "rule": "rust-advisory-error-kind-erasure",
+      "file": "fixtures/rust-advisory-error-kind-erasure/sanitized-diagnostics.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-error-kind-erasure-domain-rejection",
+      "rule": "rust-advisory-error-kind-erasure",
+      "file": "fixtures/rust-advisory-error-kind-erasure/domain-rejection.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-error-kind-erasure-boolean-availability",
+      "rule": "rust-advisory-error-kind-erasure",
+      "file": "fixtures/rust-advisory-error-kind-erasure/boolean-availability.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-error-kind-erasure-matching-domain-category",
+      "rule": "rust-advisory-error-kind-erasure",
+      "file": "fixtures/rust-advisory-error-kind-erasure/matching-domain-category.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-partial-mutation-before-error-rename-before-port-parse",
+      "rule": "rust-advisory-partial-mutation-before-error",
+      "file": "fixtures/rust-advisory-partial-mutation-before-error/rename-before-port-parse.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-partial-mutation-before-error-clear-before-file-open",
+      "rule": "rust-advisory-partial-mutation-before-error",
+      "file": "fixtures/rust-advisory-partial-mutation-before-error/clear-before-file-open.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-partial-mutation-before-error-take-before-validation",
+      "rule": "rust-advisory-partial-mutation-before-error",
+      "file": "fixtures/rust-advisory-partial-mutation-before-error/take-before-validation.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-partial-mutation-before-error-real-miden-execute-bug",
+      "rule": "rust-advisory-partial-mutation-before-error",
+      "file": "fixtures/rust-advisory-partial-mutation-before-error/real-miden-execute-bug.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-partial-mutation-before-error-no-contract",
+      "rule": "rust-advisory-partial-mutation-before-error",
+      "file": "fixtures/rust-advisory-partial-mutation-before-error/no-contract.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-partial-mutation-before-error-documented-partial-append",
+      "rule": "rust-advisory-partial-mutation-before-error",
+      "file": "fixtures/rust-advisory-partial-mutation-before-error/documented-partial-append.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-partial-mutation-before-error-rollback-appended-values",
+      "rule": "rust-advisory-partial-mutation-before-error",
+      "file": "fixtures/rust-advisory-partial-mutation-before-error/rollback-appended-values.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-partial-mutation-before-error-staged-endpoint-update",
+      "rule": "rust-advisory-partial-mutation-before-error",
+      "file": "fixtures/rust-advisory-partial-mutation-before-error/staged-endpoint-update.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-partial-mutation-before-error-restore-temporary-invariant",
+      "rule": "rust-advisory-partial-mutation-before-error",
+      "file": "fixtures/rust-advisory-partial-mutation-before-error/restore-temporary-invariant.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-partial-mutation-before-error-fatal-startup-prevents-reuse",
+      "rule": "rust-advisory-partial-mutation-before-error",
+      "file": "fixtures/rust-advisory-partial-mutation-before-error/fatal-startup-prevents-reuse.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-partial-mutation-before-error-real-miden-execute-fixed",
+      "rule": "rust-advisory-partial-mutation-before-error",
+      "file": "fixtures/rust-advisory-partial-mutation-before-error/real-miden-execute-fixed.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-unbounded-read-real-vector-gelf-bug",
+      "rule": "rust-advisory-unbounded-read",
+      "file": "fixtures/rust-advisory-unbounded-read/real-vector-gelf-bug.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-unbounded-read-network-text-timeout",
+      "rule": "rust-advisory-unbounded-read",
+      "file": "fixtures/rust-advisory-unbounded-read/network-text-timeout.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-unbounded-read-stdin-lines-incremental",
+      "rule": "rust-advisory-unbounded-read",
+      "file": "fixtures/rust-advisory-unbounded-read/stdin-lines-incremental.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-unbounded-read-no-contract",
+      "rule": "rust-advisory-unbounded-read",
+      "file": "fixtures/rust-advisory-unbounded-read/no-contract.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-unbounded-read-real-vector-gelf-fixed",
+      "rule": "rust-advisory-unbounded-read",
+      "file": "fixtures/rust-advisory-unbounded-read/real-vector-gelf-fixed.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-unbounded-read-trusted-fixed-input",
+      "rule": "rust-advisory-unbounded-read",
+      "file": "fixtures/rust-advisory-unbounded-read/trusted-fixed-input.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-unbounded-read-upstream-datagram-bound",
+      "rule": "rust-advisory-unbounded-read",
+      "file": "fixtures/rust-advisory-unbounded-read/upstream-datagram-bound.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-unbounded-read-bounded-incremental-copy",
+      "rule": "rust-advisory-unbounded-read",
+      "file": "fixtures/rust-advisory-unbounded-read/bounded-incremental-copy.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-unbounded-read-take-only-network-sample",
+      "rule": "rust-advisory-unbounded-read",
+      "file": "fixtures/rust-advisory-unbounded-read/take-only-network-sample.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-check-then-create-exists-create",
+      "rule": "rust-advisory-check-then-create",
+      "file": "fixtures/rust-advisory-check-then-create/exists-create.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-check-then-create-metadata-write",
+      "rule": "rust-advisory-check-then-create",
+      "file": "fixtures/rust-advisory-check-then-create/metadata-write.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-check-then-create-process-local-lock",
+      "rule": "rust-advisory-check-then-create",
+      "file": "fixtures/rust-advisory-check-then-create/process-local-lock.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-check-then-create-real-cargo-liner-import-bug",
+      "rule": "rust-advisory-check-then-create",
+      "file": "fixtures/rust-advisory-check-then-create/real-cargo-liner-import-bug.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-check-then-create-no-contract",
+      "rule": "rust-advisory-check-then-create",
+      "file": "fixtures/rust-advisory-check-then-create/no-contract.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-check-then-create-intended-overwrite",
+      "rule": "rust-advisory-check-then-create",
+      "file": "fixtures/rust-advisory-check-then-create/intended-overwrite.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-check-then-create-atomic-create-new",
+      "rule": "rust-advisory-check-then-create",
+      "file": "fixtures/rust-advisory-check-then-create/atomic-create-new.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-check-then-create-external-exclusive-ownership",
+      "rule": "rust-advisory-check-then-create",
+      "file": "fixtures/rust-advisory-check-then-create/external-exclusive-ownership.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-check-then-create-advisory-check-different-path",
+      "rule": "rust-advisory-check-then-create",
+      "file": "fixtures/rust-advisory-check-then-create/advisory-check-different-path.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-check-then-create-real-cargo-liner-import-fixed",
+      "rule": "rust-advisory-check-then-create",
+      "file": "fixtures/rust-advisory-check-then-create/real-cargo-liner-import-fixed.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-unflushed-bufwriter-ignored-flush-result",
+      "rule": "rust-advisory-unflushed-bufwriter",
+      "file": "fixtures/rust-advisory-unflushed-bufwriter/ignored-flush-result.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-unflushed-bufwriter-conditional-flush",
+      "rule": "rust-advisory-unflushed-bufwriter",
+      "file": "fixtures/rust-advisory-unflushed-bufwriter/conditional-flush.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-unflushed-bufwriter-scoped-writer-before-metadata",
+      "rule": "rust-advisory-unflushed-bufwriter",
+      "file": "fixtures/rust-advisory-unflushed-bufwriter/scoped-writer-before-metadata.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-unflushed-bufwriter-real-broken-pipe-bug",
+      "rule": "rust-advisory-unflushed-bufwriter",
+      "file": "fixtures/rust-advisory-unflushed-bufwriter/real-broken-pipe-bug.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-unflushed-bufwriter-no-contract",
+      "rule": "rust-advisory-unflushed-bufwriter",
+      "file": "fixtures/rust-advisory-unflushed-bufwriter/no-contract.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-advisory-unflushed-bufwriter-checked-flush",
+      "rule": "rust-advisory-unflushed-bufwriter",
+      "file": "fixtures/rust-advisory-unflushed-bufwriter/checked-flush.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-unflushed-bufwriter-checked-into-inner",
+      "rule": "rust-advisory-unflushed-bufwriter",
+      "file": "fixtures/rust-advisory-unflushed-bufwriter/checked-into-inner.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-unflushed-bufwriter-transfer-buffered-writer",
+      "rule": "rust-advisory-unflushed-bufwriter",
+      "file": "fixtures/rust-advisory-unflushed-bufwriter/transfer-buffered-writer.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-unflushed-bufwriter-best-effort-diagnostics",
+      "rule": "rust-advisory-unflushed-bufwriter",
+      "file": "fixtures/rust-advisory-unflushed-bufwriter/best-effort-diagnostics.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-unflushed-bufwriter-empty-buffer",
+      "rule": "rust-advisory-unflushed-bufwriter",
+      "file": "fixtures/rust-advisory-unflushed-bufwriter/empty-buffer.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-unflushed-bufwriter-already-completed-buffer",
+      "rule": "rust-advisory-unflushed-bufwriter",
+      "file": "fixtures/rust-advisory-unflushed-bufwriter/already-completed-buffer.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-unflushed-bufwriter-abandon-on-error",
+      "rule": "rust-advisory-unflushed-bufwriter",
+      "file": "fixtures/rust-advisory-unflushed-bufwriter/abandon-on-error.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-advisory-unflushed-bufwriter-real-broken-pipe-fixed",
+      "rule": "rust-advisory-unflushed-bufwriter",
+      "file": "fixtures/rust-advisory-unflushed-bufwriter/real-broken-pipe-fixed.rs",
+      "expect": "pass"
+    }
+  ]
+}

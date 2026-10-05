@@ -1,0 +1,88 @@
+{
+  "rules": [
+    {
+      "id": "rust-advisory-input-panics",
+      "description": "Advisory: infer recoverable input handling from a public Rust function returning Result. Fail when reachable parsing or validation of externally supplied arguments, network data, stdin or other untrusted input panics, unwraps, expects or asserts instead of returning an error. Give an ordinary malformed input reaching that path. Explicit recovery documentation is not required; a Result signature and visible external parsing boundary are sufficient. Do not diagnose unwraps of proved invariants or demand Result from every function.",
+      "severity": "info",
+      "include": ["**/*.rs"],
+      "kinds": ["function"],
+      "sourceMatch": ["\\bpub\\b"],
+      "allowAbstain": true,
+      "exceptions": [
+        "Proved invariants, fixed valid literals and documented programmer-error preconditions may panic; an unvalidated external argument is not itself proof of a programmer error.",
+        "An explicit application-owned fatal startup policy may panic, including in a Result-returning startup function."
+      ]
+    },
+    {
+      "id": "rust-advisory-error-kind-erasure",
+      "description": "Advisory: infer useful I/O failure reporting at a public Result boundary. Fail when map_err discards a concrete std::io::Error or its source into an unrelated ErrorKind or opaque replacement, concealing ordinary permission, missing-resource, interrupted or peer failures. Show the original failure class and the misleading or uninformative exposed error. No explicit cause-preservation contract is required. A useful original kind, source chain or appropriate contextual wrapper suffices; do not mandate a crate or Error representation.",
+      "severity": "info",
+      "include": ["**/*.rs"],
+      "kinds": ["function"],
+      "sourceMatch": ["\\bmap_err\\s*\\("],
+      "allowAbstain": true,
+      "exceptions": [
+        "Intentional sanitized public errors with appropriate internal diagnostics may conceal sensitive I/O details.",
+        "A visibly deliberate domain rejection or Boolean availability result need not expose an irrelevant lower cause.",
+        "Preserving useful original ErrorKind, source or structured context is sufficient; mapping a genuinely matching failure into a domain category is legitimate."
+      ]
+    },
+    {
+      "id": "rust-advisory-partial-mutation-before-error",
+      "description": "Advisory: infer a caller-state preservation preference for a function returning Result that accepts caller-visible &mut state. Fail when it mutates that state before a later reachable fallible ? and returns Err without restoring the mutation, staging it locally, or making partial-progress semantics explicit. Identify the mutation, fallible operation and observable state on Err. Explicit transaction documentation is not required, but this is a review heuristic, not a claim that all Result functions must be atomic or that safe-code inconsistency is undefined behavior.",
+      "severity": "info",
+      "include": ["**/*.rs"],
+      "kinds": ["function"],
+      "sourceMatch": ["&\\s*(?:'[A-Za-z_][A-Za-z0-9_]*\\s+)?mut\\b"],
+      "context": {"types": true},
+      "allowAbstain": true,
+      "exceptions": [
+        "Documented partial progress, including a visible API with an explicit partial-append contract, is legitimate.",
+        "Rollback or invariant-restoration that actually runs on every relevant error path is legitimate; poisoning alone is not rollback.",
+        "Fallible work staged in local state before committing to caller state, or termination that prevents caller reuse, is legitimate."
+      ]
+    },
+    {
+      "id": "rust-advisory-unbounded-read",
+      "description": "Advisory: infer a need for bounded memory at a visible network, stdin or other untrusted stream boundary. Fail when read_to_end, read_to_string or lines can grow a buffer or collection without take, an effective limit or bounded incremental processing. lines can allocate one unlimited line even without collecting the iterator. Identify the external stream and actual growth path. An explicit protocol cap is not required and no universal byte cap is prescribed. A timeout alone does not bound rapid growth; applying a limit after allocation does not bound that allocation.",
+      "severity": "info",
+      "include": ["**/*.rs"],
+      "kinds": ["function"],
+      "sourceMatch": ["\\b(?:read_to_end|read_to_string|lines)\\s*\\("],
+      "allowAbstain": true,
+      "exceptions": [
+        "Trusted fixed-size input or a demonstrated upstream envelope/codec bound is legitimate.",
+        "Bounded incremental processing without unlimited per-item allocation is legitimate.",
+        "An effective take or byte/resource limit is legitimate for this advisory; truncation/framing correctness requires a separately established protocol contract."
+      ]
+    },
+    {
+      "id": "rust-advisory-check-then-create",
+      "description": "Advisory: infer an exclusivity intention from an absence check using exists or metadata followed by std::fs::File::create, fs::write or ordinary create on the same path. Fail when the check is relied upon to avoid overwriting and the subsequent write can truncate a file created between the two operations. Show the same path and the competing-creator window. No explicit never-overwrite contract is required. Do not report exists mechanically or treat atomic create_new as a race.",
+      "severity": "info",
+      "include": ["**/*.rs"],
+      "kinds": ["function"],
+      "sourceMatch": ["\\b(?:exists|try_exists|metadata|symlink_metadata|create_new)\\s*\\("],
+      "allowAbstain": true,
+      "exceptions": [
+        "Explicit intended overwrite or advisory-only existence checks not relied upon for exclusivity are legitimate.",
+        "Atomic create_new or another demonstrated atomic creation primitive is legitimate.",
+        "Established external exclusive ownership preventing competing creators is legitimate; a process-local lock does not exclude unrelated processes without further evidence."
+      ]
+    },
+    {
+      "id": "rust-advisory-unflushed-bufwriter",
+      "description": "Advisory: infer checked I/O completion from a function returning io::Result that owns a std::io::BufWriter over File or TcpStream. Fail when bytes can remain buffered on a success path and the writer is dropped without checked flush or into_inner, silently losing any completion error. Trace relevant success branches; write_all into BufWriter alone does not complete downstream output, and Drop ignores errors. No explicit output-completion contract is required. Completion is not crash durability, fsync or atomic replacement.",
+      "severity": "info",
+      "include": ["**/*.rs"],
+      "kinds": ["function"],
+      "sourceMatch": ["\\bBufWriter\\b", "\\b(?:write|write_all|write_fmt|flush|into_inner)\\s*\\("],
+      "allowAbstain": true,
+      "exceptions": [
+        "Checked flush or into_inner, or appropriate ownership transfer for caller-managed completion, is legitimate.",
+        "Explicitly disposable or best-effort output and abandonment on an error path are legitimate.",
+        "Empty or demonstrably already-completed buffers are legitimate; arbitrary buffer capacity alone does not prove all output was completed."
+      ]
+    }
+  ]
+}

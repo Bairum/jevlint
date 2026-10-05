@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "id": "Bairum/rust-tokio",
+  "languages": ["rust"],
+  "rules": "rules.json",
+  "guidance": "guidance.md",
+  "evals": "jevlint-evals.json"
+}

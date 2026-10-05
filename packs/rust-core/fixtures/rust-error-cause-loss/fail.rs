@@ -1,0 +1,8 @@
+/// Read administrator configuration. Callers inspect ErrorKind::NotFound
+/// to offer first-run setup and PermissionDenied to request correct permissions.
+/// Preserve the OS failure identity; the caller already owns the resource path.
+pub fn read_config(path: &std::path::Path) -> std::io::Result<String> {
+    std::fs::read_to_string(path).map_err(|_| {
+        std::io::Error::new(std::io::ErrorKind::InvalidData, "configuration syntax invalid")
+    })
+}

@@ -1,0 +1,377 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "partial-array-publication-fail",
+      "rule": "rust-unsafe-precondition-contract",
+      "file": "fixtures/rust-unsafe-precondition-contract/fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "complete-array-publication-pass",
+      "rule": "rust-unsafe-precondition-contract",
+      "file": "fixtures/rust-unsafe-precondition-contract/pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "partial-raw-storage-exception",
+      "rule": "rust-unsafe-precondition-contract",
+      "file": "fixtures/rust-unsafe-precondition-contract/exception.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "byte-count-as-element-extent-fail",
+      "rule": "rust-unsafe-precondition-contract",
+      "file": "fixtures/rust-unsafe-precondition-contract/extent/fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "bounded-element-extent-pass",
+      "rule": "rust-unsafe-precondition-contract",
+      "file": "fixtures/rust-unsafe-precondition-contract/extent/pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "borrowed-byte-view-exception",
+      "rule": "rust-unsafe-precondition-contract",
+      "file": "fixtures/rust-unsafe-precondition-contract/extent/exception.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "reconstruction-capacity-layout-fail",
+      "rule": "rust-unsafe-precondition-contract",
+      "file": "fixtures/rust-unsafe-precondition-contract/ownership/fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "original-capacity-reconstruction-pass",
+      "rule": "rust-unsafe-precondition-contract",
+      "file": "fixtures/rust-unsafe-precondition-contract/ownership/pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "borrow-without-ownership-exception",
+      "rule": "rust-unsafe-precondition-contract",
+      "file": "fixtures/rust-unsafe-precondition-contract/ownership/exception.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "callback-unwind-duplicate-owner-fail",
+      "rule": "rust-unsafe-unwind-state",
+      "file": "fixtures/rust-unsafe-unwind-state/fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "callback-unwind-valid-owner-pass",
+      "rule": "rust-unsafe-unwind-state",
+      "file": "fixtures/rust-unsafe-unwind-state/pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "callback-unwind-leak-safe-exception",
+      "rule": "rust-unsafe-unwind-state",
+      "file": "fixtures/rust-unsafe-unwind-state/exception.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "ffi-null-return",
+      "rule": "rust-unsafe-ffi-pointer-contract",
+      "file": "fixtures/rust-unsafe-ffi-pointer-contract/fail-null-return.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "ffi-unterminated-record",
+      "rule": "rust-unsafe-ffi-pointer-contract",
+      "file": "fixtures/rust-unsafe-ffi-pointer-contract/fail-unterminated-record.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "ffi-retained-name",
+      "rule": "rust-unsafe-ffi-pointer-contract",
+      "file": "fixtures/rust-unsafe-ffi-pointer-contract/fail-retained-name.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "ffi-misaligned-out-buffer",
+      "rule": "rust-unsafe-ffi-pointer-contract",
+      "file": "fixtures/rust-unsafe-ffi-pointer-contract/fail-misaligned-out-buffer.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "ffi-rust-free-foreign-name",
+      "rule": "rust-unsafe-ffi-pointer-contract",
+      "file": "fixtures/rust-unsafe-ffi-pointer-contract/fail-rust-free-foreign-name.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "ffi-null-empty-out-buffer",
+      "rule": "rust-unsafe-ffi-pointer-contract",
+      "file": "fixtures/rust-unsafe-ffi-pointer-contract/pass-null-empty-out-buffer.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "ffi-static-name-aligned-words",
+      "rule": "rust-unsafe-ffi-pointer-contract",
+      "file": "fixtures/rust-unsafe-ffi-pointer-contract/pass-static-name-aligned-words.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "ffi-foreign-release",
+      "rule": "rust-unsafe-ffi-pointer-contract",
+      "file": "fixtures/rust-unsafe-ffi-pointer-contract/pass-foreign-release.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "ffi-unsafe-caller-obligations",
+      "rule": "rust-unsafe-ffi-pointer-contract",
+      "file": "fixtures/rust-unsafe-ffi-pointer-contract/pass-unsafe-caller-obligations.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "ffi-no-contract",
+      "rule": "rust-unsafe-ffi-pointer-contract",
+      "file": "fixtures/rust-unsafe-ffi-pointer-contract/pass-no-contract.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "ffi-registry-module-fail",
+      "rule": "rust-unsafe-ffi-pointer-contract",
+      "file": "fixtures/rust-unsafe-ffi-pointer-contract/fail-registry-module.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "ffi-registry-module-pass",
+      "rule": "rust-unsafe-ffi-pointer-contract",
+      "file": "fixtures/rust-unsafe-ffi-pointer-contract/pass-registry-module.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "ffi-real-glib-variant-out-param-bug",
+      "rule": "rust-unsafe-ffi-pointer-contract",
+      "file": "fixtures/rust-unsafe-ffi-pointer-contract/real-glib-variant-out-param-bug.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "ffi-real-glib-variant-out-param-fixed",
+      "rule": "rust-unsafe-ffi-pointer-contract",
+      "file": "fixtures/rust-unsafe-ffi-pointer-contract/real-glib-variant-out-param-fixed.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "pyo3-borrowed-as-owned",
+      "rule": "rust-unsafe-pyo3-reference-ownership",
+      "file": "fixtures/rust-unsafe-pyo3-reference-ownership/borrowed-as-owned.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "pyo3-new-as-borrowed",
+      "rule": "rust-unsafe-pyo3-reference-ownership",
+      "file": "fixtures/rust-unsafe-pyo3-reference-ownership/new-as-borrowed.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "pyo3-unchecked-list-cast",
+      "rule": "rust-unsafe-pyo3-reference-ownership",
+      "file": "fixtures/rust-unsafe-pyo3-reference-ownership/unchecked-list-cast.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "pyo3-new-as-owned",
+      "rule": "rust-unsafe-pyo3-reference-ownership",
+      "file": "fixtures/rust-unsafe-pyo3-reference-ownership/new-as-owned.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "pyo3-borrowed-as-strong",
+      "rule": "rust-unsafe-pyo3-reference-ownership",
+      "file": "fixtures/rust-unsafe-pyo3-reference-ownership/borrowed-as-strong.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "pyo3-balanced-new-reference",
+      "rule": "rust-unsafe-pyo3-reference-ownership",
+      "file": "fixtures/rust-unsafe-pyo3-reference-ownership/balanced-new-reference.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "pyo3-checked-list-cast",
+      "rule": "rust-unsafe-pyo3-reference-ownership",
+      "file": "fixtures/rust-unsafe-pyo3-reference-ownership/checked-list-cast.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "pyo3-borrowed-owner-retained",
+      "rule": "rust-unsafe-pyo3-reference-ownership",
+      "file": "fixtures/rust-unsafe-pyo3-reference-ownership/borrowed-owner-retained.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "pyo3-incref-before-owned",
+      "rule": "rust-unsafe-pyo3-reference-ownership",
+      "file": "fixtures/rust-unsafe-pyo3-reference-ownership/incref-before-owned.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "pyo3-foreign-borrowed-contract",
+      "rule": "rust-unsafe-pyo3-reference-ownership",
+      "file": "fixtures/rust-unsafe-pyo3-reference-ownership/foreign-borrowed-contract.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "pyo3-no-contract",
+      "rule": "rust-unsafe-pyo3-reference-ownership",
+      "file": "fixtures/rust-unsafe-pyo3-reference-ownership/no-contract.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "pyo3-caller-owned-contract",
+      "rule": "rust-unsafe-pyo3-reference-ownership",
+      "file": "fixtures/rust-unsafe-pyo3-reference-ownership/caller-owned-contract.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "pyo3-real-weakref-bug",
+      "rule": "rust-unsafe-pyo3-reference-ownership",
+      "file": "fixtures/rust-unsafe-pyo3-reference-ownership/real-pyo3-weakref-bug.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "pyo3-real-weakref-fixed",
+      "rule": "rust-unsafe-pyo3-reference-ownership",
+      "file": "fixtures/rust-unsafe-pyo3-reference-ownership/real-pyo3-weakref-fixed.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "pyo3-realistic-adapter-bug",
+      "rule": "rust-unsafe-pyo3-reference-ownership",
+      "file": "fixtures/rust-unsafe-pyo3-reference-ownership/realistic-adapter-bug.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "pyo3-realistic-adapter-clean",
+      "rule": "rust-unsafe-pyo3-reference-ownership",
+      "file": "fixtures/rust-unsafe-pyo3-reference-ownership/realistic-adapter-clean.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "unsafe-caller-slice-contract-exception",
+      "rule": "rust-unsafe-precondition-contract",
+      "file": "fixtures/rust-unsafe-precondition-contract/caller-contract.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "initialized-fields-with-padding-exception",
+      "rule": "rust-unsafe-precondition-contract",
+      "file": "fixtures/rust-unsafe-precondition-contract/padding-value.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "undereferenced-raw-sentinel-exception",
+      "rule": "rust-unsafe-precondition-contract",
+      "file": "fixtures/rust-unsafe-precondition-contract/raw-sentinel.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "partial-owned-maybeuninit-storage-exception",
+      "rule": "rust-unsafe-precondition-contract",
+      "file": "fixtures/rust-unsafe-precondition-contract/partial-owned-storage.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "multi-unit-telemetry-extent-fail",
+      "rule": "rust-unsafe-precondition-contract",
+      "file": "fixtures/rust-unsafe-precondition-contract/multi-unit-fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "multi-unit-telemetry-extent-pass",
+      "rule": "rust-unsafe-precondition-contract",
+      "file": "fixtures/rust-unsafe-precondition-contract/multi-unit-pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "real-fyrox-header-byte-reconstruction-bug",
+      "rule": "rust-unsafe-precondition-contract",
+      "file": "fixtures/rust-unsafe-precondition-contract/real-fyrox-bytes-bug.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "real-fyrox-header-byte-reconstruction-fixed",
+      "rule": "rust-unsafe-precondition-contract",
+      "file": "fixtures/rust-unsafe-precondition-contract/real-fyrox-bytes-fixed.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "callback-published-unwritten-prefix-fail",
+      "rule": "rust-unsafe-unwind-state",
+      "file": "fixtures/rust-unsafe-unwind-state/published-prefix-fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "callback-initialized-prefix-publication-pass",
+      "rule": "rust-unsafe-unwind-state",
+      "file": "fixtures/rust-unsafe-unwind-state/published-prefix-pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "forgotten-drain-cleanup-guard-fail",
+      "rule": "rust-unsafe-unwind-state",
+      "file": "fixtures/rust-unsafe-unwind-state/forgotten-guard-fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "forgotten-drain-valid-empty-state-pass",
+      "rule": "rust-unsafe-unwind-state",
+      "file": "fixtures/rust-unsafe-unwind-state/forgotten-guard-pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "restoration-guard-unwind-and-forget-pass",
+      "rule": "rust-unsafe-unwind-state",
+      "file": "fixtures/rust-unsafe-unwind-state/restoration-guard.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "locally-nonpanicking-owner-move-exception",
+      "rule": "rust-unsafe-unwind-state",
+      "file": "fixtures/rust-unsafe-unwind-state/nonpanicking-move.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "explicit-callback-abort-policy-exception",
+      "rule": "rust-unsafe-unwind-state",
+      "file": "fixtures/rust-unsafe-unwind-state/abort-policy.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "multi-unit-batch-callback-owner-fail",
+      "rule": "rust-unsafe-unwind-state",
+      "file": "fixtures/rust-unsafe-unwind-state/multi-unit-fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "multi-unit-batch-callback-owner-pass",
+      "rule": "rust-unsafe-unwind-state",
+      "file": "fixtures/rust-unsafe-unwind-state/multi-unit-pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "real-qwutils-clone-shift-bug",
+      "rule": "rust-unsafe-unwind-state",
+      "file": "fixtures/rust-unsafe-unwind-state/real-qwutils-insert-bug.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "real-qwutils-clone-shift-fixed",
+      "rule": "rust-unsafe-unwind-state",
+      "file": "fixtures/rust-unsafe-unwind-state/real-qwutils-insert-fixed.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "pyo3-constructed-list-cast",
+      "rule": "rust-unsafe-pyo3-reference-ownership",
+      "file": "fixtures/rust-unsafe-pyo3-reference-ownership/constructed-list-cast.rs",
+      "expect": "pass"
+    }
+  ]
+}

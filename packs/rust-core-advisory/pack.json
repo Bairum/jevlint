@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "id": "Bairum/rust-core-advisory",
+  "languages": ["rust"],
+  "rules": "rules.json",
+  "evals": "jevlint-evals.json",
+  "guidance": "guidance.md"
+}

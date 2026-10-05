@@ -1,0 +1,39 @@
+{
+  "rules": [
+    {
+      "id": "rust-perf-repeated-materialization",
+      "description": "Review repeated owned materialization or preprocessing of invariant input in an established high-volume or hot loop. Fail only when the primary source establishes actual standard-library operations, a significant workload or explicit project performance requirement, unchanged input across iterations, and a visible consumer that can reuse the result without changing semantics. Identify the loop, preprocessing, invariant input, consumer and reusable-result path; explain why hoisting preserves the documented contract, including empty-input and error behavior. Examples include parsing invariant configuration into a Vec or repeatedly collecting and sorting a lookup table for read-only queries. Do not diagnose clone, allocation or collect by spelling alone or duplicate a simple redundant_clone finding. Pass when the workload/performance requirement is not established, preprocessing is already reused, or a listed exception applies. Do not redesign public APIs merely to expose speculative intermediate results.",
+      "severity": "warning",
+      "kinds": ["function"],
+      "include": ["**/*.rs"],
+      "sourceMatch": [
+        "(?s)\\b(?:for|while|loop|for_each|try_for_each|map|fold|try_fold)\\b.*\\b(?:to_vec|to_owned|to_string|clone|clone_from|cloned|copied|collect|parse|from|from_iter|vec|format|sort|sort_by|sort_by_key|sort_unstable|sort_unstable_by|sort_unstable_by_key|resize|reserve|split|split_whitespace|split_terminator|split_inclusive|extend_from_slice)\\b",
+        "(?s)\\b(?:to_vec|to_owned|to_string|clone|clone_from|cloned|copied|collect|parse|from|from_iter|vec|format|sort|sort_by|sort_by_key|sort_unstable|sort_unstable_by|sort_unstable_by_key|resize|reserve|split|split_whitespace|split_terminator|split_inclusive|extend_from_slice)\\b.*\\b(?:for|while|loop|for_each|try_for_each|map|fold|try_fold)\\b"
+      ],
+      "exceptions": [
+        "Per-iteration inputs change or the contract requires a fresh independent snapshot, and the visible operations implement that requirement.",
+        "Every iteration must transfer a separate owned result to an API/task/retaining consumer; sharing or borrowing would violate the visible ownership or lifetime requirement.",
+        "Cheap Arc/Rc sharing, intentional capacity reuse, avoiding worse lock retention/lifetime coupling, documented optimizer elimination or measured workload tradeoffs establish that the current work is appropriate.",
+        "Small cold-path work, bounded intentional reservation or no demonstrated caller need does not justify a performance finding."
+      ],
+      "allowAbstain": true
+    },
+    {
+      "id": "rust-perf-small-writes",
+      "description": "Consider buffering or batching repeated tiny external writes only for an established throughput-oriented high-volume workload. Fail when the primary source establishes the actual unbuffered external sink, repeated tiny standard-library Write operations, and a documented throughput/completion contract without an immediate-delivery requirement or a visible buffering layer. Identify the sink, loop, write sizes and workload; recommend bounded buffering or batching with completion errors observed at the required boundary. A method named write_all alone does not establish its sink or lack of buffering. Pass when the throughput/workload contract is not established, no relevant repeated-write path exists, or a listed exception applies. Do not require whole-file materialization, invent memory ceilings, describe flush as file durability, or add a separate missing-flush finding under this performance rule.",
+      "severity": "warning",
+      "kinds": ["function"],
+      "include": ["**/*.rs"],
+      "sourceMatch": [
+        "(?s)\\b(?:for|while|loop|for_each|try_for_each|map|fold|try_fold)\\b.*\\b(?:write|write_all|write_fmt|writeln)\\b",
+        "(?s)\\b(?:write|write_all|write_fmt|writeln)\\b.*\\b(?:for|while|loop|for_each|try_for_each|map|fold|try_fold)\\b"
+      ],
+      "exceptions": [
+        "A visible std::io::BufWriter or other established buffering/batching layer already coalesces the tiny writes and completion is handled according to the contract.",
+        "An interactive protocol requires each small message to reach the peer before waiting for the corresponding response; delaying until a later batch would violate that requirement.",
+        "Few or large writes, in-memory Vec targets, bounded streaming requirements, or measured performance establish that further buffering is inappropriate."
+      ],
+      "allowAbstain": true
+    }
+  ]
+}
