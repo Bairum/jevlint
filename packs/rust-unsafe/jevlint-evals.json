@@ -372,6 +372,42 @@
       "rule": "rust-unsafe-pyo3-reference-ownership",
       "file": "fixtures/rust-unsafe-pyo3-reference-ownership/constructed-list-cast.rs",
       "expect": "pass"
+    },
+    {
+      "name": "multi-unit-buffer-shape-fail",
+      "rule": "rust-unsafe-precondition-contract",
+      "file": "fixtures/rust-unsafe-precondition-contract/multi-unit-buffer-shape-fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "multi-unit-buffer-shape-pass",
+      "rule": "rust-unsafe-precondition-contract",
+      "file": "fixtures/rust-unsafe-precondition-contract/multi-unit-buffer-shape-pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "multi-unit-metadata-copy-fail",
+      "rule": "rust-unsafe-ffi-pointer-contract",
+      "file": "fixtures/rust-unsafe-ffi-pointer-contract/multi-unit-metadata-copy-fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "multi-unit-metadata-copy-pass",
+      "rule": "rust-unsafe-ffi-pointer-contract",
+      "file": "fixtures/rust-unsafe-ffi-pointer-contract/multi-unit-metadata-copy-pass.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "multi-unit-publication-metadata-fail",
+      "rule": "rust-unsafe-pyo3-reference-ownership",
+      "file": "fixtures/rust-unsafe-pyo3-reference-ownership/multi-unit-publication-metadata-fail.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "multi-unit-publication-metadata-pass",
+      "rule": "rust-unsafe-pyo3-reference-ownership",
+      "file": "fixtures/rust-unsafe-pyo3-reference-ownership/multi-unit-publication-metadata-pass.rs",
+      "expect": "pass"
     }
   ]
 }
