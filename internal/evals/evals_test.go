@@ -230,6 +230,69 @@ func TestRunRequiresApplicableUnits(t *testing.T) {
 	}
 }
 
+type pathRecordingEvaluator struct {
+	mu    sync.Mutex
+	paths []string
+}
+
+func (evaluator *pathRecordingEvaluator) Evaluate(
+	_ context.Context,
+	batch evaluation.Batch,
+) (map[string]evaluation.Result, error) {
+	evaluator.mu.Lock()
+	evaluator.paths = append(evaluator.paths, batch.CodeUnit.Path)
+	evaluator.mu.Unlock()
+	results := make(map[string]evaluation.Result, len(batch.Rules))
+	for _, rule := range batch.Rules {
+		results[rule.ID] = evaluation.Result{Status: evaluation.StatusPass, Confidence: 1}
+	}
+	return results, nil
+}
+
+func TestRunHidesVerdictBearingFixtureNames(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	fixtures := filepath.Join(root, "bad")
+	if err := os.Mkdir(fixtures, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, DefaultFile), []byte(validEvalsJSON("bad/fail.go")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(fixtures, "fail.go"), []byte("package sample\n\nfunc Ready() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	document, err := Load(filepath.Join(root, DefaultFile), sampleConfig(nil), testExtractor(t))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	evaluator := &pathRecordingEvaluator{}
+	if _, err := Run(context.Background(), document, sampleConfig(nil), testExtractor(t), evaluator, Options{Root: root, Concurrency: 1}); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if len(evaluator.paths) == 0 {
+		t.Fatal("evaluator received no batches")
+	}
+	for _, sent := range evaluator.paths {
+		if strings.Contains(sent, "bad") || strings.Contains(sent, "fail") || filepath.Ext(sent) != ".go" {
+			t.Fatalf("evaluator received path %q, want an opaque name with the fixture extension", sent)
+		}
+	}
+}
+
+func TestNeutralizeFixturePathHidesFileDerivedNames(t *testing.T) {
+	t.Parallel()
+
+	batch := neutralizeFixturePath(evaluation.Batch{CodeUnit: parsing.CodeUnit{
+		Name: "fail.go:6",
+		Path: "bad/fail.go",
+	}})
+	if strings.Contains(batch.CodeUnit.Name, "fail") || !strings.HasPrefix(batch.CodeUnit.Name, batch.CodeUnit.Path+":") {
+		t.Fatalf("name = %q, path = %q; want the neutral file name in the unit name", batch.CodeUnit.Name, batch.CodeUnit.Path)
+	}
+}
+
 func TestResultJSONIncludesConfidence(t *testing.T) {
 	t.Parallel()
 

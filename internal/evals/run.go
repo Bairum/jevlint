@@ -2,10 +2,14 @@ package evals
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/codegirl-007/jevlint/internal/config"
@@ -271,7 +275,7 @@ func (recorder *recordingEvaluator) Evaluate(
 	ctx context.Context,
 	batch evaluation.Batch,
 ) (map[string]evaluation.Result, error) {
-	results, err := recorder.inner.Evaluate(ctx, batch)
+	results, err := recorder.inner.Evaluate(ctx, neutralizeFixturePath(batch))
 	if err != nil {
 		return nil, err
 	}
@@ -334,6 +338,27 @@ func (recorder *recordingEvaluator) Evaluate(
 		}
 	}
 	return results, nil
+}
+
+// neutralizeFixturePath hides the fixture's file name from the evaluator.
+// Fixture names such as bad/, fail.rs or real-x-bug.rs encode the expected
+// verdict, so the request carries a stable opaque name with the same extension,
+// including in unit names derived from the file name.
+func neutralizeFixturePath(batch evaluation.Batch) evaluation.Batch {
+	original := batch.CodeUnit.Path
+	sum := sha256.Sum256([]byte(original))
+	neutral := "case-" + hex.EncodeToString(sum[:6]) + path.Ext(original)
+	unit := batch.CodeUnit
+	unit.Path = neutral
+	unit.Name = strings.ReplaceAll(unit.Name, path.Base(original), neutral)
+	unit.Callees = append([]parsing.CalleeContext(nil), unit.Callees...)
+	for index := range unit.Callees {
+		if unit.Callees[index].Path == original {
+			unit.Callees[index].Path = neutral
+		}
+	}
+	batch.CodeUnit = unit
+	return batch
 }
 
 // CacheStats returns the cache counts from the wrapped client.
