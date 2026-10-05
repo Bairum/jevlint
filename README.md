@@ -352,7 +352,9 @@ A case must evaluate at least one applicable code unit or eval exits `2`.
 
 The repository ships its own cases in `jevlint-evals.json` covering the
 fixtures under `examples/rules`. Folder names such as `good` and `bad` are
-organizational only; the case's `expect` value decides the outcome. A rule can
+organizational only; the case's `expect` value decides the outcome. Eval sends
+the evaluator an opaque file name with the fixture's extension, so names like
+`bad/` or `fail.go` never reveal the expected verdict. A rule can
 have many cases, including several for the same language.
 
 ```json
