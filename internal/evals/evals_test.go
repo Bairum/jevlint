@@ -14,6 +14,7 @@ import (
 	"github.com/codegirl-007/jevlint/internal/config"
 	"github.com/codegirl-007/jevlint/internal/evaluation"
 	"github.com/codegirl-007/jevlint/internal/parsing"
+	"github.com/codegirl-007/jevlint/internal/runner"
 )
 
 type fixedEvaluator struct {
@@ -402,15 +403,16 @@ func TestRunClassifiesRawDecisions(t *testing.T) {
 		want         Outcome
 		matched      bool
 		inconclusive bool
+		decisions    runner.Decisions
 	}{
-		{"explicit pass matches pass", ExpectPass, evaluation.StatusPass, 0.9, OutcomePass, true, false},
-		{"reported fail mismatches pass", ExpectPass, evaluation.StatusFail, 0.9, OutcomeFail, false, false},
-		{"hidden fail is inconclusive", ExpectPass, evaluation.StatusFail, 0.4, OutcomeInconclusive, false, true},
-		{"skip is inconclusive", ExpectPass, evaluation.StatusSkip, 0.9, OutcomeInconclusive, false, true},
-		{"abstain is inconclusive", ExpectPass, evaluation.StatusAbstain, 0.9, OutcomeInconclusive, false, true},
-		{"reported fail matches fail", ExpectFail, evaluation.StatusFail, 0.9, OutcomeFail, true, false},
-		{"hidden fail cannot match fail", ExpectFail, evaluation.StatusFail, 0.4, OutcomeInconclusive, false, true},
-		{"pass mismatches fail", ExpectFail, evaluation.StatusPass, 0.9, OutcomePass, false, false},
+		{"explicit pass matches pass", ExpectPass, evaluation.StatusPass, 0.9, OutcomePass, true, false, runner.Decisions{Pass: 1}},
+		{"reported fail mismatches pass", ExpectPass, evaluation.StatusFail, 0.9, OutcomeFail, false, false, runner.Decisions{Fail: 1, Reported: 1}},
+		{"hidden fail is inconclusive", ExpectPass, evaluation.StatusFail, 0.4, OutcomeInconclusive, false, true, runner.Decisions{Fail: 1, BelowFloor: 1}},
+		{"skip is inconclusive", ExpectPass, evaluation.StatusSkip, 0.9, OutcomeInconclusive, false, true, runner.Decisions{Skip: 1}},
+		{"abstain is inconclusive", ExpectPass, evaluation.StatusAbstain, 0.9, OutcomeInconclusive, false, true, runner.Decisions{Abstain: 1}},
+		{"reported fail matches fail", ExpectFail, evaluation.StatusFail, 0.9, OutcomeFail, true, false, runner.Decisions{Fail: 1, Reported: 1}},
+		{"hidden fail cannot match fail", ExpectFail, evaluation.StatusFail, 0.4, OutcomeInconclusive, false, true, runner.Decisions{Fail: 1, BelowFloor: 1}},
+		{"pass mismatches fail", ExpectFail, evaluation.StatusPass, 0.9, OutcomePass, false, false, runner.Decisions{Pass: 1}},
 	}
 
 	for _, test := range tests {
@@ -433,6 +435,16 @@ func TestRunClassifiesRawDecisions(t *testing.T) {
 				t.Fatalf("Run() error = %v", err)
 			}
 			result := report.Cases[0]
+			if result.Decisions != test.decisions {
+				t.Fatalf("decisions = %#v, want %#v", result.Decisions, test.decisions)
+			}
+			if test.status == evaluation.StatusFail {
+				if result.Confidence == nil || *result.Confidence != test.confidence {
+					t.Fatalf("confidence = %v, want %v", result.Confidence, test.confidence)
+				}
+			} else if result.Confidence != nil {
+				t.Fatalf("confidence = %v, want nil", result.Confidence)
+			}
 			if result.Actual != test.want {
 				t.Fatalf("actual = %v, want %v", result.Actual, test.want)
 			}
@@ -487,45 +499,53 @@ func TestRunAggregatesDecisionsAcrossCodeUnits(t *testing.T) {
 
 	floor := 0.8
 	tests := []struct {
-		name       string
-		alpha      evaluation.Result
-		beta       evaluation.Result
-		want       Outcome
-		pass       int
-		skip       int
-		reported   int
-		belowFloor int
+		name      string
+		alpha     evaluation.Result
+		beta      evaluation.Result
+		want      Outcome
+		decisions runner.Decisions
 	}{
 		{
-			name:  "one pass and one skip passes",
-			alpha: evaluation.Result{Status: evaluation.StatusPass, Confidence: 1},
-			beta:  evaluation.Result{Status: evaluation.StatusSkip, Confidence: 1},
-			want:  OutcomePass,
-			pass:  1,
-			skip:  1,
+			name:      "one pass and one skip passes",
+			alpha:     evaluation.Result{Status: evaluation.StatusPass, Confidence: 1},
+			beta:      evaluation.Result{Status: evaluation.StatusSkip, Confidence: 1},
+			want:      OutcomePass,
+			decisions: runner.Decisions{Pass: 1, Skip: 1},
 		},
 		{
-			name:  "all skip is inconclusive",
-			alpha: evaluation.Result{Status: evaluation.StatusSkip, Confidence: 1},
-			beta:  evaluation.Result{Status: evaluation.StatusSkip, Confidence: 1},
-			want:  OutcomeInconclusive,
-			skip:  2,
+			name:      "all skip is inconclusive",
+			alpha:     evaluation.Result{Status: evaluation.StatusSkip, Confidence: 1},
+			beta:      evaluation.Result{Status: evaluation.StatusSkip, Confidence: 1},
+			want:      OutcomeInconclusive,
+			decisions: runner.Decisions{Skip: 2},
 		},
 		{
-			name:       "below-floor fail makes it inconclusive",
-			alpha:      evaluation.Result{Status: evaluation.StatusFail, Confidence: 0.4},
-			beta:       evaluation.Result{Status: evaluation.StatusPass, Confidence: 1},
-			want:       OutcomeInconclusive,
-			pass:       1,
-			belowFloor: 1,
+			name:      "below-floor fail makes it inconclusive",
+			alpha:     evaluation.Result{Status: evaluation.StatusFail, Confidence: 0.4},
+			beta:      evaluation.Result{Status: evaluation.StatusPass, Confidence: 1},
+			want:      OutcomeInconclusive,
+			decisions: runner.Decisions{Pass: 1, Fail: 1, BelowFloor: 1},
 		},
 		{
-			name:     "reported fail wins",
-			alpha:    evaluation.Result{Status: evaluation.StatusFail, Confidence: 0.9},
-			beta:     evaluation.Result{Status: evaluation.StatusPass, Confidence: 1},
-			want:     OutcomeFail,
-			pass:     1,
-			reported: 1,
+			name:      "reported fail wins",
+			alpha:     evaluation.Result{Status: evaluation.StatusFail, Confidence: 0.9},
+			beta:      evaluation.Result{Status: evaluation.StatusPass, Confidence: 1},
+			want:      OutcomeFail,
+			decisions: runner.Decisions{Pass: 1, Fail: 1, Reported: 1},
+		},
+		{
+			name:      "one pass and one abstain passes",
+			alpha:     evaluation.Result{Status: evaluation.StatusPass, Confidence: 1},
+			beta:      evaluation.Result{Status: evaluation.StatusAbstain, Confidence: 1},
+			want:      OutcomePass,
+			decisions: runner.Decisions{Pass: 1, Abstain: 1},
+		},
+		{
+			name:      "reported and below-floor fails retain both counts",
+			alpha:     evaluation.Result{Status: evaluation.StatusFail, Confidence: 0.9},
+			beta:      evaluation.Result{Status: evaluation.StatusFail, Confidence: 0.4},
+			want:      OutcomeFail,
+			decisions: runner.Decisions{Fail: 2, Reported: 1, BelowFloor: 1},
 		},
 	}
 
@@ -566,11 +586,8 @@ func TestRunAggregatesDecisionsAcrossCodeUnits(t *testing.T) {
 			if result.Actual != test.want {
 				t.Fatalf("actual = %v, want %v", result.Actual, test.want)
 			}
-			if result.Decisions.Pass != test.pass ||
-				result.Decisions.Skip != test.skip ||
-				result.Decisions.Reported != test.reported ||
-				result.Decisions.BelowFloor != test.belowFloor {
-				t.Fatalf("decisions = %#v", result.Decisions)
+			if result.Decisions != test.decisions {
+				t.Fatalf("decisions = %#v, want %#v", result.Decisions, test.decisions)
 			}
 			if len(result.Units) != 2 ||
 				result.Units[0].Name != "Alpha" ||
@@ -640,7 +657,7 @@ func TestRunConcurrentUnitsAreRaceFree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	if report.Matched != 1 || report.Cases[0].Decisions.Pass != units {
+	if report.Matched != 1 || report.Cases[0].Decisions != (runner.Decisions{Pass: units}) {
 		t.Fatalf("report = %#v", report)
 	}
 }
@@ -691,5 +708,57 @@ func TestRunEmitsUnitDecisions(t *testing.T) {
 	beta, ok := seen["Beta"]
 	if !ok || beta.Status != evaluation.StatusFail || !beta.Reported {
 		t.Fatalf("Beta unit = %#v", beta)
+	}
+}
+
+func TestRecordingEvaluatorExcludesLocalizationDecisions(t *testing.T) {
+	t.Parallel()
+
+	const ruleID = "database-joins"
+	var emitted []UnitDecision
+	recorder := &recordingEvaluator{
+		inner: perUnitEvaluator{results: map[string]evaluation.Result{
+			"Alpha":  {Status: evaluation.StatusFail, Confidence: 0.4},
+			"region": {Status: evaluation.StatusFail, Confidence: 0.99},
+		}},
+		floor: 0.8,
+		onUnit: func(unit UnitDecision) {
+			emitted = append(emitted, unit)
+		},
+	}
+	for _, unit := range []parsing.CodeUnit{
+		{Kind: parsing.CodeKindFunction, Name: "Alpha", StartLine: 3, EndLine: 5},
+		{Kind: parsing.CodeKindRegion, Name: "region", StartLine: 4, EndLine: 4},
+	} {
+		results, err := recorder.Evaluate(context.Background(), evaluation.Batch{
+			Rules:    []config.Rule{{ID: ruleID}},
+			CodeUnit: unit,
+		})
+		if err != nil {
+			t.Fatalf("Evaluate() error = %v", err)
+		}
+		want := recorder.inner.(perUnitEvaluator).results[unit.Name]
+		if results[ruleID] != want {
+			t.Fatalf("result = %#v, want %#v", results[ruleID], want)
+		}
+	}
+	confidence := recorder.bestFailConfidence(ruleID)
+	if confidence == nil || *confidence != 0.4 {
+		t.Fatalf("confidence = %v, want 0.4", confidence)
+	}
+	want := UnitDecision{
+		Name:       "Alpha",
+		Kind:       parsing.CodeKindFunction,
+		StartLine:  3,
+		EndLine:    5,
+		Status:     evaluation.StatusFail,
+		Confidence: 0.4,
+	}
+	units := recorder.unitsFor(ruleID)
+	if len(units) != 1 || units[0] != want {
+		t.Fatalf("units = %#v, want %#v", units, want)
+	}
+	if len(emitted) != 1 || emitted[0] != want {
+		t.Fatalf("emitted units = %#v, want %#v", emitted, want)
 	}
 }

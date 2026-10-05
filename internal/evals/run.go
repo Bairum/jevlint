@@ -69,17 +69,6 @@ func (outcome *Outcome) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// Decisions counts the raw answers a rule gave across a fixture. Reported
-// failures reached the confidence floor; below-floor failures did not.
-type Decisions struct {
-	Pass       int `json:"pass"`
-	Fail       int `json:"fail"`
-	Skip       int `json:"skip"`
-	Abstain    int `json:"abstain"`
-	Reported   int `json:"reported"`
-	BelowFloor int `json:"belowFloor"`
-}
-
 // UnitDecision is one raw rule answer for one code unit.
 type UnitDecision struct {
 	Name       string            `json:"name"`
@@ -93,16 +82,16 @@ type UnitDecision struct {
 
 // Result is the outcome of scoring one eval case.
 type Result struct {
-	Rule       string         `json:"rule"`
-	Name       string         `json:"name,omitempty"`
-	File       string         `json:"file"`
-	Expected   Expect         `json:"expected"`
-	Actual     Outcome        `json:"actual"`
-	Matched    bool           `json:"matched"`
-	Confidence *float64       `json:"confidence,omitempty"`
-	Floor      float64        `json:"floor"`
-	Decisions  Decisions      `json:"decisions"`
-	Units      []UnitDecision `json:"units,omitempty"`
+	Rule       string           `json:"rule"`
+	Name       string           `json:"name,omitempty"`
+	File       string           `json:"file"`
+	Expected   Expect           `json:"expected"`
+	Actual     Outcome          `json:"actual"`
+	Matched    bool             `json:"matched"`
+	Confidence *float64         `json:"confidence,omitempty"`
+	Floor      float64          `json:"floor"`
+	Decisions  runner.Decisions `json:"decisions"`
+	Units      []UnitDecision   `json:"units,omitempty"`
 }
 
 // Report is the outcome of scoring every case.
@@ -130,13 +119,12 @@ type Options struct {
 // recordingEvaluator wraps a client and records the raw decisions it returns.
 // The runner evaluates units concurrently, so its maps are guarded.
 type recordingEvaluator struct {
-	inner     evaluation.Evaluator
-	onUnit    func(UnitDecision)
-	mu        sync.Mutex
-	floor     float64
-	bestFail  map[string]float64
-	decisions map[string]*Decisions
-	units     map[string][]UnitDecision
+	inner    evaluation.Evaluator
+	onUnit   func(UnitDecision)
+	mu       sync.Mutex
+	floor    float64
+	bestFail map[string]float64
+	units    map[string][]UnitDecision
 }
 
 // Run scores every case and returns the report.
@@ -216,7 +204,7 @@ func runCase(
 		return Result{}, fmt.Errorf("%s: %w", caseLabel(evalCase), ErrNoApplicableUnits)
 	}
 
-	decisions := recorder.decisionsFor(evalCase.Rule, len(report.Findings))
+	decisions := report.Rules[evalCase.Rule].Decisions
 	actual := classifyOutcome(decisions)
 	result := Result{
 		Rule:       evalCase.Rule,
@@ -228,7 +216,7 @@ func runCase(
 		Confidence: recorder.bestFailConfidence(evalCase.Rule),
 		Floor:      floor,
 		Decisions:  decisions,
-		Units:      recorder.unitsFor(evalCase.Rule, floor),
+		Units:      recorder.unitsFor(evalCase.Rule),
 	}
 	return result, nil
 }
@@ -238,7 +226,7 @@ func runCase(
 // A reported failure makes the case fail. Without one, a below-floor failure,
 // or no explicit pass at all, makes the case inconclusive. Otherwise the case
 // passes.
-func classifyOutcome(decisions Decisions) Outcome {
+func classifyOutcome(decisions runner.Decisions) Outcome {
 	switch {
 	case decisions.Reported > 0:
 		return OutcomeFail
@@ -279,9 +267,8 @@ func (recorder *recordingEvaluator) Evaluate(
 	if err != nil {
 		return nil, err
 	}
-	// The localization pass re-checks regions with the same rule. Those
-	// answers refine a finding; they are not decisions about the fixture's
-	// code units, so keep them out of the raw counts.
+	// Localization answers refine a finding; they are not raw decisions
+	// about the fixture's primary code units.
 	if batch.CodeUnit.Kind == parsing.CodeKindRegion {
 		return results, nil
 	}
@@ -289,29 +276,11 @@ func (recorder *recordingEvaluator) Evaluate(
 	if recorder.bestFail == nil {
 		recorder.bestFail = make(map[string]float64)
 	}
-	if recorder.decisions == nil {
-		recorder.decisions = make(map[string]*Decisions)
-	}
 	if recorder.units == nil {
 		recorder.units = make(map[string][]UnitDecision)
 	}
 	emitted := make([]UnitDecision, 0, len(results))
 	for id, result := range results {
-		decisions := recorder.decisions[id]
-		if decisions == nil {
-			decisions = &Decisions{}
-			recorder.decisions[id] = decisions
-		}
-		switch result.Status {
-		case evaluation.StatusPass:
-			decisions.Pass++
-		case evaluation.StatusFail:
-			decisions.Fail++
-		case evaluation.StatusSkip:
-			decisions.Skip++
-		case evaluation.StatusAbstain:
-			decisions.Abstain++
-		}
 		if result.Status == evaluation.StatusFail {
 			if current, exists := recorder.bestFail[id]; !exists || result.Confidence > current {
 				recorder.bestFail[id] = result.Confidence
@@ -370,27 +339,8 @@ func (recorder *recordingEvaluator) CacheStats() evaluation.CacheStats {
 	return provider.CacheStats()
 }
 
-// decisionsFor returns a copy of a rule's raw decisions, with reported and
-// below-floor failures filled in from the findings the runner reported.
-func (recorder *recordingEvaluator) decisionsFor(ruleID string, reported int) Decisions {
-	recorder.mu.Lock()
-	defer recorder.mu.Unlock()
-
-	var decisions Decisions
-	if recorded := recorder.decisions[ruleID]; recorded != nil {
-		decisions = *recorded
-	}
-	decisions.Reported = reported
-	decisions.BelowFloor = decisions.Fail - reported
-	if decisions.BelowFloor < 0 {
-		decisions.BelowFloor = 0
-	}
-	return decisions
-}
-
-// unitsFor returns one rule's per-unit decisions in source order, marking the
-// failures that reach the confidence floor.
-func (recorder *recordingEvaluator) unitsFor(ruleID string, floor float64) []UnitDecision {
+// unitsFor returns one rule's raw per-unit decisions in source order.
+func (recorder *recordingEvaluator) unitsFor(ruleID string) []UnitDecision {
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
 
@@ -399,10 +349,6 @@ func (recorder *recordingEvaluator) unitsFor(ruleID string, floor float64) []Uni
 		return nil
 	}
 	units := append([]UnitDecision(nil), recorded...)
-	for index := range units {
-		units[index].Reported = units[index].Status == evaluation.StatusFail &&
-			units[index].Confidence >= floor
-	}
 	sort.SliceStable(units, func(i, j int) bool {
 		if units[i].StartLine != units[j].StartLine {
 			return units[i].StartLine < units[j].StartLine

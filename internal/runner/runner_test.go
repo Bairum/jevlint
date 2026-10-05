@@ -209,8 +209,8 @@ func TestCheckBatchesRulesPerFunctionAndRetainsSnippet(t *testing.T) {
 		t.Fatalf("findings = %#v", report.Findings)
 	}
 	finding := report.Findings[0]
-	if finding.Description != "Join records in the database." {
-		t.Fatalf("description = %q", finding.Description)
+	if report.Rules[finding.RuleID].Description != "Join records in the database." {
+		t.Fatalf("rule description = %q", report.Rules[finding.RuleID].Description)
 	}
 	if finding.Kind != parsing.CodeKindFunction || finding.Name != "JoinUsers" {
 		t.Fatalf("finding target = %s %q", finding.Kind, finding.Name)
@@ -530,6 +530,7 @@ func TestRunJobsPreservesInputOrder(t *testing.T) {
 				<-releases[job]
 				return job, nil
 			},
+			nil,
 		)
 		done <- result{outcomes: outcomes, err: err}
 	}()
@@ -569,6 +570,7 @@ func TestRunJobsCancelsPeersAfterError(t *testing.T) {
 			<-ctx.Done()
 			return 0, ctx.Err()
 		},
+		nil,
 	)
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("runJobs() error = %v, want %v", err, sentinel)
@@ -632,8 +634,29 @@ func TestCheckSkipsFailsBelowMinConfidence(t *testing.T) {
 	if len(report.Findings) != 0 {
 		t.Fatalf("findings = %#v, want none below minConfidence", report.Findings)
 	}
+	if len(report.BelowFloor) != 0 {
+		t.Fatalf("belowFloor = %#v, want hidden without option", report.BelowFloor)
+	}
+	if got := report.Rules["boolean-property-naming"].Decisions; got != (Decisions{Fail: 1, BelowFloor: 1}) {
+		t.Fatalf("decisions = %#v", got)
+	}
 	if weakFail.calls != 1 {
 		t.Fatalf("evaluator calls = %d, want 1 type check and no localize", weakFail.calls)
+	}
+	report, err = (Runner{
+		Extractor: testGoExtractor(t),
+		Evaluator: weakFail,
+	}).Evaluate(context.Background(), cfg, Options{Root: root, Concurrency: 1, ShowBelowFloor: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.BelowFloor) != 1 || report.BelowFloor[0].Confidence != 0.6 ||
+		report.BelowFloor[0].Name != "FeatureFlags" || report.BelowFloor[0].StartLine == 0 ||
+		report.BelowFloor[0].Path != "flags.go" || report.BelowFloor[0].Kind != parsing.CodeKindType {
+		t.Fatalf("belowFloor = %#v", report.BelowFloor)
+	}
+	if report.HasFailures(config.SeverityInfo) || weakFail.calls != 2 {
+		t.Fatalf("below-floor failure affected exit or localization: report=%#v calls=%d", report, weakFail.calls)
 	}
 
 	strongFail := &scoredBooleanEvaluator{typeConfidence: 0.9, regionConfidence: 1}
@@ -649,6 +672,9 @@ func TestCheckSkipsFailsBelowMinConfidence(t *testing.T) {
 	}
 	if strongFail.calls < 2 {
 		t.Fatalf("evaluator calls = %d, want localize after a qualifying fail", strongFail.calls)
+	}
+	if got := report.Rules["boolean-property-naming"].Decisions; got != (Decisions{Fail: 1, Reported: 1}) {
+		t.Fatalf("decisions include localization answers: %#v", got)
 	}
 
 	report, err = (Runner{
@@ -959,6 +985,13 @@ func TestCheckSkipAndAbstainProduceNoFindings(t *testing.T) {
 		if len(report.Findings) != 0 {
 			t.Fatalf("%s findings = %#v, want none", status, report.Findings)
 		}
+		want := Decisions{Skip: 1}
+		if status == evaluation.StatusAbstain {
+			want = Decisions{Abstain: 1}
+		}
+		if got := report.Rules["database-joins"].Decisions; got != want {
+			t.Fatalf("%s decisions = %#v, want %#v", status, got, want)
+		}
 	}
 
 	report, err := (Runner{
@@ -1210,4 +1243,90 @@ func testExtractor(t *testing.T, presets ...string) *parsing.Extractor {
 		t.Fatalf("NewExtractor() error = %v", err)
 	}
 	return extractor
+}
+
+type mixedDecisionEvaluator struct{}
+
+func (mixedDecisionEvaluator) Evaluate(_ context.Context, batch evaluation.Batch) (map[string]evaluation.Result, error) {
+	results := make(map[string]evaluation.Result, len(batch.Rules))
+	for _, rule := range batch.Rules {
+		result := evaluation.Result{Status: evaluation.StatusPass, Confidence: 1}
+		if rule.ID == "mixed" {
+			switch batch.CodeUnit.Name {
+			case "Reported":
+				result.Status = evaluation.StatusFail
+			case "BelowFloor":
+				result.Status = evaluation.StatusFail
+				result.Confidence = 0.4
+			case "Skipped":
+				result.Status = evaluation.StatusSkip
+			case "Abstained":
+				result.Status = evaluation.StatusAbstain
+			}
+		}
+		results[rule.ID] = result
+	}
+	return results, nil
+}
+
+func TestCheckAggregatesPrimaryDecisionsPerRule(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	source := "package sample\nfunc Passed() {}\nfunc Reported() {}\n" +
+		"func BelowFloor() {}\nfunc Skipped() {}\nfunc Abstained() {}\n"
+	if err := os.WriteFile(filepath.Join(root, "sample.go"), []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	floor := 0.8
+	cfg := config.Config{
+		MinConfidence: &floor,
+		Rules: []config.Rule{
+			{ID: "mixed", Description: "Mixed decisions.", Severity: config.SeverityWarning},
+			{ID: "clean", Description: "Clean decisions.", Severity: config.SeverityInfo},
+			{ID: "unused", Description: "Type decisions.", Severity: config.SeverityError, Kinds: []config.TargetKind{config.TargetKindType}},
+		},
+	}
+	var progress [][2]int
+	report, err := (Runner{
+		Extractor: testGoExtractor(t),
+		Evaluator: mixedDecisionEvaluator{},
+	}).Evaluate(context.Background(), cfg, Options{
+		Root:           root,
+		Concurrency:    3,
+		ShowBelowFloor: true,
+		Progress: func(done, total int) {
+			progress = append(progress, [2]int{done, total})
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Decisions{Pass: 1, Fail: 2, Skip: 1, Abstain: 1, Reported: 1, BelowFloor: 1}
+	if got := report.Rules["mixed"].Decisions; got != want {
+		t.Fatalf("mixed decisions = %#v, want %#v", got, want)
+	}
+	if got := report.Rules["clean"].Decisions; got != (Decisions{Pass: 5}) {
+		t.Fatalf("clean decisions = %#v", got)
+	}
+	if len(report.Rules) != 2 || report.Rules["mixed"].Severity != config.SeverityWarning ||
+		report.Rules["mixed"].Description != "Mixed decisions." {
+		t.Fatalf("evaluated rules = %#v", report.Rules)
+	}
+	if len(report.Findings) != 1 || len(report.BelowFloor) != 1 ||
+		report.BelowFloor[0].Confidence != 0.4 || report.Evaluations != 10 {
+		t.Fatalf("report = %#v", report)
+	}
+	if !report.HasFailures(config.SeverityInfo) || !report.HasFailures(config.SeverityWarning) ||
+		report.HasFailures(config.SeverityError) {
+		t.Fatalf("warning threshold behavior = %#v", report.Findings)
+	}
+	if len(progress) != 5 {
+		t.Fatalf("progress = %#v", progress)
+	}
+	for index, got := range progress {
+		if got != [2]int{index + 1, 5} {
+			t.Fatalf("progress[%d] = %v", index, got)
+		}
+	}
 }

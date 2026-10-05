@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/codegirl-007/jevlint/internal/changed"
 	"github.com/codegirl-007/jevlint/internal/config"
@@ -33,8 +34,10 @@ Check flags:
   --color mode          color output: auto, always, or never (default "auto")
   --config path         rule configuration (default "jevlint.json")
   --concurrency number  maximum concurrent Jev requests (default 4)
+  --fail-on severity    exit 1 for info, warning, or error and above (default "info")
   --format text|json    output format (default "text")
   --refresh-cache       reevaluate and replace current cached results
+  --show-below-floor    show failures below the confidence floor
 
 Eval flags:
   --clear-cache         clear this project's cached evaluations before evaluating
@@ -162,10 +165,12 @@ type outputContext struct {
 
 // checkContext holds the settings that shape a check.
 type checkContext struct {
-	configPath  string
-	concurrency int
-	changed     bool
-	cache       cacheMode
+	configPath     string
+	concurrency    int
+	changed        bool
+	cache          cacheMode
+	failOn         config.Severity
+	showBelowFloor bool
 }
 
 // loadedRun holds the config, parser, and client for a check.
@@ -363,7 +368,9 @@ func parseRunOptions(
 	configPath := flags.String("config", defaultConfigFile, "rule configuration")
 	concurrency := flags.Int("concurrency", defaultCheckConcurrency, "maximum concurrent Jev requests")
 	format := flags.String("format", "text", "output format")
+	failOn := flags.String("fail-on", "info", "minimum severity for failure exit")
 	refreshCache := flags.Bool("refresh-cache", false, "refresh cached evaluations")
+	showBelowFloor := flags.Bool("show-below-floor", false, "show failures below the confidence floor")
 	flagArgs, paths, err := splitFlagsAndPaths(flags, args)
 	if err != nil {
 		fmt.Fprintf(stderr, "jevlint: %v\n", err)
@@ -384,6 +391,11 @@ func parseRunOptions(
 	if !valid {
 		return runOptions{}, exitCode, false
 	}
+	threshold, err := config.ParseSeverity(*failOn)
+	if err != nil {
+		fmt.Fprintln(stderr, "jevlint: --fail-on must be info, warning, or error")
+		return runOptions{}, exitUsageError, false
+	}
 	var mode cacheMode
 	switch {
 	case *clearCache && *refreshCache:
@@ -402,10 +414,12 @@ func parseRunOptions(
 			color:  parsedColor,
 		},
 		check: checkContext{
-			configPath:  *configPath,
-			concurrency: *concurrency,
-			changed:     *changedFiles,
-			cache:       mode,
+			configPath:     *configPath,
+			concurrency:    *concurrency,
+			changed:        *changedFiles,
+			cache:          mode,
+			failOn:         threshold,
+			showBelowFloor: *showBelowFloor,
 		},
 	}, exitSuccess, true
 }
@@ -639,14 +653,22 @@ func runLoaded(
 	stdout io.Writer,
 	stderr io.Writer,
 ) int {
+	progress := checkProgress{writer: stderr}
+	var onProgress func(int, int)
+	if !loaded.options.output.hints.dumbTerminal && isTerminal(stderr) {
+		onProgress = progress.update
+	}
 	report, err := runner.Runner{
 		Extractor: loaded.extractor,
 		Evaluator: loaded.evaluator,
 	}.Evaluate(ctx, loaded.cfg, runner.Options{
-		Root:        filepath.Dir(loaded.absoluteConfig),
-		Paths:       loaded.options.paths,
-		Concurrency: loaded.options.check.concurrency,
+		Root:           filepath.Dir(loaded.absoluteConfig),
+		Paths:          loaded.options.paths,
+		Concurrency:    loaded.options.check.concurrency,
+		ShowBelowFloor: loaded.options.check.showBelowFloor,
+		Progress:       onProgress,
 	})
+	progress.clear()
 	if err != nil {
 		fmt.Fprintf(stderr, "jevlint: %v\n", err)
 		return exitUsageError
@@ -659,7 +681,7 @@ func runLoaded(
 	); exitCode != 0 {
 		return exitCode
 	}
-	if report.HasFailures() {
+	if report.HasFailures(loaded.options.check.failOn) {
 		return exitHasFindings
 	}
 	return exitSuccess
@@ -691,40 +713,97 @@ func writeReport(
 		return encoder.Encode(report)
 	}
 	style := outputStyle{color: shouldUseColor(output.color, writer, output.hints)}
-	for _, finding := range report.Findings {
-		writeFinding(writer, style, finding)
-	}
+	writeFindingGroups(writer, style, report)
 	writeSummary(writer, style, report.Findings)
 	writeReportTotals(writer, report)
 	return nil
 }
 
-// writeFinding prints one finding with its code frame.
-func writeFinding(writer io.Writer, style outputStyle, finding runner.Finding) {
-	severity := strings.ToUpper(finding.Severity.String())
-	fmt.Fprintln(
-		writer,
-		style.severity(finding.Severity, "✗ "+severity+"  "+finding.RuleID),
-	)
-	for _, line := range wrapText(finding.Description, 84) {
-		fmt.Fprintln(writer, "  "+style.severity(finding.Severity, line))
-	}
+// displayedFinding retains the distinction between reported and below-floor failures.
+type displayedFinding struct {
+	finding    *runner.Finding
+	belowFloor bool
+	confidence float64
+}
 
-	location := fmt.Sprintf("%s:%d", finding.Path, finding.StartLine)
-	if finding.EndLine != finding.StartLine {
-		location = fmt.Sprintf("%s-%d", location, finding.EndLine)
+// codeUnitKey groups a unit independently of rule ordering and localized regions.
+type codeUnitKey struct {
+	path                   string
+	kind                   parsing.CodeKind
+	name                   string
+	startLine, endLine     uint
+	startColumn, endColumn uint
+}
+
+// writeFindingGroups prints each unit's location and frame once, then its rules.
+func writeFindingGroups(writer io.Writer, style outputStyle, report runner.Report) {
+	groups := make([][]displayedFinding, 0)
+	indices := make(map[codeUnitKey]int)
+	add := func(item displayedFinding) {
+		finding := item.finding
+		key := codeUnitKey{
+			path: finding.Path, kind: finding.Kind, name: finding.Name,
+			startLine: finding.StartLine, endLine: finding.EndLine,
+			startColumn: finding.StartColumn, endColumn: finding.EndColumn,
+		}
+		index, exists := indices[key]
+		if !exists {
+			index = len(groups)
+			indices[key] = index
+			groups = append(groups, nil)
+		}
+		groups[index] = append(groups[index], item)
 	}
-	fmt.Fprintf(
-		writer,
-		"  %s %s %s %s\n",
-		style.paint("36", location),
-		style.paint("2", "·"),
-		finding.Kind,
-		finding.Name,
-	)
-	fmt.Fprintln(writer)
-	writeCodeFrame(writer, style, finding)
-	fmt.Fprintln(writer)
+	for index := range report.Findings {
+		add(displayedFinding{finding: &report.Findings[index]})
+	}
+	for index := range report.BelowFloor {
+		finding := &report.BelowFloor[index]
+		add(displayedFinding{
+			finding: &finding.Finding, belowFloor: true, confidence: finding.Confidence,
+		})
+	}
+	described := make(map[string]bool)
+	for _, group := range groups {
+		frame := *group[0].finding
+		frame.Locations = nil
+		locations := make(map[runner.Location]bool)
+		for _, item := range group {
+			for _, location := range item.finding.Locations {
+				if !locations[location] {
+					locations[location] = true
+					frame.Locations = append(frame.Locations, location)
+				}
+			}
+		}
+		location := fmt.Sprintf("%s:%d", frame.Path, frame.StartLine)
+		if frame.EndLine != frame.StartLine {
+			location = fmt.Sprintf("%s-%d", location, frame.EndLine)
+		}
+		fmt.Fprintf(writer, "  %s %s %s %s\n",
+			style.paint("36", location), style.paint("2", "·"), frame.Kind, frame.Name)
+		fmt.Fprintln(writer)
+		writeCodeFrame(writer, style, frame)
+		fmt.Fprintln(writer)
+		for _, item := range group {
+			finding := item.finding
+			header := "✗ " + strings.ToUpper(finding.Severity.String()) + "  " + finding.RuleID
+			if item.belowFloor {
+				header += fmt.Sprintf(" (below-floor, confidence %.2f)", item.confidence)
+			}
+			fmt.Fprintln(writer, style.severity(finding.Severity, header))
+			if !described[finding.RuleID] {
+				described[finding.RuleID] = true
+				description := report.Rules[finding.RuleID].Description
+				if description != "" {
+					for _, line := range wrapText(description, 84) {
+						fmt.Fprintln(writer, "  "+style.severity(finding.Severity, line))
+					}
+				}
+			}
+		}
+		fmt.Fprintln(writer)
+	}
 }
 
 // writeSummary prints the counts of the findings.
@@ -774,6 +853,12 @@ func writeReportTotals(writer io.Writer, report runner.Report) {
 		report.CodeUnits,
 		report.Evaluations,
 	)
+	var abstained, belowFloor int
+	for _, rule := range report.Rules {
+		abstained += rule.Decisions.Abstain
+		belowFloor += rule.Decisions.BelowFloor
+	}
+	fmt.Fprintf(writer, "  %d abstained · %d below-floor\n", abstained, belowFloor)
 	if report.Cache != nil {
 		fmt.Fprintf(
 			writer,
@@ -816,12 +901,45 @@ func shouldUseColor(mode colorMode, writer io.Writer, hints terminalHints) bool 
 	if hints.plainOutput || hints.dumbTerminal {
 		return false
 	}
+	return isTerminal(writer)
+}
+
+// isTerminal shares the terminal detection used by color and check progress.
+func isTerminal(writer io.Writer) bool {
 	file, ok := writer.(*os.File)
 	if !ok {
 		return false
 	}
 	info, err := file.Stat()
 	return err == nil && info.Mode()&os.ModeCharDevice != 0
+}
+
+// checkProgress writes at most ten terminal updates per second.
+type checkProgress struct {
+	writer  io.Writer
+	last    time.Time
+	visible bool
+}
+
+func (progress *checkProgress) update(done, total int) {
+	if done == total {
+		progress.clear()
+		return
+	}
+	now := time.Now()
+	if !progress.last.IsZero() && now.Sub(progress.last) < 100*time.Millisecond {
+		return
+	}
+	fmt.Fprintf(progress.writer, "\r\x1b[2KChecking %d/%d", done, total)
+	progress.last = now
+	progress.visible = true
+}
+
+func (progress *checkProgress) clear() {
+	if progress.visible {
+		fmt.Fprint(progress.writer, "\r\x1b[2K")
+		progress.visible = false
+	}
 }
 
 // findingCounts counts the findings by level.

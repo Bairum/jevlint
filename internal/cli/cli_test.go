@@ -135,6 +135,17 @@ func JoinInCode() {
 		report.Findings[0].Locations[0].Kind != "expression_statement" {
 		t.Fatalf("finding locations = %#v", report.Findings[0].Locations)
 	}
+	rule, ok := report.Rules["database-joins"]
+	if !ok || rule.Description != "Join related records in the database." ||
+		rule.Severity != config.SeverityError {
+		t.Fatalf("rule report = %#v, present = %t", rule, ok)
+	}
+	if rule.Decisions != (runner.Decisions{Fail: 1, Reported: 1}) {
+		t.Fatalf("decisions = %#v, want one reported primary failure", rule.Decisions)
+	}
+	if bytes.Count(stdout.Bytes(), []byte(`"description"`)) != 1 {
+		t.Fatalf("JSON descriptions must appear only in rules: %s", stdout.String())
+	}
 	if bytes.Contains(stdout.Bytes(), []byte(`"confidence"`)) {
 		t.Fatalf("JSON output exposes confidence: %s", stdout.String())
 	}
@@ -147,17 +158,23 @@ func TestWriteTextHighlightsRuleAndSnippet(t *testing.T) {
 		ScannedFiles: 1,
 		CodeUnits:    1,
 		Evaluations:  1,
+		Rules: map[string]runner.RuleReport{
+			"database-joins": {
+				Description: "Join records in the database.",
+				Severity:    config.SeverityError,
+				Decisions:   runner.Decisions{Fail: 1, Reported: 1},
+			},
+		},
 		Findings: []runner.Finding{{
-			RuleID:      "database-joins",
-			Description: "Join records in the database.",
-			Severity:    config.SeverityError,
-			Status:      evaluation.StatusFail,
-			Path:        "store.go",
-			Kind:        parsing.CodeKindFunction,
-			Name:        "JoinInCode",
-			StartLine:   3,
-			EndLine:     5,
-			Snippet:     "func JoinInCode() {\n\tprintln(\"join\")\n}",
+			RuleID:    "database-joins",
+			Severity:  config.SeverityError,
+			Status:    evaluation.StatusFail,
+			Path:      "store.go",
+			Kind:      parsing.CodeKindFunction,
+			Name:      "JoinInCode",
+			StartLine: 3,
+			EndLine:   5,
+			Snippet:   "func JoinInCode() {\n\tprintln(\"join\")\n}",
 			Locations: []runner.Location{{
 				Kind:        "expression_statement",
 				Source:      `println("join")`,
@@ -254,7 +271,8 @@ func TestWriteSummaryAndTotals(t *testing.T) {
 		{
 			name: "plain",
 			want: "Summary\n  3 findings  1 error  1 warning  1 info\n" +
-				"  2 files · 4 code units · 6 evaluations\n",
+				"  2 files · 4 code units · 6 evaluations\n" +
+				"  0 abstained · 0 below-floor\n",
 		},
 		{
 			name:  "colored",
@@ -262,7 +280,8 @@ func TestWriteSummaryAndTotals(t *testing.T) {
 			want: "\x1b[1mSummary\x1b[0m\n" +
 				"  3 findings  \x1b[31m1 error\x1b[0m" +
 				"  \x1b[33m1 warning\x1b[0m  \x1b[36m1 info\x1b[0m\n" +
-				"  2 files · 4 code units · 6 evaluations\n",
+				"  2 files · 4 code units · 6 evaluations\n" +
+				"  0 abstained · 0 below-floor\n",
 		},
 	}
 
@@ -329,6 +348,7 @@ func TestWriteReportTotalsIncludesCacheStats(t *testing.T) {
 		},
 	})
 	want := "  2 files · 4 code units · 6 evaluations\n" +
+		"  0 abstained · 0 below-floor\n" +
 		"  cache · 3 hits · 2 misses · 1 writes\n"
 	if output.String() != want {
 		t.Fatalf("output = %q, want %q", output.String(), want)
