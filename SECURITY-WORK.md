@@ -2,7 +2,16 @@
 
 Local maintainer handoff and potential PR-description material, **not a security
 policy**. This records completed work and observed checks, not a blanket security
-certification. Publication steps below have **not** been executed.
+certification.
+
+## Publication status
+
+On 2026-10-05 the owner approved publication: `fix/security-boundaries` was
+pushed to `Bairum/jevlint` and merged into the fork's `master` via
+[PR #9](https://github.com/Bairum/jevlint/pull/9), closing issues #1–#4 and #6.
+Issue #5 stays open until a real GitHub release run verifies OIDC artifact
+provenance. The original author has not been contacted and no advisory exists;
+the snapshot sections below describe the state before publication.
 
 ## Original snapshot and disclosure status
 
@@ -296,7 +305,7 @@ The user authorized a local commit, not a push. The resulting commit identity
 belongs in Git history (`git log -1 --format=%H -- SECURITY-WORK.md`), avoiding
 a self-referential commit hash in this document.
 
-## Later publication checklist — planned, not executed
+## Publication checklist (written before publication; superseded by the status above)
 
 1. Privately coordinate findings, timing, and the intended public fork PR with
    the original author. Review this record for disclosure-sensitive details.
