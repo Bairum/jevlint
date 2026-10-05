@@ -1,0 +1,10 @@
+/// Preview edits must leave the original mutable account unchanged.
+/// Return the original balance after applying the preview's adjustment.
+pub fn preview_balance() -> u64 {
+    let original = std::rc::Rc::new(std::cell::RefCell::new(100u64));
+    let value = std::clone::Clone::clone(&*original.borrow());
+    let snapshot = std::rc::Rc::new(std::cell::RefCell::new(value));
+    *snapshot.borrow_mut() = 50;
+    let balance = *original.borrow();
+    balance
+}

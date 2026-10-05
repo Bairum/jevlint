@@ -1,0 +1,47 @@
+{
+  "rules": [
+    {
+      "id": "rust-api-default-consistency",
+      "description": "Compare a primary Rust type's zero-argument new and Default implementations when both bodies and the type's construction contract are supplied. Fail only for a material observable baseline-state contradiction when both claim the same default construction semantics. Without that shared contract, pass. Compare field behavior, not allocation capacity or implementation spelling. Cite the constructors, contradictory state and contract. Do not demand Default, rename constructors or diagnose constructors requiring arguments.",
+      "severity": "warning",
+      "kinds": ["type"],
+      "sourceMatch": ["\\b(struct|enum|union|type)\\b"],
+      "context": {"types": true},
+      "include": ["**/*.rs"],
+      "allowAbstain": true,
+      "exceptions": [
+        "Constructors requiring domain inputs, types with no meaningful Default, and alternative open/connect/bind constructors.",
+        "Explicitly distinguished baseline/domain construction policies; equivalent observable behavior despite different allocation capacity."
+      ]
+    },
+    {
+      "id": "rust-api-trait-law-consistency",
+      "description": "Review the primary Rust type's locally visible manual PartialEq/Eq and Hash implementations. Fail for a concrete pair of valid equal values that feeds distinguishable data to the same Hasher, or a visible manual Eq equivalence-law counterexample. Show the pair, equality path and exact differing hash inputs or violated law. Do not promise particular hash outputs, require unequal values to hash differently, demand unrelated traits or duplicate deterministic derive-versus-manual lints.",
+      "severity": "warning",
+      "kinds": ["type"],
+      "sourceMatch": ["\\b(struct|enum|union|type)\\b"],
+      "context": {"types": true},
+      "include": ["**/*.rs"],
+      "allowAbstain": true,
+      "exceptions": [
+        "Hash collisions for unequal values are permitted, including omitting identity fields from Hash if equal values still hash equally.",
+        "Coherent manual normalization shared by equality and hashing; legitimate absence of unrelated traits."
+      ]
+    },
+    {
+      "id": "rust-api-deref-contract",
+      "description": "Review a primary deref method identified as std::ops::Deref by the supplied impl context. Fail only when implicit dereference or coercion introduces observable work, state changes or failure contradicting the wrapper's documented transparent pointer-like behavior. Without that transparency contract, pass. Cite the actual coercion operation, observable behavior and contract contradiction. Do not ban non-smart-pointer spelling, require AsRef/Borrow or duplicate validated-invariant bypass rules.",
+      "severity": "warning",
+      "kinds": ["function"],
+      "sourceMatch": ["\\bfn\\s+(r#)?deref\\s*(<|\\()"],
+      "context": {"types": true},
+      "include": ["**/*.rs"],
+      "allowAbstain": true,
+      "exceptions": [
+        "Cheap intended transparent access such as owned text/vector or smart-pointer wrappers.",
+        "A documented programmer-error panic after explicit invalidation, when ordinary valid-state coercion remains cheap and unsurprising.",
+        "Nontransparent operations exposed through explicit named accessors rather than implicit Deref."
+      ]
+    }
+  ]
+}

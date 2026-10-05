@@ -1,0 +1,69 @@
+{
+  "rules": [
+    {
+      "id": "rust-tokio-blocking-boundary",
+      "description": "Fail when an established Tokio execution path runs blocking I/O, waits, sleep or demonstrably lengthy non-yielding work on a task worker without a suitable boundary; uses block_in_place on a current-thread runtime; or blocks a same-task join!/select! sibling needed to unblock it. Identify the operation and required progress. Pass dedicated-thread or blocking-worker work, awaited spawn_blocking, small bounded computation, short low-contention std mutex sections released before suspension, and compatible multithread block_in_place without required same-task progress. An async fn alone does not establish Tokio execution; neither a loop nor an API name alone establishes blocking cost.",
+      "severity": "warning",
+      "include": ["**/*.rs"],
+      "kinds": ["function"],
+      "sourceMatch": ["\\b(?:[Tt]okio|spawn|spawn_blocking|block_in_place|JoinHandle|Runtime)\\b|\\b(?:join|select)!"],
+      "allowAbstain": true,
+      "context": {"callees": true}
+    },
+    {
+      "id": "rust-tokio-cancellation-progress",
+      "description": "Fail when Tokio cancellation drops required partial progress, owned data or nontransactional state and visible continuation reuses the live resource or restarts work incompatibly with its stated contract. Establish actual AsyncReadExt read_exact/read_to_end/read_to_string, AsyncWriteExt write_all or mpsc Sender::send identity, dropping versus retaining the future, and the post-cancel path. Pass pinned futures retained across ticks, cancel-safe operations with progress outside the cancelled future, reservation before moving required messages, demonstrated rollback, discarded connections and approved best-effort/shutdown loss. Cancelling lock/semaphore acquisition loses queue position, not already-owned messages; select!/timeout alone is not a violation.",
+      "severity": "warning",
+      "include": ["**/*.rs"],
+      "kinds": ["function"],
+      "sourceMatch": ["\\b(?:[Tt]okio|AsyncReadExt|AsyncWriteExt|read_exact|read_to_end|read_to_string|write_all|timeout|reserve|reserve_owned)\\b|\\bselect!"],
+      "allowAbstain": true
+    },
+    {
+      "id": "rust-tokio-required-task-ownership",
+      "description": "Fail when explicitly required spawned Tokio completion, cleanup or an operation result loses its sole owner/error route: a JoinHandle is detached before required completion, timeout consumes it while code assumes the child stopped, or required inner Result errors are discarded after checking only the join Result. Dropping JoinHandle detaches rather than cancels; dropping JoinSet aborts its async tasks. Pass observing required join and operation result layers, visible supervisor/error-route transfer, timeout of &mut handle with explicit cancel-and-join or continue-and-track policy, and intentionally detached best-effort work with permitted loss.",
+      "severity": "warning",
+      "include": ["**/*.rs"],
+      "kinds": ["function"],
+      "sourceMatch": ["\\b(?:[Tt]okio|spawn|spawn_blocking|JoinHandle|JoinSet|join_next|timeout)\\b"],
+      "allowAbstain": true
+    },
+    {
+      "id": "rust-tokio-admission-bound",
+      "description": "Fail when an explicitly expandable external Tokio workload and resource-bound contract show admission/lifetime outside the claimed bound: a semaphore acquired inside unbounded spawned tasks does not bound waiting tasks, a permit released before protected work ends defeats that bound, or unrestricted externally driven CPU spawn_blocking submissions queue unbounded computation. Name the resource and admission-to-release ordering. A bounded channel bounds queued messages, not every allocation/task. Pass finite or explicitly upstream-bounded workloads, adequate existing pools, work-only limits on bounded task populations, intentional overload loss and permits held through the relevant lifetime. Token-bucket forget may be intentional; do not require every semaphore before spawn.",
+      "severity": "warning",
+      "include": ["**/*.rs"],
+      "kinds": ["function"],
+      "sourceMatch": ["\\b(?:[Tt]okio|spawn|spawn_blocking|Semaphore|acquire|acquire_owned|try_acquire|try_acquire_owned|unbounded_channel)\\b"],
+      "allowAbstain": true
+    },
+    {
+      "id": "rust-tokio-shutdown-contract",
+      "description": "Fail when an explicit Tokio drain/cleanup/teardown contract is contradicted by the visible coordinator: required work is returned from, dropped or aborted without observing completion; queued required messages are discarded; EOF is awaited while a reachable sender is retained; or abort() is treated as finished teardown before stop-dependent reuse. Establish relevant channel/task identities and ownership. mpsc EOF requires senders to disappear and queued messages to drain, or an explicit close/drain policy respecting outstanding permits. abort requests cancellation; joining observes completion. Pass stop-admission/notify/drain/await, owned supervisors, documented deadline escalation, disposable work and approved hard loss with any required teardown observed.",
+      "severity": "warning",
+      "include": ["**/*.rs"],
+      "kinds": ["function"],
+      "sourceMatch": ["\\b(?:[Tt]okio|JoinHandle|JoinSet|abort|abort_all|join_next|recv|close|shutdown|shutdown_timeout)\\b"],
+      "allowAbstain": true
+    },
+    {
+      "id": "rust-tokio-lock-dependency",
+      "description": "Fail for a visible Tokio lock/wait cycle: a live read guard awaits same-RwLock write acquisition; a held read and demonstrably queued writer prevent a later required read under write-preferring scheduling; or a held mutex awaits a child that needs that mutex before completing. Establish lock identity/alias, live guard and awaited dependency preventing release; do not infer queued-writer schedules or aliases from names. Pass different locks, released guards before acquisition, non-overlapping work, handled try_lock/try_write and a timeout that breaks the cycle without promising acquisition. Tokio async guards may span awaits when serializing I/O/invariants without a demonstrated dependency cycle.",
+      "severity": "warning",
+      "include": ["**/*.rs"],
+      "kinds": ["function"],
+      "sourceMatch": ["\\b(?:[Tt]okio|Mutex|RwLock|read|read_owned|write|write_owned|lock|lock_owned|try_lock|try_write)\\b"],
+      "allowAbstain": true,
+      "context": {"callees": true}
+    },
+    {
+      "id": "rust-tokio-blocking-cancellation",
+      "description": "Fail when established started Tokio spawn_blocking/block_in_place work must stop by an explicit deadline/abort/shutdown boundary but code relies only on dropping/timing out/aborting its handle or runtime teardown, or a persistent blocking-pool loop has no stop path despite a prompt-shutdown/capacity contract. Identify the continued effect and stop-dependent action. Started spawn_blocking closures cannot be aborted; dropping their handles detaches them; shutdown_timeout stops waiting rather than the closure; timeout cannot preempt synchronous work. Pass explicitly permitted finite background completion, a real underlying timeout/cancel facility, cooperative stop between bounded operations with joined completion and bounded persistent workers/dedicated threads with owned termination. Do not assume queued work has started or guarantee abort-before-start.",
+      "severity": "warning",
+      "include": ["**/*.rs"],
+      "kinds": ["function"],
+      "sourceMatch": ["\\b(?:[Tt]okio|spawn_blocking|block_in_place|shutdown_timeout)\\b"],
+      "allowAbstain": true
+    }
+  ]
+}

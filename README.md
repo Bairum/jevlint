@@ -580,6 +580,46 @@ go run ./cmd/jevlint plugin update
 go run ./cmd/jevlint plugin remove codegirl-007/database-joins
 ```
 
+### Primary Rust suite
+
+The first-class Rust suite lives in [`packs/`](packs/), separate from the
+`examples/packs/database-joins` tutorial. Start with the native Cargo/rustfmt/
+Clippy baseline, then run [`rust-core`](packs/rust-core/) alone for strict,
+evidence-backed semantic checks. Add
+[`rust-core-advisory`](packs/rust-core-advisory/) for broader review and only
+code-relevant specialists: [`rust-unsafe`](packs/rust-unsafe/) for unsafe/FFI,
+[`rust-tokio`](packs/rust-tokio/) when Tokio is used,
+[`rust-api`](packs/rust-api/) for API contracts, and
+[`rust-performance`](packs/rust-performance/) for workload-sensitive review.
+Run generic style or maintainability rules separately.
+
+No pack is automatically enabled. Strict describes the core's evidence
+requirements, not automatic blocking enforcement. Measured fixture recall and
+specificity per rule, with suggested per-rule `minConfidence` overrides, are in
+[CALIBRATION.md](docs/rust/CALIBRATION.md); real-project precision is not yet
+measured. Unsafe fixtures are compile-only, and passing a rule is not a
+soundness proof.
+
+Commit pack changes, documentation and tests together before pinning a local
+Git pack: installation reads committed content, not working files. From the
+consuming Rust project, enable Rust in **that project's `jevlint.json`**, not
+Jevlint's own configuration, then install with
+`jevlint plugin install /path/to/jevlint#packs/rust-core`.
+Select advisory and specialist packs deliberately.
+
+The native script accepts a project directory or `Cargo.toml`, selects the
+workspace by default, accepts repeated `-p` package selections instead, and
+supports `--skip-fmt`; other native checks retain `--locked`. The fixture
+runner requires Python 3.9+. For uncached, repeated core calibration, use
+`python3 scripts/check-rust-packs.py --eval --repeat 3 --pack rust-core`
+with `--jevlint /path/to/jevlint` if needed and optional `--summary /path/to/summary.json`.
+Default timestamped JSON summaries go to the system temporary directory
+and record per-run cases, strict-majority outcomes (otherwise inconclusive),
+flip rate, per-run mismatch/inconclusive counts, majority-based fixture
+recall/specificity, and abstain/below-floor counts.
+See [Rust suite usage](docs/rust/README.md) for commands and summary definitions,
+and the [research-to-implementation coverage ledger](docs/rust/COVERAGE.md).
+
 ## Supported languages
 
 | Preset | Extensions |

@@ -1,0 +1,218 @@
+{
+  "rules": [
+    {
+      "id": "rust-expected-failure-panics",
+      "description": "Apply to parsing/operations on explicitly external input whose contract permits caller recovery. Fail when ordinary malformed input or recoverable I/O reaches panic, unwrap, expect, or an equivalent assertion instead of the promised error handling. Identify the failing input/path, not merely an unwrap token.",
+      "severity": "warning",
+      "include": ["**/*.rs"],
+      "kinds": [
+        "function"
+      ],
+      "allowAbstain": true,
+      "sourceMatch": [
+        "\\b(?:panic|assert(?:_eq|_ne)?|unreachable)\\s*!",
+        "\\b(?:unwrap(?:_err)?|expect(?:_err)?)\\s*\\(",
+        "\\bResult\\s*<",
+        "\\?"
+      ],
+      "exceptions": [
+        "Tests/prototypes/examples and test setup may panic.",
+        "Proved invariants and documented programmer-error preconditions may panic.",
+        "Explicit application-owned fatal startup policy is valid; do not demand Result everywhere or particular expect wording."
+      ]
+    },
+    {
+      "id": "rust-error-cause-loss",
+      "description": "Apply at a visible error abstraction boundary where callers need actionable cause/context. Fail when a reachable lower error is erased or misclassified so recovery/diagnosis promised by the boundary is impossible; show the lost identity/resource and the misleading outcome. Retaining a useful error directly or via source is sufficient.",
+      "severity": "warning",
+      "include": ["**/*.rs"],
+      "kinds": [
+        "function"
+      ],
+      "allowAbstain": true,
+      "sourceMatch": [
+        "\\b(Result|IoResult|IOResult)\\s*<",
+        "\\bfn\\s+source\\s*\\(",
+        "\\bmap_err\\s*\\(",
+        "\\?",
+        "\\bErr\\s*\\("
+      ],
+      "context": {"types": true},
+      "exceptions": [
+        "Intentional sanitized public errors with appropriate internal diagnostics are valid; never demand secret disclosure.",
+        "Boolean/domain rejection may not need a source; lower errors may already carry sufficient context.",
+        "Do not mandate a crate, representation, Error trait implementation, or context on every question mark."
+      ]
+    },
+    {
+      "id": "rust-conversion-contract",
+      "description": "Apply only to an explicitly standard std::convert::From implementation with visible source/target domain meaning. Fail for accepted source values that panic due to domain conversion or lose semantically significant information, including a plausible-looking successful conversion with changed meaning. Standard From is expected to be infallible, lossless, value-preserving and obvious; use TryFrom or a named operation when appropriate.",
+      "severity": "warning",
+      "include": ["**/*.rs"],
+      "kinds": [
+        "function"
+      ],
+      "allowAbstain": true,
+      "sourceMatch": [
+        "\\bfn\\s+(?:from|try_from)\\s*\\(",
+        "\\bfn\\s+\\w*(?:truncate|round)\\w*\\s*\\(",
+        "\\b(?:std\\s*::\\s*convert\\s*::\\s*)?(?:From|TryFrom|Into)\\s*<"
+      ],
+      "context": {"types": true},
+      "exceptions": [
+        "Discarded irrelevant capacity/layout is not semantic loss.",
+        "Ordinary allocation failure is not grounds to ban otherwise valid allocating From.",
+        "Explicitly named truncation/rounding and fallible TryFrom are legitimate; Into bounds are not direct Into implementations.",
+        "Do not report solely the deterministic panic-in-From/from-over-into shape."
+      ]
+    },
+    {
+      "id": "rust-validation-bypass",
+      "description": "Require an explicit visible validated-type invariant, a reachable safe path that contradicts it, and a visible consumer relying on that invariant. Fail the primary unit that exposes or implements the unchecked construction, field, mutation, accessor, or conversion; give a concrete safe value and consumer consequence. A checked constructor alone does not establish a whole-type contract. Do not report a primary unit solely for defects in attached type or implementation context.",
+      "severity": "warning",
+      "include": ["**/*.rs"],
+      "kinds": [
+        "type",
+        "function"
+      ],
+      "allowAbstain": true,
+      "sourceMatch": [
+        "\\b(?:struct|enum)\\s+[A-Za-z_][A-Za-z0-9_]*",
+        "\\bfn\\s+[A-Za-z_][A-Za-z0-9_]*"
+      ],
+      "context": {"types": true},
+      "exceptions": [
+        "Passive public DTOs have no validated-type promise.",
+        "Unchecked intermediate records followed by required validation are valid.",
+        "Existing constrained std types and genuinely unsafe opt-outs with appropriate caller obligations are valid.",
+        "Missing serializers, macro expansion, constructors or cross-module consumers require abstention only when that evidence is necessary to decide the relevant path; never fabricate bypasses. Unknown additional paths do not prevent diagnosing an already visible concrete safe bypass."
+      ]
+    },
+    {
+      "id": "rust-partial-state-on-error",
+      "description": "Apply when a visible operation promises atomicity or another explicit state invariant on error/panic and later safe observation/reuse is possible. Fail when mutation preceding a reachable fallible operation leaves observable state contradicting that promise. Show the mutation, failure and observer path; do not assume every function is transactional.",
+      "severity": "warning",
+      "include": ["**/*.rs"],
+      "kinds": [
+        "function"
+      ],
+      "allowAbstain": true,
+      "sourceMatch": [
+        "\\?",
+        "\\b(?:Err|unwrap|expect|catch_unwind|read_to_end|abort)\\s*\\(",
+        "\\bpanic\\s*!"
+      ],
+      "context": {"types": true},
+      "exceptions": [
+        "Documented partial progress, valid rollback/commit, or termination preventing reuse are legitimate.",
+        "std::io::Read::read_to_end can append bytes before Err; std::io::Read::read guarantees no bytes were read on Err. Do not transfer one method contract to the other.",
+        "Safe-code business inconsistency is not automatically UB; poisoning alone is not a general rollback guarantee."
+      ]
+    },
+    {
+      "id": "rust-buffered-output-completion",
+      "description": "Apply to a concrete buffered writer stack and explicit required output/error-completion promise. Fail when success is reported although pending output or completion errors are lost by Drop, unchecked completion, or discarded ownership. Establish that bytes can remain buffered and trace every relevant success path. std::io::BufWriter Drop attempts writing its buffer but ignores errors; write_all into it alone does not ensure downstream completion.",
+      "severity": "warning",
+      "include": ["**/*.rs"],
+      "kinds": [
+        "function"
+      ],
+      "allowAbstain": true,
+      "sourceMatch": [
+        "\\bBufWriter\\b",
+        "\\b(?:flush|into_inner|into_parts)\\s*\\(",
+        "\\b(?:write|write_all|write_fmt)\\s*\\("
+      ],
+      "exceptions": [
+        "Checked flush or into_inner and appropriate ownership transfer for later completion are valid.",
+        "Explicitly disposable/best-effort output, empty/already-completed buffers and abandonment on failure are legitimate.",
+        "Flush/completion is not crash durability, fsync, atomic replacement or directory durability; never require sync_all without a separate durability contract.",
+        "Do not infer std/Tokio/foreign writer semantics from flush or finish spelling."
+      ]
+    },
+    {
+      "id": "rust-fallible-drop",
+      "description": "Apply to an actual Drop implementation and visible ordinary cleanup failure or unwind path. Fail when cleanup panics on that reachable failure contrary to the promised cleanup/error policy, including a possible second panic while unwinding. Show the real operation/failure and ownership path; panic in Drop is not automatically forbidden.",
+      "severity": "warning",
+      "include": ["**/*.rs"],
+      "kinds": [
+        "function"
+      ],
+      "allowAbstain": true,
+      "sourceMatch": [
+        "\\bfn\\s+drop\\s*\\(",
+        "\\b(?:std|core)::mem::drop\\s*\\("
+      ],
+      "context": {"types": true},
+      "exceptions": [
+        "Explicit fallible finish/close with a nonpanicking best-effort destructor fallback is valid.",
+        "Explicit best-effort cleanup may ignore/log errors; ordinary owned fields need no redundant Drop.",
+        "Proved infallible operations and deliberate invariant/fail-fast policies are legitimate.",
+        "No assumed panic profile or manual field double-drop; diagnose only supplied evidence."
+      ]
+    },
+    {
+      "id": "rust-unbounded-input-buffering",
+      "description": "Apply to a visible untrusted input boundary with an explicit protocol/resource limit and a storage-growth path. Fail if external length/framing expands storage beyond the required effective bound, checking occurs only after unbounded growth, or a cap silently accepts an incomplete/truncated frame as complete. Identify the actual byte/resource limit and missing/rejected framing validation.",
+      "severity": "warning",
+      "include": ["**/*.rs"],
+      "kinds": [
+        "function"
+      ],
+      "allowAbstain": true,
+      "sourceMatch": [
+        "\\b(?:read(?:_to_end|_exact|_until|_line)?|with_capacity|reserve(?:_exact)?|resize|extend(?:_from_slice)?|push|to_vec|collect)\\s*\\(",
+        "\\bvec\\s*!\\s*\\["
+      ],
+      "context": {"types": true},
+      "exceptions": [
+        "Trusted fixed input, a demonstrated upstream envelope/codec bound and streaming bounded state are valid.",
+        "No invented universal cap, always-with-capacity/try-reserve mandate, or blanket OOM recovery promise.",
+        "A timeout alone does not cap rapid byte growth; take(limit) alone does not prove a complete valid frame.",
+        "Arithmetic/units and upstream API defaults need supplied evidence; read_line/read_until names alone do not establish untrusted unlimited input."
+      ]
+    },
+    {
+      "id": "rust-exclusive-create-race",
+      "description": "Apply when a visible filesystem operation promises never to overwrite an existing target and competing creation is possible. Fail when a separate absence check followed by std File::create or ordinary create is relied upon for exclusivity: another creator between the operations can be overwritten. Require the actual create API and contract.",
+      "severity": "warning",
+      "include": ["**/*.rs"],
+      "kinds": [
+        "function"
+      ],
+      "allowAbstain": true,
+      "sourceMatch": [
+        "\\bcreate(?:_new)?\\s*\\(",
+        "\\bOpenOptions\\b",
+        "\\bwrite\\s*\\("
+      ],
+      "exceptions": [
+        "Intended overwrite/truncation is valid.",
+        "Advisory existence checks followed by atomic create_new, established external exclusivity or another real atomic primitive are valid.",
+        "create_new provides atomic final-component exclusivity, not complete parent-directory/symlink confinement, durability or atomic replacement.",
+        "Do not duplicate suspicious_open_options or ban exists mechanically."
+      ]
+    },
+    {
+      "id": "rust-shared-clone-isolation",
+      "description": "Apply to an explicit independent mutable snapshot/workspace promise with visible clone semantics and subsequent mutation/observation. Fail when cloning std Arc/Rc or a visibly shared wrapper preserves mutable aliasing so the mutation changes the original contrary to the promise. Show shared allocation identity and the observable isolation violation, not merely clone syntax.",
+      "severity": "warning",
+      "include": ["**/*.rs"],
+      "kinds": [
+        "function"
+      ],
+      "allowAbstain": true,
+      "sourceMatch": [
+        "\\bclone\\s*\\(",
+        "\\bmake_mut\\s*\\("
+      ],
+      "context": {"types": true},
+      "exceptions": [
+        "Intended shared handles/observers, immutable sharing and deduplication are valid.",
+        "Independent inner-value copying into a fresh owner and appropriate copy-on-write are valid.",
+        "Clone is not universally deep; derive clones fields. Require actual fields/impl semantics rather than invented macro expansion.",
+        "No blanket Arc-to-Rc advice or clone/performance recommendation."
+      ]
+    }
+  ]
+}
