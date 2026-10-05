@@ -1,0 +1,143 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "rust-readability-magic-domain-values-fail-adaptive-solver",
+      "rule": "rust-readability-magic-domain-values",
+      "file": "fixtures/rust-readability-magic-domain-values/fail-adaptive-solver.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-readability-magic-domain-values-pass-adaptive-solver",
+      "rule": "rust-readability-magic-domain-values",
+      "file": "fixtures/rust-readability-magic-domain-values/pass-adaptive-solver.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-readability-magic-domain-values-fail-byte-budget",
+      "rule": "rust-readability-magic-domain-values",
+      "file": "fixtures/rust-readability-magic-domain-values/fail-byte-budget.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-readability-magic-domain-values-pass-byte-budget",
+      "rule": "rust-readability-magic-domain-values",
+      "file": "fixtures/rust-readability-magic-domain-values/pass-byte-budget.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-readability-magic-domain-values-fail-ordering-codes",
+      "rule": "rust-readability-magic-domain-values",
+      "file": "fixtures/rust-readability-magic-domain-values/fail-ordering-codes.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-readability-magic-domain-values-fail-sentinel-rank",
+      "rule": "rust-readability-magic-domain-values",
+      "file": "fixtures/rust-readability-magic-domain-values/fail-sentinel-rank.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-readability-magic-domain-values-pass-mathematics-wire-and-units",
+      "rule": "rust-readability-magic-domain-values",
+      "file": "fixtures/rust-readability-magic-domain-values/pass-mathematics-wire-and-units.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-readability-mixed-levels-of-abstraction-fail-telemetry-spool-inline-encoding",
+      "rule": "rust-readability-mixed-levels-of-abstraction",
+      "file": "fixtures/rust-readability-mixed-levels-of-abstraction/fail-telemetry-spool-inline-encoding.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-readability-mixed-levels-of-abstraction-pass-telemetry-spool-named-encoding",
+      "rule": "rust-readability-mixed-levels-of-abstraction",
+      "file": "fixtures/rust-readability-mixed-levels-of-abstraction/pass-telemetry-spool-named-encoding.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-readability-mixed-levels-of-abstraction-pass-summary-incidental-calculation",
+      "rule": "rust-readability-mixed-levels-of-abstraction",
+      "file": "fixtures/rust-readability-mixed-levels-of-abstraction/pass-summary-incidental-calculation.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-readability-accurate-doc-comments-fail-errors-checked-parse",
+      "rule": "rust-readability-accurate-doc-comments",
+      "file": "fixtures/rust-readability-accurate-doc-comments/fail-errors-checked-parse.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-readability-accurate-doc-comments-pass-errors-checked-parse",
+      "rule": "rust-readability-accurate-doc-comments",
+      "file": "fixtures/rust-readability-accurate-doc-comments/pass-errors-checked-parse.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-readability-accurate-doc-comments-fail-panics-visible-index",
+      "rule": "rust-readability-accurate-doc-comments",
+      "file": "fixtures/rust-readability-accurate-doc-comments/fail-panics-visible-index.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-readability-accurate-doc-comments-pass-panics-visible-index",
+      "rule": "rust-readability-accurate-doc-comments",
+      "file": "fixtures/rust-readability-accurate-doc-comments/pass-panics-visible-index.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-readability-accurate-doc-comments-fail-safety-unrestricted-pointer",
+      "rule": "rust-readability-accurate-doc-comments",
+      "file": "fixtures/rust-readability-accurate-doc-comments/fail-safety-unrestricted-pointer.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-readability-accurate-doc-comments-pass-safety-unrestricted-pointer",
+      "rule": "rust-readability-accurate-doc-comments",
+      "file": "fixtures/rust-readability-accurate-doc-comments/pass-safety-unrestricted-pointer.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-readability-accurate-doc-comments-fail-success-retained-readings",
+      "rule": "rust-readability-accurate-doc-comments",
+      "file": "fixtures/rust-readability-accurate-doc-comments/fail-success-retained-readings.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-readability-accurate-doc-comments-pass-success-retained-readings",
+      "rule": "rust-readability-accurate-doc-comments",
+      "file": "fixtures/rust-readability-accurate-doc-comments/pass-success-retained-readings.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-readability-accurate-doc-comments-fail-registry-snapshot",
+      "rule": "rust-readability-accurate-doc-comments",
+      "file": "fixtures/rust-readability-accurate-doc-comments/fail-registry-snapshot.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-readability-accurate-doc-comments-pass-registry-snapshot",
+      "rule": "rust-readability-accurate-doc-comments",
+      "file": "fixtures/rust-readability-accurate-doc-comments/pass-registry-snapshot.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-readability-accurate-doc-comments-pass-accurate-basic-contracts",
+      "rule": "rust-readability-accurate-doc-comments",
+      "file": "fixtures/rust-readability-accurate-doc-comments/pass-accurate-basic-contracts.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-readability-magic-domain-values-pass-adjacent-storage-layout",
+      "rule": "rust-readability-magic-domain-values",
+      "file": "fixtures/rust-readability-magic-domain-values/pass-adjacent-storage-layout.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-readability-magic-domain-values-pass-diagnostic-encoding",
+      "rule": "rust-readability-magic-domain-values",
+      "file": "fixtures/rust-readability-magic-domain-values/pass-diagnostic-encoding.rs",
+      "expect": "pass"
+    }
+  ]
+}

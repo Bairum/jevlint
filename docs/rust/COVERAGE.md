@@ -320,3 +320,65 @@ support.
 No pack is automatically enabled or published. Finish the remaining
 [F01](#f01) project-evidence gate before treating the semantic packs as
 blocking enforcement. [Usage and repeatable commands](README.md#run-the-checks).
+
+## Rust readability: upstream generic rule accounting
+
+`Bairum/rust-readability` is a separate opt-in review layer, not an extension
+of the strict semantic tier. The upstream inventory below is
+`upstream/master:jevlint.json` (26 rules). Rust ports use
+`rust-readability-` IDs; native ownership is not an instruction to enable all
+optional Clippy groups. See [calibration and project audit](CALIBRATION.md#rust-readability).
+
+Project measurements below use a held-out private Rust workspace (43 files,
+958 units). Its triage shaped candidate selection and rule exceptions, so
+these are **tuning-set/in-sample measurements**, not held-out accuracy.
+
+The shipped prefilters retain cost-control without turning token matches into
+findings. Literal policy selects numeric-literal candidates; two literal-free
+enum/constant repair twins are compile-only. Rustdoc selects attached line,
+block and attribute documentation; **undocumented units are skipped**, not
+explicit model pass judgments. Abstraction review conservatively selects
+local construction/control flow, scalar/bit/array work and byte/character
+codec signals, not only one manual-codec idiom. The frozen-rule public
+`serde_json` check and measured before/after evaluation counts are recorded in
+[calibration](CALIBRATION.md#rust-readability).
+
+| Upstream rule | Disposition | Rust scope / reason |
+| --- | --- | --- |
+| `magic-domain-values` | Ported | Tunable numerical policy, unexplained byte allowances, numeric ordering and sentinel ranks; mathematical coefficients, adjacent wire/status mappings, 0/1 flags and unit conversions are explicit exceptions. |
+| `function-control-flow` | Evaluated, dropped as noisy | Conservative variant reported nothing. Broader variant recovered both upstream actionable items, but 29 project reports were independently classified as 5 actionable, 1 nit and 23 false positives: cohesive numerical algorithms and FFI validation/lifecycle glue dominated. Initial fixture majority recall 1/2, specificity 3/4. Native `too_many_lines`/`cognitive_complexity` remain the numerical heuristics; the contextual residual did not justify shipping this port. |
+| `mixed-levels-of-abstraction` | Ported | Substantial coherent codec/layout detail inside domain orchestration, not every incidental calculation. |
+| `accurate-doc-comments` | Ported | Concrete Rustdoc behavioral and `# Errors`/`# Panics`/`# Safety` contradictions; no missing-documentation mandate. |
+| `boolean-parameter` | Evaluated, dropped | Initial majority recall 1/2, specificity 3/3; its sole project report was independently judged a nit (a clearly named Boolean forwards an external selector). A two-variant enum can help genuinely opaque choices, but this measured port added no actionable project value. Native `fn_params_excessive_bools` retains count ownership. |
+| `invalid-state-representation` | Evaluated, dropped | Initial majority recall 0/2, specificity 3/3, no reported project finding. Impossible-state contracts were not reliably detected despite bounded type context; no rule shipped on fixture syntax alone. Native `struct_excessive_bools` retains count ownership. |
+| `function-name-behavior-mismatch` | Evaluated, dropped | Initial majority recall 1/2, specificity 4/4, no reported project finding. Rust `as_`/`to_`/`into_` and predicate exceptions were preserved, but the measured port lacked demonstrated project value. |
+| `parallel-data-structures` | Evaluated, dropped | Initial majority recall 0/2, specificity 3/3, no reported project finding. Intentional SoA/columnar/ECS/index/FFI layouts remained legitimate; synchronization burdens were not reliably surfaced. |
+| `duplicate-domain-logic` | Evaluated, dropped | Initial majority recall 0/2, specificity 4/4, no reported project finding. Fixtures exposed both policy copies through supplied callees; unseen project-wide duplication was not invented to improve recall. |
+| `wrapper-without-value` | Evaluated, dropped | Initial majority recall 0/2, specificity 5/5, no reported project finding. Newtypes, trait adapters and public/domain boundaries remained legitimate; private redundant chains were not reliably detected. |
+| `unnecessary-abstraction` | Evaluated narrowly, dropped | Merged into the wrapper candidate rather than duplicating reports; the measured residual had 0/2 majority recall and no reported project value. |
+| `stringly-typed-control-flow` | Dropped | All 14 upstream project reports were false positives, primarily external protocol values, metadata and already validated boundaries. |
+| `comment-quality` | Dropped | None of six project reports was actionable (five false positives, one nit); useful invariant/safety/API documentation must remain legitimate. |
+| `database-joins` | Dropped | Database query architecture, not Rust readability. The independent tutorial pack remains separate. |
+| `redundant-if-statements` | Native-owned | Clippy `needless_bool`, `if_same_then_else`, `match_like_matches_macro` and related deterministic simplifications. |
+| `boolean-property-naming` | Dropped | Meaning preferences beyond compiler naming conventions lack demonstrated project value; no mandatory predicate prefix. |
+| `redundant-type-properties` | Dropped | Cheap derivability alone does not establish redundant storage; caches, external schemas and performance layouts require project evidence. |
+| `speculative-generalization` | Dropped | Local extraction cannot prove absence of external consumers, compatibility needs or a useful dependency boundary. |
+| `unnecessary-mutation` | Dropped | Native compiler/Clippy own mechanical unused mutation; semantic value-role reuse has no demonstrated actionable audit finding. |
+| `coincidental-abstraction` | Dropped | Similar syntax cannot establish independent future evolution; no speculative coupling diagnosis. |
+| `temporal-coupling` | Dropped | Lifecycle, builders and protocols legitimately impose ordering; project-wide usage evidence is needed for an additional rule. |
+| `hidden-global-dependency` | Dropped | Dependency injection is not universal Rust policy; startup/configuration/logging boundaries are legitimate and no actionable baseline item supported a port. |
+| `swallowed-errors` | Dropped from readability | Error/recovery policy belongs the semantic packs; native `unused_must_use` owns mechanical discarded Results, not all intentional best-effort handling. |
+| `constructor-side-effects` | Dropped | Resource acquisition is normal Rust construction; surprise requires a concrete API contract, not a universal cheap-constructor preference. |
+| `excessive-optional-configuration` | Dropped | Option count does not prove unrelated responsibilities; cohesive and external configuration remains legitimate. |
+| `unnecessary-complexity` | Dropped | Vague catch-all lacks a stable oracle; specific contextual rules and native lints are more reviewable. |
+
+Native thresholds remain native even when optional:
+[`too_many_lines`](https://rust-lang.github.io/rust-clippy/master/index.html#too_many_lines),
+[`fn_params_excessive_bools`](https://rust-lang.github.io/rust-clippy/master/index.html#fn_params_excessive_bools),
+[`struct_excessive_bools`](https://rust-lang.github.io/rust-clippy/master/index.html#struct_excessive_bools)
+are pedantic, while
+[`cognitive_complexity`](https://rust-lang.github.io/rust-clippy/master/index.html#cognitive_complexity)
+is restriction. The native-first [baseline](TOOLING.md) does not blanket-enable
+either group. Rustdoc heading-presence lints likewise do not establish prose
+accuracy. Readability ports ask for semantic evidence beyond those native
+patterns, not a model reimplementation of their counts.

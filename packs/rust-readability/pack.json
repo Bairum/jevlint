@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "id": "Bairum/rust-readability",
+  "languages": [
+    "rust"
+  ],
+  "rules": "rules.json",
+  "evals": "jevlint-evals.json",
+  "guidance": "guidance.md"
+}
