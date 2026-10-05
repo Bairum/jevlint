@@ -1,6 +1,6 @@
 # Rust core semantic candidates
 
-`Bairum/rust-core` contains ten evidence-gated **warning** rules and 138 explicit fixture oracles. These are semantic candidates with measured fixture calibration, not validated CI gates. Shared judgment requirements live in [`guidance.md`](guidance.md), loaded through the manifest; descriptions contain only rule-specific requirements. Missing evidence is not a defect or a safety certificate.
+`Bairum/rust-core` contains ten evidence-gated **warning** rules and 140 explicit fixture oracles. These are semantic candidates with measured fixture calibration, not validated CI gates. Shared judgment requirements live in [`guidance.md`](guidance.md), loaded through the manifest; descriptions contain only rule-specific requirements. Missing evidence is not a defect or a safety certificate.
 
 ## Rules and research references
 
@@ -26,7 +26,7 @@ Research IDs refer to [the master inventory](../../RUST-PACK-RESEARCH.md) and pr
 | Rule | Primary kinds / extended types | `sourceMatch` rationale |
 | --- | --- | --- |
 | `rust-expected-failure-panics` | function / no | Panic/assert/unreachable macros, qualified/unqualified/method panic accessors, Result-returning APIs and error propagation. Operation matching preserves imported/aliased Result types and UFCS accessors; it does not infer type identity from names. |
-| `rust-error-cause-loss` | function / yes | Fallible boundary signatures (including qualified Result and common I/O aliases), causal Error::source implementations, and lower-error mapping. Covers every fixture including no-contract, redaction, boolean/domain rejection and direct useful OS causes. Error propagation and explicit Err keep custom Result aliases in scope. |
+| `rust-error-cause-loss` | function / yes | Fallible boundary signatures (including qualified Result and common I/O aliases), causal Error::source implementations, and lower-error mapping. Error/Err-suffixed type references select direct error-to-error signatures and variant-producing matches even without Result, ?, map_err or Err(). `fn from` selects conversion methods whose primary source omits the enclosing impl header; type context supplies the actual conversion identity. These spellings select subjects, not proof of error identity or cause loss. |
 | `rust-conversion-contract` | function / yes | Method units omit their enclosing impl header: from/try_from method names select those units regardless of qualified, prelude or aliased trait spelling, while type context supplies explicit std::convert::From identity and domain contracts. Named truncation/rounding operations and conversion bounds are selected so legitimate exception fixtures remain applicable. None of the verdicts infer the standard trait from the method name alone. |
 | `rust-validation-bypass` | type, function / yes | Type declarations own exposed representations; function units own safe constructors, setters, mutable accessors, conversions, and concrete construction expressions. Validated-domain identity can reside entirely in attached type documentation, so narrowing to new/validate/unchecked spellings would miss ordinary named entry points. These RE2 declaration patterns match actual non-test primary units in every fixture without relying on answer-bearing comments. context.types supplies declaration contracts and impl blocks containing constructors and consumers; only the primary source owns the reported defect. |
 | `rust-partial-state-on-error` | function / yes | Fallibility/error/unwind operations select transactional candidates without depending on mutable parameters or contract wording, so interior-mutability and owned-state operations are retained. Visible mutation and atomicity/reuse remain judgment requirements. |
@@ -49,7 +49,7 @@ The eval document is the authoritative list of file paths and expected outcomes.
 | Rule | Fail / pass oracles | Real-world pair and provenance |
 | --- | --- | --- |
 | `rust-expected-failure-panics` | 5 / 9 | **multiformats/rust-multihash** [source 1](https://rustsec.org/advisories/RUSTSEC-2020-0068.html), [source 2](https://github.com/multiformats/rust-multihash/pull/72), [source 3](https://github.com/multiformats/rust-multihash/issues/70); `real-multihash-bug.rs`, `real-multihash-fixed.rs`. Std-only Rust 2021 adaptation, not verbatim upstream source. Keep the code/length/digest wire structure, a supported algorithm table, structural input validation, unsupported-code panic, and fallible repair. Restrict unsigned varints to their single-octet subset. Fuse hash construction and algorithm accessor into decode_multihash so the local primary function contains the full input-to-panic path. Omit generic code tables, hashing, arbitrary-length varint machinery, and unrelated APIs. |
-| `rust-error-cause-loss` | 5 / 9 | **rust-lang/rust (std::io::Error source chain)** [source 1](https://github.com/rust-lang/rust/issues/101817), [proposed correction](https://github.com/rust-lang/rust/pull/101818); `real-io-source-bug.rs`, `real-io-source-fixed.rs`. Adapted the reported immediate-cause skipping shape: source delegates to the inner leaf's source instead of returning the leaf. Removed io::Error storage/platform machinery and TLS dependencies, using a private TransportFailure wrapper and a std-only UnknownIssuer leaf. Explicit source-chain recovery documentation derives from the report's AWS credential-provider trust-store diagnosis requirement. The wrapper's Display is high-level; the contract intentionally requires typed source-chain access rather than string matching. The paired correction returns the immediate cause. PR 101818 is a proposed correction, not claimed merged; the upstream io::Error also permits get_ref access, whereas this minimized wrapper exposes its cause by the documented standard source chain. |
+| `rust-error-cause-loss` | 6 / 10 | **rust-lang/rust (std::io::Error source chain)** [source 1](https://github.com/rust-lang/rust/issues/101817), [proposed correction](https://github.com/rust-lang/rust/pull/101818); `real-io-source-bug.rs`, `real-io-source-fixed.rs`. Adapted the reported immediate-cause skipping shape: source delegates to the inner leaf's source instead of returning the leaf. Removed io::Error storage/platform machinery and TLS dependencies, using a private TransportFailure wrapper and a std-only UnknownIssuer leaf. Explicit source-chain recovery documentation derives from the report's AWS credential-provider trust-store diagnosis requirement. The wrapper's Display is high-level; the contract intentionally requires typed source-chain access. `fail-error-mapper.rs` / `pass-error-mapper.rs` additionally cover collapsed versus faithful direct error-category mapping without a Result boundary. |
 | `rust-conversion-contract` | 5 / 10 | **vectordotdev/vector (VRL)** [source 1](https://github.com/vectordotdev/vector/issues/9182), [repair](https://github.com/vectordotdev/vector/commit/4b880840b6359a33c411ce2094c048b2645f5bc8); `real-vector-ip-aton-bug.rs`, `real-vector-ip-aton-fixed.rs`. Retained u32::from(Ipv4Addr).to_be() versus u32::from(Ipv4Addr). Removed VRL expression, parsing and Value scaffolding; wrapped the same numeric conversion in an explicit std::convert::From implementation on a std-only IpNumber type. Public numeric contract is derived from the issue's 1.2.3.4 = 16909060 requirement. The erroneous byte swap is observable on little-endian hosts; the contract covers all architectures. This is an adapted domain conversion reproduction, not a verbatim upstream trait implementation. |
 | `rust-validation-bypass` | 5 / 7 | **capnproto-rust / capnp** [source 1](https://github.com/capnproto/capnproto-rust/issues/605); `real-capnp-constant-reader-bug.rs`, `real-capnp-constant-reader-fixed.rs`. Retains the public encoded-word representation, arbitrary safe literal construction, and invariant-relying unchecked reader. Replaces Cap'n Proto pointer arithmetic and generated Owned/Reader machinery with a two-word u64 message whose first word is its root index. Adds a checked constructor to expose the domain contract directly; this constructor is fixture scaffolding for evidence, not a claim that upstream had that exact API. Fixed adaptation restricts words and provides an unsafe constructor with explicit obligations, matching the advisory's encapsulation/unsafe-construction repair. No external crates or verbatim upstream implementation. |
 | `rust-partial-state-on-error` | 5 / 10 | **0xMiden/rust-sdk** [source 1](https://github.com/0xMiden/rust-sdk/issues/2221); `real-miden-store-bug.rs`, `real-miden-store-fixed.rs`. Reduce persistent expected input-note and output-script stores to BTreeMaps and executor to a fallible closure. Preserve both pre-execution writes, script lookup during execution, and caller-visible store reuse. Fixed version stages the script view in memory, executes against it, and persists notes/scripts only after success, following the issue proposal. Public atomicity docs derive from the issue acceptance criteria. |
@@ -85,9 +85,9 @@ jevlint eval --config jevlint.json --evals packs/rust-core/jevlint-evals.json --
 
 ## Verification status
 
-All **138 isolated Rust 2021 fixture targets** were compiled with zero errors or warnings. `go test ./internal/packs -run 'RustPack'` passed, including each eval case's non-test primary-kind/sourceMatch applicability check. Faulty fixtures were never executed. Compilation and applicability establish syntax and subject selection, not judgment correctness; compiler/Clippy checks remain the first layer.
+All **140 isolated Rust 2021 fixture targets** were compiled with zero errors or warnings in the final six-pack fixture compilation (432 targets total). The earlier `go test ./internal/packs -run 'RustPack'` covered the original cases' non-test primary-kind/sourceMatch applicability; it was not rerun for this refresh. Faulty fixtures were never executed. Compilation and applicability establish syntax and subject selection, not judgment correctness; compiler/Clippy checks remain the first layer.
 
-Three real provider-backed runs (`python3 scripts/check-rust-packs.py --eval --repeat 3`) measured fixture recall and specificity at global `minConfidence: 0.8`, with opaque fixture names. The table reports per-run decision metrics: below-floor failures are not reported, matching `check` behavior.
+The original three real provider-backed runs (`python3 scripts/check-rust-packs.py --eval --repeat 3`) measured fixture recall and specificity at global `minConfidence: 0.8`, with opaque fixture names. This historical table reports per-run decision metrics: below-floor failures are not reported, matching `check` behavior. Current core/advisory refresh rows and held-out measurements are in [CALIBRATION.md](../../docs/rust/CALIBRATION.md#core-and-advisory-refresh-2026-10-05).
 
 | Rule | Recall @0.8 | Specificity @0.8 | Recommended override | Recall @override | Specificity @override |
 | --- | --- | --- | --- | --- | --- |
@@ -102,6 +102,35 @@ Three real provider-backed runs (`python3 scripts/check-rust-packs.py --eval --r
 | `rust-exclusive-create-race` | 1.00 | 0.71 | — | 1.00 | 0.71 |
 | `rust-shared-clone-isolation` | 0.27 | 0.88 | — | 0.27 | 0.88 |
 
-`rust-shared-clone-isolation` is not yet useful: fixture recall is only 0.27. At 0.8, `rust-expected-failure-panics`, `rust-error-cause-loss`, `rust-conversion-contract`, `rust-unbounded-input-buffering`, `rust-exclusive-create-race` and `rust-shared-clone-isolation` are false-positive-prone (specificity below 0.90). These rules are not blanket bans on unwrap, From, public fields, buffering, Drop, clone or overwrite.
+In the baseline, `rust-shared-clone-isolation` recall was only 0.27. At 0.8, `rust-expected-failure-panics`, `rust-error-cause-loss`, `rust-conversion-contract`, `rust-unbounded-input-buffering`, `rust-exclusive-create-race` and `rust-shared-clone-isolation` were false-positive-prone (specificity below 0.90). These rules are not blanket bans on unwrap, From, public fields, buffering, Drop, clone or overwrite.
 
 All six Rust packs retain the global floor of **0.8** and contain no rule-level `minConfidence`; no pack-level floor changes were made. Only consuming projects may opt into the recommended overrides through project rule overlays such as `{"id": "rust-validation-bypass", "minConfidence": 0.40}`. An overlay replaces the rule floor, which overrides the global floor; `—` means keep 0.8. Overrides were fitted on these same fixtures and are starting points, not guarantees. Real-project precision remains unmeasured. See [calibration method, caveats and override configuration](../../docs/rust/CALIBRATION.md).
+
+### Error-mapping refresh (2026-10-05)
+
+Direct error-to-error mappers no longer require a Result/?/map_err/Err() token
+to be evaluated. Error/Err type references and From method units are selected;
+an explicit distinction promised by the boundary still supplies the contract.
+On a held-out private Rust workspace (43 files, 958 units), error-cause candidates increased **357 → 381**
+(+24, 6.72%); single-rule uncached requests increased by the same amount
+(14.002 → 15.010 seconds). Token/dollar costs are not exposed by the CLI.
+
+After three full-core fixture runs and a three-run targeted refresh of the final
+error-cause wording, its reporting recall/specificity is **9/18 (0.50)** and
+**27/30 (0.90)** versus baseline 0.53/0.89. The new collapsed-category fixture
+reports 3/3 at 0.86/0.89/0.89; its faithful counterpart passes 3/3.
+This is not an overall no-regression calibration: the original cause-loss
+failures report 6/15 (0.40), and unchanged fallible-drop/shared-clone recall
+measured 0.93/0.20 versus 1.00/0.27. No confidence floor was lowered.
+
+The seeded error-category mapper is now selected, but three full-workspace scans
+produce **pass/pass/fail at 0.34** (0/3 reports); confidence for passes is not
+emitted by `check`. Earlier targeted-file scans judged it fail 3/3 at
+0.60/0.62/0.64, but their discovered declaration/context set differs from the
+full workspace. Jevlint's provider protocol returns choice/confidence, not a
+textual confidence explanation. On the clean
+workspace, combined core/advisory runs report **0/0/0**, with **22/22/23**
+below-floor findings versus the original recorded 1 reported and 41 below floor.
+See the linked calibration section for exact commands, cost, and mutation-rule
+overlap; these measurements do not certify production
+precision.

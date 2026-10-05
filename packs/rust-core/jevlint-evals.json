@@ -170,6 +170,18 @@
       "expect": "pass"
     },
     {
+      "name": "cause-loss-error-mapper-collapsed-categories",
+      "rule": "rust-error-cause-loss",
+      "file": "fixtures/rust-error-cause-loss/fail-error-mapper.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "cause-loss-error-mapper-faithful-categories",
+      "rule": "rust-error-cause-loss",
+      "file": "fixtures/rust-error-cause-loss/pass-error-mapper.rs",
+      "expect": "pass"
+    },
+    {
       "name": "conversion-discards-locale",
       "rule": "rust-conversion-contract",
       "file": "fixtures/rust-conversion-contract/fail.rs",
