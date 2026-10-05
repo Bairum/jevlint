@@ -114,6 +114,7 @@ type Report struct {
 
 // Options holds the settings for an eval run.
 type Options struct {
+	// Root confines programmatically constructed cases; loaded cases use their document directory.
 	Root        string
 	Concurrency int
 	// OnUnit, when set, is called with each unit decision as it is scored.
@@ -195,8 +196,12 @@ func runCase(
 		Extractor: extractor,
 		Evaluator: recorder,
 	}
+	root := evalCase.root
+	if root == "" {
+		root = options.Root
+	}
 	report, err := check.Evaluate(ctx, evalConfig(cfg, rule), runner.Options{
-		Root:        options.Root,
+		Root:        root,
 		Paths:       []string{evalCase.AbsolutePath()},
 		Concurrency: options.Concurrency,
 	})

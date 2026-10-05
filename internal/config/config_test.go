@@ -183,7 +183,7 @@ func TestDecodeRejectsInvalidOverlaySeverity(t *testing.T) {
 
 	_, err := Decode(strings.NewReader(`{
 		"languages": {"go": {}},
-		"packs": [{"id": "database-joins", "source": "local", "sha": "abc123"}],
+		"packs": [{"id": "database-joins", "source": "local", "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],
 		"rules": [{"id": "database-joins", "severity": "erorr"}]
 	}`))
 	if err == nil || !strings.Contains(err.Error(), `invalid severity "erorr"`) {
@@ -196,7 +196,7 @@ func TestDecodeAllowsOverlayWithoutSeverity(t *testing.T) {
 
 	cfg, err := Decode(strings.NewReader(`{
 		"languages": {"go": {}},
-		"packs": [{"id": "database-joins", "source": "local", "sha": "abc123"}],
+		"packs": [{"id": "database-joins", "source": "local", "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],
 		"rules": [{"id": "database-joins", "include": ["src/**/*.go"]}]
 	}`))
 	if err != nil {
@@ -214,7 +214,7 @@ func TestWritePartialOverlayRoundTrips(t *testing.T) {
 	path := filepath.Join(dir, "jevlint.json")
 	cfg, err := Decode(strings.NewReader(`{
 		"languages": {"go": {}},
-		"packs": [{"id": "database-joins", "source": "local", "sha": "abc123"}],
+		"packs": [{"id": "database-joins", "source": "local", "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],
 		"rules": [{"id": "database-joins", "include": ["src/**/*.go"]}]
 	}`))
 	if err != nil {
@@ -658,7 +658,7 @@ func TestDecodePacksWithoutRules(t *testing.T) {
 		"packs": [{
 			"id": "database-joins",
 			"source": "https://github.com/org/repo",
-			"sha": "abc123"
+			"sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 		}]
 	}`)))
 	if err != nil {

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"runtime"
 	"strconv"
@@ -25,7 +26,6 @@ const (
 	defaultTimeout      = 10 * time.Second
 	defaultMaxRetries   = 2
 	maxResponseBytes    = 1 << 20
-	maxDebugBodyBytes   = 16 << 10
 	cacheKeyVersion     = "typesafe-evaluation-v1"
 	answerTypeChoice    = "choice"
 	httpSuccessMin      = 200
@@ -59,8 +59,8 @@ type Options struct {
 	Sleep      func(context.Context, time.Duration) error
 	Cache      ResultCache
 	Refresh    bool
-	// Logf, when set, receives request and response debug lines. The
-	// Authorization header is never logged.
+	// Logf, when set, receives request and response metadata only.
+	// URLs, headers, and body contents are never logged.
 	Logf func(format string, args ...any)
 	// Warnf, when set, receives warnings such as a provider left at its
 	// default while another provider's variables are present.
@@ -192,34 +192,53 @@ func NewClientWithProvider(provider Provider, options Options) (*Client, error) 
 		return nil, errors.New("an API key is required: set TYPESAFE_API_KEY")
 	}
 
-	baseURL := strings.TrimRight(strings.TrimSpace(string(options.BaseURL)), "/")
-	if baseURL == "" {
-		baseURL = provider.BaseURL()
-	}
-	parsedURL, err := url.Parse(baseURL)
-	if err != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
-		return nil, fmt.Errorf("invalid base URL %q", baseURL)
-	}
-
 	endpoint := strings.TrimSpace(options.Endpoint)
-	if endpoint != "" {
-		parsedEndpoint, endpointErr := url.Parse(endpoint)
-		if endpointErr != nil || parsedEndpoint.Scheme == "" ||
-			parsedEndpoint.Host == "" {
-			return nil, fmt.Errorf("invalid endpoint %q", endpoint)
+	if endpoint == "" {
+		baseURL := strings.TrimRight(strings.TrimSpace(string(options.BaseURL)), "/")
+		if baseURL == "" {
+			baseURL = provider.BaseURL()
 		}
-	} else {
+		if _, err := validateServiceURL(baseURL); err != nil {
+			return nil, fmt.Errorf("invalid base URL: %w", err)
+		}
 		endpoint = baseURL + "/v1/systemone"
 	}
+	parsedEndpoint, err := validateServiceURL(endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("invalid endpoint: %w", err)
+	}
+	endpoint = parsedEndpoint.String()
 
 	model := strings.TrimSpace(options.Model)
 	if model == "" {
 		model = provider.DefaultModel()
 	}
 
-	httpClient := options.HTTPClient
-	if httpClient == nil {
-		httpClient = &http.Client{Timeout: defaultTimeout}
+	httpClient := http.Client{Timeout: defaultTimeout}
+	if options.HTTPClient != nil {
+		httpClient = *options.HTTPClient
+	}
+	callerRedirect := httpClient.CheckRedirect
+	httpClient.CheckRedirect = func(request *http.Request, via []*http.Request) error {
+		if callerRedirect != nil {
+			if err := callerRedirect(request, via); err != nil {
+				return err
+			}
+		} else if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		// The caller's policy may rewrite URL or via; check the final URL
+		// against the separately parsed original endpoint, not request history.
+		if request.URL == nil {
+			return errors.New("redirect rejected: invalid destination")
+		}
+		if _, err := validateServiceURL(request.URL.String()); err != nil {
+			return errors.New("redirect rejected: invalid destination")
+		}
+		if !sameOrigin(parsedEndpoint, request.URL) {
+			return errors.New("redirect rejected: destination must have the same origin")
+		}
+		return nil
 	}
 
 	maxRetries := options.MaxRetries
@@ -240,7 +259,7 @@ func NewClientWithProvider(provider Provider, options Options) (*Client, error) 
 		endpoint:   endpoint,
 		model:      model,
 		provider:   provider,
-		httpClient: httpClient,
+		httpClient: &httpClient,
 		maxRetries: maxRetries,
 		sleep:      sleep,
 		cache:      options.Cache,
@@ -249,6 +268,112 @@ func NewClientWithProvider(provider Provider, options Options) (*Client, error) 
 		warnf:      options.Warnf,
 		inflight:   make(map[string]*evaluationCall),
 	}, nil
+}
+
+// validateServiceURL accepts TLS endpoints and explicitly local HTTP development.
+// Errors deliberately omit all URL components, which can carry credentials.
+func validateServiceURL(value string) (*url.URL, error) {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Opaque != "" || parsed.Host == "" {
+		return nil, errors.New("expected an absolute HTTP(S) URL")
+	}
+	if parsed.User != nil || parsed.Fragment != "" || strings.Contains(value, "#") {
+		return nil, errors.New("credentials and fragments are not allowed")
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	if scheme != "https" && scheme != "http" {
+		return nil, errors.New("scheme must be HTTPS")
+	}
+	host := parsed.Hostname()
+	address, addressErr := netip.ParseAddr(host)
+	if addressErr != nil {
+		if strings.Contains(host, ":") || strings.HasPrefix(parsed.Host, "[") {
+			return nil, errors.New("invalid host")
+		}
+		domain := strings.TrimSuffix(host, ".")
+		if len(domain) == 0 || len(domain) > 253 {
+			return nil, errors.New("invalid host")
+		}
+		for _, label := range strings.Split(domain, ".") {
+			if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+				return nil, errors.New("invalid host")
+			}
+			for _, character := range label {
+				if !(character >= 'a' && character <= 'z' || character >= 'A' && character <= 'Z' ||
+					character >= '0' && character <= '9' || character == '-') {
+					return nil, errors.New("invalid host")
+				}
+			}
+		}
+	}
+	if port := parsed.Port(); port != "" {
+		number, err := strconv.Atoi(port)
+		if err != nil || number < 1 || number > 65535 {
+			return nil, errors.New("invalid port")
+		}
+	} else if strings.HasSuffix(parsed.Host, ":") {
+		return nil, errors.New("invalid port")
+	}
+	if scheme == "http" && !strings.EqualFold(host, "localhost") && (addressErr != nil || !address.IsLoopback()) {
+		return nil, errors.New("HTTP is allowed only for localhost or a literal loopback IP")
+	}
+	parsed.Scheme = scheme
+	return parsed, nil
+}
+
+func sameOrigin(first, second *url.URL) bool {
+	return strings.EqualFold(first.Scheme, second.Scheme) &&
+		strings.EqualFold(first.Hostname(), second.Hostname()) &&
+		effectivePort(first) == effectivePort(second)
+}
+
+func effectivePort(value *url.URL) int {
+	if port := value.Port(); port != "" {
+		number, _ := strconv.Atoi(port)
+		return number
+	}
+	if strings.EqualFold(value.Scheme, "https") {
+		return 443
+	}
+	return 80
+}
+
+// transportFailure preserves error causes and diagnostic reasons without
+// rendering URL fields from transport wrappers.
+type transportFailure struct {
+	cause error
+}
+
+func (failure transportFailure) Error() string {
+	err := failure.cause
+	for {
+		urlError, ok := err.(*url.Error)
+		if !ok {
+			break
+		}
+		err = urlError.Err
+	}
+	message := err.Error()
+	if strings.HasPrefix(message, "failed to parse Location header") {
+		return "invalid redirect destination"
+	}
+	for cause := failure.cause; cause != nil; cause = errors.Unwrap(cause) {
+		if urlError, ok := cause.(*url.Error); ok && urlError.URL != "" {
+			// %q escaping can differ from the raw URL for queries with spaces
+			// or quotes. Redact both forms without removing the failure reason.
+			message = strings.ReplaceAll(message, strconv.Quote(urlError.URL), `"<redacted>"`)
+			message = strings.ReplaceAll(message, urlError.URL, "<redacted>")
+		}
+	}
+	return message
+}
+
+func (failure transportFailure) Unwrap() error {
+	return failure.cause
+}
+
+func safeTransportError(err error) error {
+	return transportFailure{cause: err}
 }
 
 // Evaluate answers the rules in a batch for one piece of code.
@@ -589,7 +714,7 @@ func (client *Client) perform(ctx context.Context, body []byte) ([]byte, error) 
 				return nil, ctx.Err()
 			}
 			if attempt >= client.maxRetries {
-				return nil, fmt.Errorf("request failed: %w", err)
+				return nil, fmt.Errorf("request failed: %w", safeTransportError(err))
 			}
 			if sleepErr := client.sleep(ctx, retryDelay(attempt, nil)); sleepErr != nil {
 				return nil, sleepErr
@@ -600,7 +725,7 @@ func (client *Client) perform(ctx context.Context, body []byte) ([]byte, error) 
 		if err != nil {
 			return nil, err
 		}
-		client.debugf("jevlint: response %s: %s", response.Status, debugBody(responseBody))
+		client.debugf("jevlint: response status=%d bytes=%d", response.StatusCode, len(responseBody))
 		if response.StatusCode >= httpSuccessMin && response.StatusCode < httpSuccessLimit {
 			return responseBody, nil
 		}
@@ -630,7 +755,7 @@ func (client *Client) newRequest(
 		bytes.NewReader(body),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
+		return nil, fmt.Errorf("create request: %w", safeTransportError(err))
 	}
 	request.Header.Set("Authorization", "Bearer "+client.apiKey)
 	request.Header.Set("Accept", "application/json")
@@ -646,15 +771,7 @@ func (client *Client) newRequest(
 	if attempt > 0 {
 		request.Header.Set("X-Jevlint-Retry-Count", strconv.Itoa(attempt))
 	}
-	if client.logf != nil {
-		client.debugf("jevlint: request POST %s", client.endpoint)
-		client.debugf(
-			"jevlint: request headers: Content-Type=%s Accept=%s Authorization=Bearer <redacted>",
-			request.Header.Get("Content-Type"),
-			request.Header.Get("Accept"),
-		)
-		client.debugf("jevlint: request body: %s", debugBody(body))
-	}
+	client.debugf("jevlint: request POST bytes=%d", len(body))
 	return request, nil
 }
 
@@ -755,14 +872,4 @@ func (client *Client) warn(format string, args ...any) {
 	if client.warnf != nil {
 		client.warnf(format, args...)
 	}
-}
-
-// debugBody renders a body for logging, capped so a large code state stays
-// readable while still showing where it was cut off.
-func debugBody(body []byte) string {
-	if len(body) <= maxDebugBodyBytes {
-		return string(body)
-	}
-	return string(body[:maxDebugBodyBytes]) +
-		fmt.Sprintf("\n... (truncated %d bytes)", len(body)-maxDebugBodyBytes)
 }

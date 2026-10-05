@@ -29,14 +29,6 @@ func validatePackID(id string) error {
 	return err
 }
 
-// validateIDPart rejects a single path component used in the pack cache.
-func validateIDPart(kind string, value string) error {
-	if !packIDPartPattern.MatchString(value) {
-		return fmt.Errorf("invalid pack %s %q", kind, value)
-	}
-	return nil
-}
-
 // validateRelativeName rejects a pack declared path that is empty, absolute, or
 // climbs out of its directory.
 func validateRelativeName(name string) error {

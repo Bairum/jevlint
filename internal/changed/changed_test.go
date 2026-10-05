@@ -81,14 +81,13 @@ func TestIntersectKeepsRequestedSubtree(t *testing.T) {
 	assertFiles(t, got, "src/a.go", "src/nested/b.go")
 }
 
-func TestRelativizeDropsPathsOutsideRoot(t *testing.T) {
+func TestRelativizeKeepsPathsInsideRoot(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
 	got, err := Relativize(root, []string{
 		"src/a.go",
 		filepath.Join(root, "inside.go"),
-		filepath.Join(filepath.Dir(root), "outside.go"),
 	})
 	if err != nil {
 		t.Fatalf("Relativize() error = %v", err)

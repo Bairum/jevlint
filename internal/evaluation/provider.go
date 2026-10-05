@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -71,10 +72,8 @@ func NewClientFromEnv(options Options, getenv func(string) string) (*Client, err
 	}
 	if client.logf != nil {
 		client.debugf(
-			"jevlint: using provider=%s endpoint=%s model=%s credential=%s",
+			"jevlint: using provider=%s credential=%s",
 			provider.Name(),
-			client.endpoint,
-			client.model,
 			provider.DescribeCredential(client.apiKey),
 		)
 	}
@@ -161,7 +160,12 @@ func serviceError(status int, requestID string, message string) error {
 	if message == "" {
 		message = http.StatusText(status)
 	}
+	// Escape untrusted terminal controls while keeping ordinary Unicode readable.
+	message = strconv.QuoteToGraphic(message)
+	message = message[1 : len(message)-1]
 	if requestID != "" {
+		requestID = strconv.QuoteToGraphic(requestID)
+		requestID = requestID[1 : len(requestID)-1]
 		return fmt.Errorf(
 			"decision service returned %d: %s (request %s)",
 			status,

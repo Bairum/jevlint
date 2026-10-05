@@ -56,10 +56,11 @@ func CacheDir(userCache string, sha string, id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := validateIDPart("sha", sha); err != nil {
+	if err := config.ValidatePackSHA(sha); err != nil {
 		return "", err
 	}
-	packsDir, err := safeJoin(userCache, filepath.Join("jevlint", "packs"))
+	// Legacy caches were populated without commit verification; do not reuse them.
+	packsDir, err := safeJoin(userCache, filepath.Join("jevlint", "packs", "v2"))
 	if err != nil {
 		return "", err
 	}

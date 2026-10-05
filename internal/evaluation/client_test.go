@@ -771,52 +771,6 @@ func TestTypeSafeEndpointOverrideUsesFullURL(t *testing.T) {
 	}
 }
 
-func TestTypeSafeDebugLogRedactsCredential(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-		fmt.Fprint(writer, `{
-			"answers": {
-				"database-joins": {"type": "choice", "choice": "pass", "confidence": 1},
-				"semicolons": {"type": "choice", "choice": "pass", "confidence": 1}
-			}
-		}`)
-	}))
-	defer server.Close()
-
-	var logs strings.Builder
-	client, err := NewClient(Options{
-		APIKey:     "sk-super-secret",
-		BaseURL:    ServiceURL(server.URL),
-		HTTPClient: server.Client(),
-		Logf: func(format string, args ...any) {
-			fmt.Fprintf(&logs, format+"\n", args...)
-		},
-	})
-	if err != nil {
-		t.Fatalf("NewClient() error = %v", err)
-	}
-	client.model = "clef"
-	if _, err := client.Evaluate(context.Background(), testBatch()); err != nil {
-		t.Fatalf("Evaluate() error = %v", err)
-	}
-
-	out := logs.String()
-	for _, want := range []string{
-		"jevlint: request POST ",
-		"jevlint: request body:",
-		"jevlint: response 200",
-		"Authorization=Bearer <redacted>",
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("log missing %q:\n%s", want, out)
-		}
-	}
-	if strings.Contains(out, "sk-super-secret") {
-		t.Fatalf("log leaked the API key:\n%s", out)
-	}
-}
-
 func newTestClient(
 	t *testing.T,
 	server *httptest.Server,

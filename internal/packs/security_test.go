@@ -92,15 +92,6 @@ func TestCacheDirRejectsTraversal(t *testing.T) {
 			t.Fatalf("CacheDir(%q, %q) = %q, want an error", test.sha, test.id, got)
 		}
 	}
-
-	got, err := CacheDir(userCache, "abc123", "codegirl-007/database-joins")
-	if err != nil {
-		t.Fatalf("CacheDir() error = %v", err)
-	}
-	want := filepath.Join(userCache, "jevlint", "packs", "abc123", "codegirl-007", "database-joins")
-	if got != want {
-		t.Fatalf("CacheDir() = %q, want %q", got, want)
-	}
 }
 
 func TestLoadDirRejectsManifestTraversal(t *testing.T) {

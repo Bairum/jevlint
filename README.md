@@ -16,6 +16,18 @@ Or install with Go:
 go install github.com/codegirl-007/jevlint/cmd/jevlint@latest
 ```
 
+The release workflow now generates GitHub artifact provenance for archives and
+`checksums.txt`. For a release produced by this workflow, set `ASSET` to the
+downloaded archive's path and verify it against the repository that published it:
+
+```sh
+gh attestation verify "$ASSET" --repo Bairum/jevlint
+```
+
+Use `--repo codegirl-007/jevlint` for upstream releases once upstream adopts this
+workflow. Older releases may have checksums without attestations; the local
+workflow change does not retroactively attest them.
+
 ## Getting started
 
 ```sh
@@ -80,6 +92,25 @@ go run ./cmd/jevlint eval --rule database-joins --format json
 | `--format text\|json` | Select human-readable or machine-readable output. Defaults to `text`. |
 | `--refresh-cache` | Reevaluate code and replace matching cached results. |
 
+Source reads, including callee context, stay inside the project root. Explicit
+paths outside that root are rejected; `--changed` skips escaping symlinks.
+Relative symlinks must stay inside the root. Absolute symlink targets are not
+followed, even when they point inside the root.
+
+Directory scans in Git worktrees honor Git's ignore rules, including nested
+`.gitignore` files, `.git/info/exclude`, and global excludes. Tracked files remain
+eligible, matching Git semantics. Initialized submodules use their own ignore
+rules; an ignored nested repository stays excluded by its parent. Confined
+directory symlinks use the target directory's Git rules. Ignored files are
+removed before callee indexing. Git must be available and working when a Git
+worktree is detected; otherwise the scan fails rather than silently ignoring
+the privacy filter.
+Non-Git directories retain filesystem discovery.
+
+Explicit file arguments override Git ignores, including when combined with a
+directory argument. Eval fixtures are also explicit selections. Treat selecting
+an ignored file as permission to send its applicable code to the provider.
+
 ## Configuration
 
 Jevlint reads `jevlint.json` for rules. Credentials and provider settings come
@@ -93,9 +124,11 @@ export TYPESAFE_API_KEY=apikey_...
 
 - **Keep it secret:** export the key from your shell profile or a secret
   manager. Jevlint never writes credentials into the project.
-- **Debugging:** set `JEVLINT_DEBUG=1` to print each request URL, the
-  credential kind (never the value), the request body, and the response to
-  stderr.
+- **Debugging:** set `JEVLINT_DEBUG=1` for metadata-only diagnostics: provider,
+  credential kind/length, numeric response status, and byte counts. Raw endpoint
+  URLs, model values, request bodies, and response bodies are not logged.
+  Service error messages remain visible with terminal controls escaped;
+  diagnostics are not a general-purpose secret scrubber.
 
 ### Providers
 
@@ -114,6 +147,13 @@ through OpenRouter (see below).
 | `TYPESAFE_ENDPOINT` | Full request URL, bypassing `TYPESAFE_BASE_URL`. |
 
 Set `TYPESAFE_ENDPOINT` to target another SystemOne-compatible service.
+
+Remote endpoints must use HTTPS. HTTP is allowed only for literal loopback IPs
+or exact `localhost` for local development; endpoint credentials and fragments
+are rejected. Redirects must preserve scheme, hostname, and effective port:
+cross-origin redirects and HTTPS downgrades are rejected before contacting the
+destination. Custom HTTP clients retain their TLS settings and any stricter
+redirect policy.
 
 #### Cloudflare Workers AI (Clef)
 
@@ -247,6 +287,10 @@ customize a preset, but it cannot load an arbitrary external grammar.
   Ambiguous and external calls are ignored. Useful when the target function
   alone does not contain enough evidence. When mixed with ordinary rules on the
   same unit, Jevlint sends a second request.
+  A rule's `exclude` patterns also remove matching callee paths before applying
+  context limits, including during localization. `include` still selects only
+  directly evaluated units. Rules with different allowed callee context use
+  separate requests, so one rule cannot expose excluded context to another.
 
 ```json
 {
@@ -296,6 +340,11 @@ results. Use `--clear-cache` to clear this project's cache before a run.
 file. Each case names a rule, a fixture relative to the eval file, and
 `expect: pass` or `expect: fail`. Pack evals stay with the pack unless you
 pass `--packs`.
+
+Fixtures must be regular source files inside the eval document's directory
+or its subdirectories. Absolute paths, `..` escapes, and escaping symlinks
+are rejected. Pack evals use their own eval document directory as this
+boundary, not the project's directory.
 
 Eval evaluates only that rule. It clears the rule's include and exclude so
 fixtures still run, and keeps kinds, exceptions, localize, and minConfidence.
@@ -375,6 +424,14 @@ Exit codes:
 A pack is a shared directory with a `pack.json` manifest, rules, optional evals,
 and fixtures. Pins live in `jevlint.json`; fetched files live in the user cache,
 not the project tree.
+
+Each `sha` must be a full 40- or 64-character hexadecimal commit ID, not a
+branch, tag, or abbreviated hash. Fetches verify the checked-out commit
+before caching it; plugin installation can still select a branch or tag.
+
+Verified packs use the `jevlint/packs/v2` directory under the user cache.
+Older pack caches are left untouched but ignored, so the first run after
+upgrading requires access to each pack's source to fetch it again.
 
 ```text
 pack.json

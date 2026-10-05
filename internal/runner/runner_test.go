@@ -864,7 +864,7 @@ func TestCheckUsesSourceOverlayAndReportsScannedPaths(t *testing.T) {
 func TestDiscoverFiltersDeduplicatesAndSortsFiles(t *testing.T) {
 	t.Parallel()
 
-	root := t.TempDir()
+	root := privacyRepo(t)
 	files := map[string]string{
 		"z.go":                         "package sample\n",
 		"nested/a.ts":                  "export function read() {}\n",
@@ -883,9 +883,16 @@ func TestDiscoverFiltersDeduplicatesAndSortsFiles(t *testing.T) {
 			t.Fatalf("write %q: %v", path, err)
 		}
 	}
+	privacyGit(t, filepath.Join(root, "nested"), "init")
+	boundary, err := os.OpenRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer boundary.Close()
 
 	discovered, err := discover(
-		root,
+		context.Background(),
+		boundary,
 		[]string{".", "z.go", filepath.Join(root, "nested"), "nested/notes.txt"},
 		testExtractor(t, "go", "typescript"),
 	)
@@ -905,7 +912,12 @@ func TestDiscoverRejectsMissingPath(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	_, err := discover(root, []string{"missing"}, testGoExtractor(t))
+	boundary, err := os.OpenRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer boundary.Close()
+	_, err = discover(context.Background(), boundary, []string{"missing"}, testGoExtractor(t))
 	if err == nil || !strings.Contains(err.Error(), `inspect "missing"`) {
 		t.Fatalf("discover() error = %v", err)
 	}

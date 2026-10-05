@@ -46,6 +46,11 @@ func gitDirtyListing(root string) ([]byte, []byte, error) {
 
 // existingProjectFiles keeps the changed files that still exist under the project root.
 func existingProjectFiles(root string, gitRoot []byte, gitPaths []string) ([]string, error) {
+	boundary, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, fmt.Errorf("open project root: %w", err)
+	}
+	defer boundary.Close()
 	seen := make(map[string]struct{})
 	files := make([]string, 0)
 	for _, gitPath := range gitPaths {
@@ -54,12 +59,18 @@ func existingProjectFiles(root string, gitRoot []byte, gitPaths []string) ([]str
 		if !ok {
 			continue
 		}
-		info, statErr := os.Stat(absolute)
+		info, statErr := boundary.Lstat(relative)
 		if statErr != nil {
 			if os.IsNotExist(statErr) {
 				continue
 			}
 			return nil, fmt.Errorf("inspect dirty path %q: %w", relative, statErr)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			info, statErr = boundary.Stat(relative)
+			if statErr != nil {
+				continue
+			}
 		}
 		if !info.Mode().IsRegular() {
 			continue
@@ -74,7 +85,7 @@ func existingProjectFiles(root string, gitRoot []byte, gitPaths []string) ([]str
 	return files, nil
 }
 
-// Relativize turns the requested paths into paths relative to the project root.
+// Relativize turns requested paths into project-relative paths, rejecting escapes.
 func Relativize(projectRoot string, requested []string) ([]string, error) {
 	root, err := filepath.Abs(projectRoot)
 	if err != nil {
@@ -88,7 +99,7 @@ func Relativize(projectRoot string, requested []string) ([]string, error) {
 		}
 		relative, ok := underRoot(root, filepath.Clean(absolute))
 		if !ok {
-			continue
+			return nil, fmt.Errorf("source path %q is outside project root", requestedPath)
 		}
 		paths = append(paths, relative)
 	}
@@ -138,11 +149,13 @@ func underRoot(root string, absolute string) (string, bool) {
 }
 
 const (
-	porcelainNUL          = 0
-	porcelainStatusWidth  = 2
-	porcelainPathOffset   = 3
-	porcelainRenameStatus = 'R'
-	porcelainCopyStatus   = 'C'
+	porcelainNUL           = 0
+	porcelainStatusWidth   = 2
+	porcelainPathOffset    = 3
+	porcelainWorktreeIndex = 1
+	porcelainRenameStatus  = 'R'
+	porcelainCopyStatus    = 'C'
+	porcelainDeleteStatus  = 'D'
 )
 
 // parsePorcelain reads the changed paths from git status output.
@@ -159,6 +172,9 @@ func parsePorcelain(data []byte) []string {
 		path := string(field[porcelainPathOffset:])
 		if isRenameOrCopy(field[:porcelainStatusWidth]) && index < len(fields) {
 			index++
+		}
+		if field[porcelainWorktreeIndex] == porcelainDeleteStatus {
+			continue
 		}
 		if path != "" {
 			paths = append(paths, path)
