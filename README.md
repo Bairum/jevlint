@@ -302,6 +302,13 @@ customize a preset, but it cannot load an arbitrary external grammar.
 
 - `severity`: `info`, `warning`, or `error`
 - `include` and `exclude`: doublestar file patterns
+- `sourceMatch`: optional RE2 regular expressions matched against the primary
+  unit's source. At least one must match before Jevlint sends a request; omitted
+  or `[]` means no source filter. Empty or invalid patterns are rejected.
+- `guidance`: shared instruction text, sent once per distinct text in a batch
+  and referenced by each rule that uses it.
+- `includeTests`: evaluate structurally identified Rust test units when `true`;
+  they are skipped by default.
 - `kinds`: `comment`, `docComment`, `field`, `function`, `statement`, or `type`
 - `exceptions`: cases that should pass
 - `localize`: `comment`, `docComment`, `field`, or `statement`. Omit the key
@@ -323,6 +330,13 @@ customize a preset, but it cannot load an arbitrary external grammar.
   context limits, including during localization. `include` still selects only
   directly evaluated units. Rules with different allowed callee context use
   separate requests, so one rule cannot expose excluded context to another.
+- `context.types`: include bounded additional related declarations and impls,
+  including confidently resolved project-local types from other files. A rule's
+  `exclude` removes candidate paths before the 12-declaration / 16 KiB limits.
+  Ordinary same-file related types remain available without this option.
+
+Rules sharing identical callee and type context are batched. Jev judges only
+the primary source; defects present only in context must not fail that unit.
 
 ```json
 {
@@ -349,6 +363,24 @@ customize a preset, but it cannot load an arbitrary external grammar.
 - Network failures and retryable API responses are retried up to twice.
 
 Jevlint sends extracted source code and file metadata to TypeSafe.
+
+### Rust tests and type context
+
+Rust functions with `#[test]` or a namespaced `#[...::test]` attribute, and
+declarations inside modules gated by a positive `cfg(test)` predicate, are test
+units. Inner `#![cfg(test)]` attributes and external `#[cfg(test)] mod name;`
+files (including `#[path = "..."]`) are recognized. Comments between attributes
+and declarations do not change detection; `cfg(not(test))` is not a test gate.
+These units, including their comment/field/statement regions, are skipped unless
+the rule sets `includeTests: true`.
+
+With `context.types: true`, a type unit receives its same-file impls, and a
+method using only `Self` receives its owner's sibling declarations and impls.
+Cross-file context is added only for names with exactly one discovered type
+definition; ambiguous names retain same-file context. This is conservative
+name matching, not Rust type or module resolution. Only discovered files are
+indexed. Rule-excluded candidate paths and duplicates of ordinary same-file
+context are removed before the additional 12-declaration / 16 KiB source budget.
 
 ## Cache
 
@@ -470,6 +502,7 @@ upgrading requires access to each pack's source to fetch it again.
 ```text
 pack.json
 rules.json
+guidance.md
 jevlint-evals.json
 fixtures/
 ```
@@ -480,12 +513,15 @@ fixtures/
   "id": "codegirl-007/database-joins",
   "languages": ["go"],
   "rules": "rules.json",
-  "evals": "jevlint-evals.json"
+  "evals": "jevlint-evals.json",
+  "guidance": "guidance.md"
 }
 ```
 
 `rules` and `evals` are optional and default to `rules.json` and
-`jevlint-evals.json`; both must stay inside the pack. Any languages a pack
+`jevlint-evals.json`. Optional `guidance` names a shared text file; its content
+is applied to pack rules without their own `guidance`, before project overlays.
+All three paths must be relative and stay inside the pack. Any languages a pack
 declares must be enabled in your config. Pack ids are `owner/name`, where each
 part is a simple identifier (letters, digits, `.`, `_`, `-`), and packs
 containing symbolic links are rejected.
@@ -511,6 +547,11 @@ containing symbolic links are rejected.
   ]
 }
 ```
+
+Project rule overlays replace `sourceMatch` when present (`[]` clears the
+filter), and replace `guidance` when non-empty. `includeTests: true` and
+`context.types: true` enable those options; an overlay's `false` cannot disable
+an inherited `true`.
 
 Create a new pack with `plugin init`:
 

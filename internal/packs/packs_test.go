@@ -164,6 +164,83 @@ func TestLoadDirReadsPack(t *testing.T) {
 	}
 }
 
+func TestPackGuidanceAndProjectOverlays(t *testing.T) {
+	t.Parallel()
+
+	dir := writePackDir(t)
+	if err := os.WriteFile(filepath.Join(dir, ManifestFile), []byte(`{
+		"version": 1, "id": "codegirl-007/database-joins", "guidance": "guidance.txt"
+	}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "guidance.txt"), []byte("Pack guidance.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Guidance != "Pack guidance.\n" {
+		t.Fatalf("loaded guidance = %q", loaded.Guidance)
+	}
+	loaded.Rules[0].SourceMatch = []string{"old"}
+	base := loaded.Rules[0]
+	base.ID = "inherited"
+	loaded.Rules = append(loaded.Rules, base)
+	base.ID = "explicit"
+	base.Guidance = "Rule guidance."
+	loaded.Rules = append(loaded.Rules, base)
+	project := config.Config{
+		Languages: map[string]config.Language{"go": {}},
+		Rules: []config.Rule{{
+			ID: "database-joins", Guidance: "Project guidance.",
+			SourceMatch: []string{"new"}, IncludeTests: true,
+			Context: config.RuleContext{Types: true},
+		}},
+	}
+	merged, err := Merge(project, []Loaded{loaded})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, want := range []string{"Project guidance.", "Pack guidance.\n", "Rule guidance."} {
+		if merged.Rules[index].Guidance != want {
+			t.Fatalf("rule %d guidance = %q, want %q", index, merged.Rules[index].Guidance, want)
+		}
+	}
+	rule := merged.Rules[0]
+	if len(rule.SourceMatch) != 1 || rule.SourceMatch[0] != "new" ||
+		!rule.IncludeTests || !rule.Context.Types {
+		t.Fatalf("overlay rule = %#v", rule)
+	}
+	project.Rules[0].SourceMatch = []string{}
+	project.Rules[0].Guidance = ""
+	merged, err = Merge(project, []Loaded{loaded})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(merged.Rules[0].SourceMatch) != 0 || merged.Rules[0].Guidance != loaded.Guidance {
+		t.Fatalf("cleared filter / inherited guidance = %#v", merged.Rules[0])
+	}
+}
+
+func TestLoadDirRejectsInvalidGuidance(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{"../outside.txt", "/outside.txt", "missing.txt"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			dir := writePackDir(t)
+			manifest := `{"version":1,"id":"org/rules","guidance":"` + name + `"}`
+			if err := os.WriteFile(filepath.Join(dir, ManifestFile), []byte(manifest), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadDir(dir); err == nil {
+				t.Fatal("LoadDir accepted invalid guidance")
+			}
+		})
+	}
+}
+
 func TestParseSpecGitHubTree(t *testing.T) {
 	t.Parallel()
 

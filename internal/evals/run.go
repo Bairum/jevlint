@@ -326,6 +326,12 @@ func neutralizeFixturePath(batch evaluation.Batch) evaluation.Batch {
 			unit.Callees[index].Path = neutral
 		}
 	}
+	unit.RelatedTypes = append([]parsing.TypeDeclaration(nil), unit.RelatedTypes...)
+	for index := range unit.RelatedTypes {
+		if unit.RelatedTypes[index].Path == original {
+			unit.RelatedTypes[index].Path = neutral
+		}
+	}
 	batch.CodeUnit = unit
 	return batch
 }

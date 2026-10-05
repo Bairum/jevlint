@@ -12,24 +12,26 @@ import (
 
 // CodeUnit is one function or type read from a source file.
 type CodeUnit struct {
-	Kind         CodeKind          `json:"kind"`
-	Name         string            `json:"name"`
-	Language     SourceLanguage    `json:"language"`
-	Path         string            `json:"path"`
-	Source       string            `json:"source"`
-	ParentSource string            `json:"parentSource,omitempty"`
-	RegionKind   NodeKind          `json:"regionKind,omitempty"`
-	StartLine    uint              `json:"startLine"`
-	EndLine      uint              `json:"endLine"`
-	StartColumn  uint              `json:"startColumn"`
-	EndColumn    uint              `json:"endColumn"`
-	StartByte    uint              `json:"startByte"`
-	EndByte      uint              `json:"endByte"`
-	RelatedTypes []TypeDeclaration `json:"types,omitempty"`
-	Callees      []CalleeContext   `json:"callees,omitempty"`
-	CallRefs     []CallRef         `json:"-"`
-	Resolved     []CalleeContext   `json:"-"`
-	Regions      []Region          `json:"-"`
+	Kind           CodeKind          `json:"kind"`
+	Name           string            `json:"name"`
+	Language       SourceLanguage    `json:"language"`
+	Path           string            `json:"path"`
+	Source         string            `json:"source"`
+	ParentSource   string            `json:"parentSource,omitempty"`
+	RegionKind     NodeKind          `json:"regionKind,omitempty"`
+	StartLine      uint              `json:"startLine"`
+	EndLine        uint              `json:"endLine"`
+	StartColumn    uint              `json:"startColumn"`
+	EndColumn      uint              `json:"endColumn"`
+	StartByte      uint              `json:"startByte"`
+	EndByte        uint              `json:"endByte"`
+	RelatedTypes   []TypeDeclaration `json:"types,omitempty"`
+	Callees        []CalleeContext   `json:"callees,omitempty"`
+	CallRefs       []CallRef         `json:"-"`
+	Resolved       []CalleeContext   `json:"-"`
+	Regions        []Region          `json:"-"`
+	Test           bool              `json:"-"`
+	TypeCandidates []TypeDeclaration `json:"-"`
 
 	// docStart is where the declaration itself starts, after any leading
 	// comment. It is zero for units that are not functions or types.
@@ -91,6 +93,7 @@ type Region struct {
 // TypeDeclaration is a type found in a source file.
 type TypeDeclaration struct {
 	Name      string `json:"name"`
+	Path      string `json:"path,omitempty"`
 	Source    string `json:"source"`
 	StartLine uint   `json:"startLine"`
 	EndLine   uint   `json:"endLine"`
@@ -284,16 +287,29 @@ func (extractor *Extractor) Extensions() []string {
 	return extensions
 }
 
+// ExtractedFile retains declarations even when a file has no primary units.
+type ExtractedFile struct {
+	Units       []CodeUnit
+	Types       []TypeDeclaration
+	TestModules []RustModule
+}
+
 // Extract reads the code units from one source file.
 func (extractor *Extractor) Extract(path string, source []byte) ([]CodeUnit, error) {
+	file, err := extractor.ExtractFile(path, source)
+	return file.Units, err
+}
+
+// ExtractFile reads code units and the declarations needed for project context.
+func (extractor *Extractor) ExtractFile(path string, source []byte) (ExtractedFile, error) {
 	spec, ok := extractor.byExtension[strings.ToLower(filepath.Ext(path))]
 	if !ok {
-		return nil, fmt.Errorf("unsupported source file %q", path)
+		return ExtractedFile{}, fmt.Errorf("unsupported source file %q", path)
 	}
 
 	tree, err := parseSource(spec, path, source)
 	if err != nil {
-		return nil, err
+		return ExtractedFile{}, err
 	}
 	defer tree.Close()
 
@@ -321,11 +337,18 @@ func (extractor *Extractor) Extract(path string, source []byte) ([]CodeUnit, err
 	attachRelatedTypes(functions, declarations)
 
 	units := append(functions, types...)
+	attachTypeCandidates(units, declarations)
 	regions := extractRegions(root, source, spec.regionKinds)
 	markDocComments(units, regions)
 	attachRegions(units, regions)
 	sortCodeUnits(units)
-	return units, nil
+	file := ExtractedFile{Units: units, Types: declarations}
+	if spec.id == SourceLanguageRust {
+		tests := rustTestRanges(root, source)
+		markRustTests(file.Units, tests)
+		file.TestModules = rustModules(path, root, source, tests)
+	}
+	return file, nil
 }
 
 // markDocComments marks the leading comments of a function or type as doc
@@ -387,6 +410,7 @@ func extractTypeDeclarations(
 	for _, unit := range types {
 		declarations = append(declarations, TypeDeclaration{
 			Name:      unit.Name,
+			Path:      path,
 			Source:    unit.Source,
 			StartLine: unit.StartLine,
 			EndLine:   unit.EndLine,
@@ -407,6 +431,7 @@ func extractTypeDeclarations(
 		for _, unit := range contextTypes {
 			declarations = append(declarations, TypeDeclaration{
 				Name:      unit.Name,
+				Path:      path,
 				Source:    unit.Source,
 				StartLine: unit.StartLine,
 				EndLine:   unit.EndLine,
@@ -423,11 +448,36 @@ func attachRelatedTypes(functions []CodeUnit, declarations []TypeDeclaration) {
 	for index := range functions {
 		for _, declaration := range declarations {
 			if declarationContains(declaration, functions[index]) ||
-				containsIdentifier(functions[index].Source, declaration.Name) {
+				ContainsIdentifier(functions[index].Source, declaration.Name) {
 				functions[index].RelatedTypes = append(
 					functions[index].RelatedTypes,
 					declaration,
 				)
+			}
+		}
+	}
+}
+
+// attachTypeCandidates extends same-file context without changing default prompts.
+func attachTypeCandidates(units []CodeUnit, declarations []TypeDeclaration) {
+	for index := range units {
+		unit := &units[index]
+		owners := make(map[string]bool)
+		if unit.Kind == CodeKindType {
+			owners[unit.Name] = true
+		} else {
+			for _, declaration := range declarations {
+				if declarationContains(declaration, *unit) {
+					owners[declaration.Name] = true
+				}
+			}
+		}
+		for _, declaration := range declarations {
+			if declaration.StartByte == unit.StartByte && declaration.EndByte == unit.EndByte {
+				continue
+			}
+			if owners[declaration.Name] || ContainsIdentifier(unit.Source, declaration.Name) {
+				unit.TypeCandidates = append(unit.TypeCandidates, declaration)
 			}
 		}
 	}
@@ -628,7 +678,7 @@ func leadingCommentStart(
 	startPosition := node.StartPosition()
 
 	for previous := node.PrevNamedSibling(); previous != nil; previous = previous.PrevNamedSibling() {
-		if regionKinds[previous.Kind()] != CodeKindComment ||
+		if (regionKinds[previous.Kind()] != CodeKindComment && previous.Kind() != "attribute_item") ||
 			!isAdjacentCommentGap(source[previous.EndByte():startByte]) {
 			break
 		}
@@ -661,8 +711,11 @@ func declarationContains(declaration TypeDeclaration, unit CodeUnit) bool {
 	return declaration.StartByte <= unit.StartByte && declaration.EndByte >= unit.EndByte
 }
 
-// containsIdentifier reports whether a name appears as a whole word.
-func containsIdentifier(source string, identifier string) bool {
+// ContainsIdentifier reports whether a name appears as a whole word.
+func ContainsIdentifier(source string, identifier string) bool {
+	if identifier == "" {
+		return false
+	}
 	for index := 0; index < len(source); {
 		start := strings.Index(source[index:], identifier)
 		if start < 0 {
@@ -811,4 +864,17 @@ const rustTypeQuery = `
 const rustImplQuery = `
 (impl_item
   type: (type_identifier) @name) @type
+
+(impl_item
+  type: (generic_type
+    type: (type_identifier) @name)) @type
+
+(impl_item
+  type: (scoped_type_identifier
+    name: (type_identifier) @name)) @type
+
+(impl_item
+  type: (generic_type
+    type: (scoped_type_identifier
+      name: (type_identifier) @name))) @type
 `

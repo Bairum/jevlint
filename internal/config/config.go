@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -43,6 +44,9 @@ type Rule struct {
 	Severity      Severity     `json:"severity,omitempty"`
 	Include       []string     `json:"include,omitempty"`
 	Exclude       []string     `json:"exclude,omitempty"`
+	SourceMatch   []string     `json:"sourceMatch,omitempty"`
+	Guidance      string       `json:"guidance,omitempty"`
+	IncludeTests  bool         `json:"includeTests,omitempty"`
 	Exceptions    []string     `json:"exceptions,omitempty"`
 	Kinds         []TargetKind `json:"kinds,omitempty"`
 	Localize      []TargetKind `json:"localize,omitempty"`
@@ -55,6 +59,7 @@ type Rule struct {
 // RuleContext asks for extra material to send with a rule.
 type RuleContext struct {
 	Callees bool `json:"callees,omitempty"`
+	Types   bool `json:"types,omitempty"`
 }
 
 // TargetKind names the kind of code a rule can check.
@@ -589,6 +594,14 @@ func validateRulePatterns(rule Rule, prefix string) error {
 	for _, pattern := range patterns {
 		if strings.TrimSpace(pattern) == "" {
 			return fmt.Errorf("%s contains an empty file pattern", prefix)
+		}
+	}
+	for index, pattern := range rule.SourceMatch {
+		if strings.TrimSpace(pattern) == "" {
+			return fmt.Errorf("%s.sourceMatch[%d] must not be empty", prefix, index)
+		}
+		if _, err := regexp.Compile(pattern); err != nil {
+			return fmt.Errorf("%s.sourceMatch[%d]: %w", prefix, index, err)
 		}
 	}
 	return nil

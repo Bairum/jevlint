@@ -235,6 +235,12 @@ func TestTypeSafeCacheKeyTracksExactEvaluationInput(t *testing.T) {
 		"rule exception": func(batch *Batch) {
 			batch.Rules[0].Exceptions = []string{"A different exception."}
 		},
+		"rule guidance": func(batch *Batch) {
+			batch.Rules[0].Guidance = "Shared guidance."
+		},
+		"related type path": func(batch *Batch) {
+			batch.CodeUnit.RelatedTypes[0].Path = "types.go"
+		},
 		"localization state": func(batch *Batch) {
 			batch.CodeUnit.Kind = parsing.CodeKindRegion
 			batch.CodeUnit.ParentSource = "different parent"
@@ -768,6 +774,81 @@ func TestTypeSafeEndpointOverrideUsesFullURL(t *testing.T) {
 	client.model = "clef"
 	if _, err := client.Evaluate(context.Background(), testBatch()); err != nil {
 		t.Fatalf("Evaluate() error = %v", err)
+	}
+}
+
+func TestRequestDeduplicatesGuidanceAndSendsOnlyCrossFileTypePaths(t *testing.T) {
+	t.Parallel()
+
+	client, err := NewClient(Options{APIKey: "sk-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch := testBatch()
+	batch.Rules = []config.Rule{
+		{ID: "first", Description: "First rule.", Guidance: "Shared B."},
+		{ID: "second", Description: "Second rule.", Guidance: "Shared A."},
+		{ID: "third", Description: "Third rule.", Guidance: "Shared B."},
+		{ID: "fourth", Description: "Fourth rule."},
+	}
+	batch.CodeUnit.RelatedTypes[0].Path = "models/user.go"
+	batch.CodeUnit.RelatedTypes = append(batch.CodeUnit.RelatedTypes, parsing.TypeDeclaration{
+		Name:   "Local",
+		Path:   batch.CodeUnit.Path,
+		Source: "type Local struct{}",
+	})
+	body, err := client.requestBody(batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		State     requestState        `json:"state"`
+		Questions map[string]question `json:"questions"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.State.Guidance) != 2 || payload.State.Guidance[0] != "Shared B." ||
+		payload.State.Guidance[1] != "Shared A." {
+		t.Fatalf("guidance = %#v", payload.State.Guidance)
+	}
+	for id, index := range map[string]int{"first": 0, "second": 1, "third": 0} {
+		suffix := fmt.Sprintf("\n\nAlso apply the shared guidance in state.guidance[%d].", index)
+		if !strings.HasSuffix(payload.Questions[id].Instructions, suffix) {
+			t.Fatalf("%s instructions = %q", id, payload.Questions[id].Instructions)
+		}
+	}
+	if strings.Contains(payload.Questions["fourth"].Instructions, "state.guidance") {
+		t.Fatalf("unguided rule instructions = %q", payload.Questions["fourth"].Instructions)
+	}
+	if len(payload.State.RelatedTypes) != 2 || payload.State.RelatedTypes[0].Path != "models/user.go" ||
+		payload.State.RelatedTypes[1].Path != "" {
+		t.Fatalf("types = %#v, want cross-file path only", payload.State.RelatedTypes)
+	}
+}
+
+func TestInstructionsJudgeOnlyPrimaryUnitWithContext(t *testing.T) {
+	t.Parallel()
+
+	sentence := "Judge only state.source. state.types and state.callees are context only; do not fail state.source for problems that exist only in them."
+	tests := []struct {
+		name string
+		unit parsing.CodeUnit
+		want bool
+	}{
+		{name: "plain"},
+		{name: "parent only", unit: parsing.CodeUnit{ParentSource: "parent"}},
+		{name: "types", unit: parsing.CodeUnit{RelatedTypes: []parsing.TypeDeclaration{{Name: "Type"}}}, want: true},
+		{name: "callees", unit: parsing.CodeUnit{Callees: []parsing.CalleeContext{{Name: "callee"}}}, want: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			instructions := instructionsFor(config.Rule{Description: "A rule."}, test.unit)
+			if got := strings.Contains(instructions, sentence); got != test.want {
+				t.Fatalf("primary-only sentence present = %v, want %v: %s", got, test.want, instructions)
+			}
+		})
 	}
 }
 

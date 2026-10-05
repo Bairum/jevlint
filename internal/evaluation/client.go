@@ -142,11 +142,13 @@ type requestState struct {
 	RegionKind   parsing.NodeKind       `json:"regionKind,omitempty"`
 	RelatedTypes []requestType          `json:"types,omitempty"`
 	Callees      []requestCallee        `json:"callees,omitempty"`
+	Guidance     []string               `json:"guidance,omitempty"`
 }
 
 // requestType is a related type sent as context.
 type requestType struct {
 	Name   string `json:"name"`
+	Path   string `json:"path,omitempty"`
 	Source string `json:"source"`
 }
 
@@ -536,16 +538,18 @@ func (client *Client) Ping(ctx context.Context) error {
 
 // requestBody builds the body sent to the service.
 func (client *Client) requestBody(batch Batch) ([]byte, error) {
-	questions, err := questionsForBatch(batch)
+	questions, guidance, err := questionsForBatch(batch)
 	if err != nil {
 		return nil, err
 	}
 	if err := client.provider.ValidateQuestions(questions); err != nil {
 		return nil, err
 	}
+	state := requestStateFrom(batch.CodeUnit)
+	state.Guidance = guidance
 	body, err := json.Marshal(systemOneRequest{
 		Model:     client.model,
-		State:     requestStateFrom(batch.CodeUnit),
+		State:     state,
 		Questions: questions,
 	})
 	if err != nil {
@@ -575,10 +579,12 @@ func requestStateFrom(unit parsing.CodeUnit) requestState {
 	if len(unit.RelatedTypes) > 0 {
 		state.RelatedTypes = make([]requestType, 0, len(unit.RelatedTypes))
 		for _, declaration := range unit.RelatedTypes {
-			state.RelatedTypes = append(state.RelatedTypes, requestType{
-				Name:   declaration.Name,
-				Source: declaration.Source,
-			})
+			requested := requestType{Name: declaration.Name, Source: declaration.Source}
+			// Same-file context needs no path; sending it would repeat state.path.
+			if declaration.Path != unit.Path {
+				requested.Path = declaration.Path
+			}
+			state.RelatedTypes = append(state.RelatedTypes, requested)
 		}
 	}
 	if len(unit.Callees) > 0 {
@@ -595,22 +601,34 @@ func requestStateFrom(unit parsing.CodeUnit) requestState {
 }
 
 // questionsForBatch builds the questions for a batch.
-func questionsForBatch(batch Batch) (map[string]question, error) {
+func questionsForBatch(batch Batch) (map[string]question, []string, error) {
 	if len(batch.Rules) < minimumBatchRules {
-		return nil, errors.New("at least one rule is required")
+		return nil, nil, errors.New("at least one rule is required")
 	}
 	questions := make(map[string]question, len(batch.Rules))
+	var guidance []string
+	guidanceIndices := make(map[string]int)
 	for _, rule := range batch.Rules {
 		if _, exists := questions[rule.ID]; exists {
-			return nil, fmt.Errorf("duplicate rule id %q in evaluation batch", rule.ID)
+			return nil, nil, fmt.Errorf("duplicate rule id %q in evaluation batch", rule.ID)
+		}
+		instructions := instructionsFor(rule, batch.CodeUnit)
+		if rule.Guidance != "" {
+			index, exists := guidanceIndices[rule.Guidance]
+			if !exists {
+				index = len(guidance)
+				guidanceIndices[rule.Guidance] = index
+				guidance = append(guidance, rule.Guidance)
+			}
+			instructions += fmt.Sprintf("\n\nAlso apply the shared guidance in state.guidance[%d].", index)
 		}
 		questions[rule.ID] = question{
 			Type:         questionTypeChoice,
-			Instructions: instructionsFor(rule, batch.CodeUnit),
+			Instructions: instructions,
 			Criteria:     criteriaFor(rule),
 		}
 	}
-	return questions, nil
+	return questions, guidance, nil
 }
 
 // criteriaFor builds the answer wording for a rule.
@@ -809,6 +827,9 @@ func instructionsFor(
 			builder.WriteString("\n- ")
 			builder.WriteString(exception)
 		}
+	}
+	if len(unit.Callees) > 0 || len(unit.RelatedTypes) > 0 {
+		builder.WriteString("\n\nJudge only state.source. state.types and state.callees are context only; do not fail state.source for problems that exist only in them.")
 	}
 	return builder.String()
 }
