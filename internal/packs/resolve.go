@@ -75,6 +75,7 @@ func Install(
 	}
 	defer os.RemoveAll(filepath.Dir(checkout.dir))
 
+	parsed = checkout.spec
 	packDir := checkout.dir
 	if parsed.Path != "" {
 		packDir, err = safeJoin(checkout.dir, parsed.Path)
@@ -121,8 +122,9 @@ func fetchRef(ref config.PackRef, dest string) error {
 }
 
 type checkout struct {
-	dir string
-	sha string
+	dir  string
+	sha  string
+	spec Spec
 }
 
 func cloneSpec(spec Spec, pin string) (checkout, error) {
@@ -135,17 +137,25 @@ func cloneSpec(spec Spec, pin string) (checkout, error) {
 		os.RemoveAll(parent)
 		return checkout{}, err
 	}
-	ref := spec.Ref
-	if pin == "" && ref != "" {
-		// Explicit installs may select remote branches as well as tags.
-		if err := runGit(dir, "checkout", ref); err != nil {
+	if len(spec.treeSegments) > 0 {
+		spec.Ref, spec.Path, err = resolveTreeRef(dir, spec.treeSegments)
+		if err != nil {
 			os.RemoveAll(parent)
 			return checkout{}, err
 		}
-		ref = "HEAD"
 	}
-	if ref == "" {
-		ref = "HEAD"
+	ref := "HEAD"
+	if pin != "" {
+		ref = pin
+	} else if spec.Ref != "" {
+		// Resolve the friendly ref ourselves: git checkout's own lookup
+		// prefers a tag over a same-named remote branch, unlike resolveCommit.
+		resolved, ok := resolveCommit(dir, spec.Ref)
+		if !ok {
+			os.RemoveAll(parent)
+			return checkout{}, fmt.Errorf("pack ref %q: no branch, tag or commit with that name", spec.Ref)
+		}
+		ref = resolved
 	}
 	// Peel to an actual commit before checkout; a SHA-shaped branch is not a pin.
 	commit, err := gitOutput(dir, "rev-parse", "--verify", "--end-of-options", ref+"^{commit}")
@@ -170,7 +180,34 @@ func cloneSpec(spec Spec, pin string) (checkout, error) {
 		os.RemoveAll(parent)
 		return checkout{}, fmt.Errorf("pack checkout %s does not match commit %s", sha, commit)
 	}
-	return checkout{dir: dir, sha: sha}, nil
+	return checkout{dir: dir, sha: sha, spec: spec}, nil
+}
+
+// resolveTreeRef splits a GitHub tree URL's "<ref>/<path>" tail. Branch and
+// tag names may contain slashes, so the longest leading run of segments that
+// names a branch, tag or commit in the clone is the ref, as on GitHub.
+func resolveTreeRef(dir string, segments []string) (string, string, error) {
+	for end := len(segments); end > 0; end-- {
+		ref := strings.Join(segments[:end], "/")
+		if _, ok := resolveCommit(dir, ref); ok {
+			return ref, strings.Join(segments[end:], "/"), nil
+		}
+	}
+	return "", "", fmt.Errorf("github tree url: no branch, tag or commit named by %q", strings.Join(segments, "/"))
+}
+
+// resolveCommit returns the commit a ref names in a fresh clone, preferring a
+// remote branch, then a tag, then any other revision such as a commit SHA.
+func resolveCommit(dir string, ref string) (string, bool) {
+	if strings.HasPrefix(ref, "-") {
+		return "", false
+	}
+	for _, name := range []string{"refs/remotes/origin/" + ref, "refs/tags/" + ref, ref} {
+		if commit, err := gitOutput(dir, "rev-parse", "--verify", "--quiet", "--end-of-options", name+"^{commit}"); err == nil {
+			return commit, true
+		}
+	}
+	return "", false
 }
 
 func runGit(dir string, args ...string) error {
