@@ -89,8 +89,10 @@ go run ./cmd/jevlint eval --rule database-joins --format json
 | `--color auto\|always\|never` | Control colored text output. Defaults to `auto`. |
 | `--config path` | Use a different rule file. Its directory becomes the project root. |
 | `--concurrency number` | Set the maximum number of concurrent Jev requests. Defaults to `4`. |
+| `--fail-on info\|warning\|error` | Exit with `1` for reported findings at or above this severity. Defaults to `info`. |
 | `--format text\|json` | Select human-readable or machine-readable output. Defaults to `text`. |
 | `--refresh-cache` | Reevaluate code and replace matching cached results. |
+| `--show-below-floor` | Show failures below the confidence floor. These never affect the exit code. |
 
 Source reads, including callee context, stay inside the project root. Explicit
 paths outside that root are rejected; `--changed` skips escaping symlinks.
@@ -110,6 +112,36 @@ Non-Git directories retain filesystem discovery.
 Explicit file arguments override Git ignores, including when combined with a
 directory argument. Eval fixtures are also explicit selections. Treat selecting
 an ignored file as permission to send its applicable code to the provider.
+
+### Check output
+
+Text output groups findings by code unit, showing its location and code frame
+once, followed by each rule. A rule's description appears only on its first
+appearance. Totals include abstained and below-floor decisions. Progress appears
+on stderr only when stderr is a terminal and is cleared on completion.
+
+`check --format json` writes a report with these fields:
+
+| Field | Description |
+| --- | --- |
+| `scannedFiles` | Number of scanned files. |
+| `codeUnits` | Number of extracted code units. |
+| `evaluations` | Number of rule evaluations, including region localization. |
+| `cache` | Cache statistics, when available. |
+| `rules` | Object keyed by rule ID, containing rules that received at least one evaluation. Each entry has `description`, `severity`, and `decisions`. |
+| `findings` | Reported failures meeting the confidence floor. |
+| `belowFloor` | Below-floor failures, included only with `--show-below-floor` and when nonempty. Never affect the exit code. |
+
+Each rule's `decisions` contains integer counts named `pass`, `fail`, `skip`,
+`abstain`, `reported`, and `belowFloor`. These count primary evaluations, not
+region localization. `reported` and `belowFloor` split the `fail` count by the
+rule's confidence floor.
+
+Findings contain `ruleId`, `severity`, `status`, `path`, `language`, `kind`,
+`name`, `startLine`, `endLine`, `startColumn`, `endColumn`, `snippet`, and optional
+`locations`. They have no `description`; look it up in `rules[ruleId]`.
+`belowFloor` entries have the same fields plus `confidence`. Normal `findings`
+do not include `confidence`.
 
 ## Configuration
 
@@ -537,6 +569,10 @@ go run ./cmd/jevlint plugin remove codegirl-007/database-joins
 
 ## Exit codes
 
-- `0`: no findings
-- `1`: findings remain
-- `2`: configuration or runtime error
+- `0`: no reported failures at or above the `--fail-on` severity
+- `1`: at least one reported failure at or above the `--fail-on` severity
+- `2`: usage, configuration, or runtime error
+
+`--fail-on` defaults to `info`, so any reported finding exits with `1`.
+Failures below the confidence floor never cause exit `1`, even with
+`--show-below-floor`.
