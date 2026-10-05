@@ -12,7 +12,7 @@ import sys
 from tempfile import TemporaryDirectory, gettempdir
 
 
-PACKS = ("rust-core", "rust-core-advisory", "rust-tokio", "rust-api", "rust-unsafe", "rust-performance")
+PACKS = ("rust-core", "rust-core-advisory", "rust-tokio", "rust-api", "rust-unsafe", "rust-performance", "rust-readability")
 TOKIO = '{ version = "=1.53.2", default-features = false, features = ["rt", "rt-multi-thread", "sync", "time", "io-util", "macros"] }'
 PYO3 = '{ version = "=0.29.2", default-features = false, features = ["macros", "abi3-py38", "extension-module"] }'
 

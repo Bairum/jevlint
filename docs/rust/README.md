@@ -7,14 +7,19 @@ The first-class Rust suite lives in `packs/rust-*`, separate from the
 use `rust-core` alone for strict, evidence-backed semantic checks. Add
 `rust-core-advisory` for broader review and only the specialists relevant to the
 code: unsafe/FFI, Tokio when used, public API contracts, or performance.
-Run generic style or maintainability rules separately from this Rust workflow.
+Run the opt-in `rust-readability` pack separately for Rust-specific
+maintainability review; generic cross-language style rules are not part of
+the semantic workflow.
 
 The [coverage ledger](COVERAGE.md) maps every research candidate to implementation,
 native-tool ownership, or an explicit outstanding item and promotion trigger.
 Rule files and fixture compilation are not evidence of model precision.
 [Fixture calibration](CALIBRATION.md) now records three real-provider runs,
 measured recall/specificity, tradeoffs and optional per-rule project overrides.
-Real-project precision remains unmeasured before adopting blocking enforcement.
+Readability separately records a tuning-set/in-sample audit of a held-out private
+Rust workspace (43 files, 958 units); its triage shaped the rules, so this is not
+held-out accuracy. Real-project precision for the semantic packs remains
+unmeasured before blocking adoption.
 
 | Layer | Deliverable | Purpose |
 | --- | --- | --- |
@@ -25,6 +30,7 @@ Real-project precision remains unmeasured before adopting blocking enforcement.
 | 3, specialist | [Tokio](../../packs/rust-tokio/) | Runtime, cancellation, admission and lifecycle checks when Tokio is used |
 | 3, specialist | [API contracts](../../packs/rust-api/) | Public constructor, trait and Deref contracts |
 | 3, specialist | [Performance](../../packs/rust-performance/) | Workload-dependent materialization and I/O review |
+| 3, separate review | [Readability](../../packs/rust-readability/) | Contextual domain values, abstraction levels and Rustdoc accuracy |
 
 Packs are independent, with fixture calibration measured in
 [CALIBRATION.md](CALIBRATION.md). Strict describes the evidence required by
@@ -61,7 +67,8 @@ python3 scripts/check-rust-packs.py --eval --repeat 3 --pack rust-core \
 
 After the native baseline, consult [CALIBRATION.md](CALIBRATION.md) before
 selecting semantic rules or changing a consuming project's confidence floors.
-It includes the full six-pack reproduction command, the measured baseline,
+It includes the original six-pack baseline and the separately measured
+readability fixture calibration and tuning-set/in-sample audit, alongside the
 low-recall/false-positive caveats and optional overlay recommendations. Keep the
 global floor at 0.8; the packs ship no rule-level `minConfidence`.
 

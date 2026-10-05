@@ -596,14 +596,17 @@ code-relevant specialists: [`rust-unsafe`](packs/rust-unsafe/) for unsafe/FFI,
 [`rust-tokio`](packs/rust-tokio/) when Tokio is used,
 [`rust-api`](packs/rust-api/) for API contracts, and
 [`rust-performance`](packs/rust-performance/) for workload-sensitive review.
-Run generic style or maintainability rules separately.
+Use [`rust-readability`](packs/rust-readability/) separately for calibrated
+Rust-specific maintainability review; generic cross-language style rules are
+not part of the primary semantic workflow.
 
 No pack is automatically enabled. Strict describes the core's evidence
 requirements, not automatic blocking enforcement. Measured fixture recall and
 specificity per rule, with suggested per-rule `minConfidence` overrides, are in
-[CALIBRATION.md](docs/rust/CALIBRATION.md); real-project precision is not yet
-measured. Unsafe fixtures are compile-only, and passing a rule is not a
-soundness proof.
+[CALIBRATION.md](docs/rust/CALIBRATION.md). Readability also records a
+tuning-set/in-sample project audit comparison, not held-out accuracy; that
+evidence does not establish precision for the other packs. Unsafe fixtures are
+compile-only, and passing a rule is not a soundness proof.
 
 Commit pack changes, documentation and tests together before pinning a local
 Git pack: installation reads committed content, not working files. From the

@@ -16,12 +16,12 @@ pack is automatically enabled or promoted to blocking enforcement.
 | --- | --- |
 | **L1 / native guidance** | Native compiler/formatter/lint/test/doc baseline: [`scripts/check-rust.sh`](../../scripts/check-rust.sh) and [`TOOLING.md`](TOOLING.md). The script's approved scope is fmt/check/test/doc/default Clippy; project-specific matrices, separate builds, optional lints/tools, and publishing checks are guidance unless explicitly exercised. |
 | **L2 / P** | Strict core **pack implemented; fixture calibration measured**: [rust-core manifest](../../packs/rust-core/pack.json). P means a delivered pack artifact, not automatic activation or default-enforcement readiness. Real-project precision is unmeasured. |
-| **L3 / P** | Opt-in advisory and specialist **packs implemented; fixture calibration measured**: [rust-core-advisory](../../packs/rust-core-advisory/pack.json), [rust-tokio](../../packs/rust-tokio/pack.json), [rust-api](../../packs/rust-api/pack.json), [rust-unsafe](../../packs/rust-unsafe/pack.json), [rust-performance](../../packs/rust-performance/pack.json). |
+| **L3 / P** | Opt-in advisory and specialist **packs implemented; fixture calibration measured**: [rust-core-advisory](../../packs/rust-core-advisory/pack.json), [rust-tokio](../../packs/rust-tokio/pack.json), [rust-api](../../packs/rust-api/pack.json), [rust-unsafe](../../packs/rust-unsafe/pack.json), [rust-performance](../../packs/rust-performance/pack.json), [rust-readability](../../packs/rust-readability/pack.json). |
 | **Generic / U** | Existing rule definition in [`jevlint.json`](../../jevlint.json), but **uncalibrated for this Rust finding**. A generic rule's presence is not evidence of equivalent Rust coverage. |
 | **Deferred / D** | No approved dedicated rule for the identified semantic residual; linked F item states the missing evidence and promotion trigger. |
 | **Excluded / X** | Intentional policy decision, not forgotten backlog. Reconsider only with an explicit project contract, not because a construct occurs. |
 
-`Core`, `Advisory`, `Tokio`, `API`, `Unsafe`, and `Perf` name the corresponding manifests above. There are **32 implemented rule IDs across 6 packs**: Core 10, Advisory 6, Tokio 7, API 3, Unsafe 4, Perf 2. Core now has **140 fixture cases** and Advisory **68** (six additions to the original 426-case suite; specialist counts remain Tokio 98, API 35, Unsafe 62, Perf 29). Every rule has violation, passing-neighbor and legitimate-exception coverage; additional cases cover important boundaries. Compilation and structural checks do not establish model precision. See [CALIBRATION.md](CALIBRATION.md), [F01](#f01) and [verification status](#verification-and-status).
+`Core`, `Advisory`, `Tokio`, `API`, `Unsafe`, `Perf` and `Readability` name the corresponding manifests above. There are **35 implemented rule IDs across 7 packs**: Core 10, Advisory 6, Tokio 7, API 3, Unsafe 4, Perf 2, Readability 3. The suite has **461 evaluation cases**: Core 140, Advisory 68, Tokio 98, API 35, Unsafe 68, Perf 29, Readability 23 (the original suite had 426; Readability also ships two compile-only repair fixtures). Every rule in the six correctness packs has violation, passing-neighbor and legitimate-exception coverage; Readability rules have violation/repair twins and exception cases. Additional cases cover important boundaries. Compilation and structural checks do not establish model precision. See [CALIBRATION.md](CALIBRATION.md), [F01](#f01) and [verification status](#verification-and-status).
 
 Rust rule selection uses `include: ["**/*.rs"]`, not a nonexistent `rule.languages` field. `sourceMatch` is an OR of RE2 patterns over the primary unit's source: a cheap subject prefilter, not semantic evidence or a search of attached context. Test units are structurally skipped by default; a project may explicitly set `includeTests: true`. Pack manifests load shared `guidance.md` once rather than repeating common evidence requirements in each rule.
 
@@ -191,7 +191,7 @@ These are exact residuals, not a single “future work” bucket. Shared F items
 
 | Stable item | Exact gap | Reason / evidence needed | Concrete promotion trigger |
 | --- | --- | --- | --- |
-| <a id="f01"></a>F01 | Real-project precision, per-unit diagnostic precision and default/blocking promotion remain outstanding | All 32 rule artifacts and 426 compiling fixtures exist; three real provider runs measured fixture recall/specificity and a 5.4% flip rate. Overrides are fitted on the same fixtures, not a held-out set; several rules still have low recall or false-positive risk | Use [CALIBRATION.md](CALIBRATION.md) as the measured baseline, then inspect primary-unit locations and validate false positives/negatives on representative held-out project code before blocking/default promotion. Record model/configuration and repeat outcomes; fixtures alone do not establish production accuracy. |
+| <a id="f01"></a>F01 | Real-project precision, per-unit diagnostic precision and default/blocking promotion remain outstanding | All 35 rule artifacts and 463 compiling fixtures exist; three real provider runs measured fixture recall/specificity (the original 426-case baseline had a 5.4% flip rate). Overrides are fitted on the same fixtures, not a held-out set; several rules still have low recall or false-positive risk | Use [CALIBRATION.md](CALIBRATION.md) as the measured baseline, then inspect primary-unit locations and validate false positives/negatives on representative held-out project code before blocking/default promotion. Record model/configuration and repeat outcomes; fixtures alone do not establish production accuracy. |
 | <a id="f02"></a>F02 | Semantic breadth requiring resolved types/APIs, generic impls, macros, cross-file callees/owners, intact docs/attributes or full exported graph | `context.types` supplies bounded declarations/impls to type units, Self-only methods and concrete references, including unique-definition cross-file candidates. It remains syntactic: ambiguous names, caps/exclusions and unresolved generated/generic paths can omit necessary facts. Unknown methods/callees cannot be treated as absent enforcement | Supply complete comparison/context evidence for the scoped primary-unit review; demonstrate every premise reaches the actual request before widening a rule. Broader compiler/name/module/macro/ownership resolution requires corresponding missing-context and ambiguity controls. |
 | <a id="f03"></a>F03 | Caller-controlled ownership/input flexibility and Rc/Arc tradeoffs beyond local repeated work | Need retain/consume/borrow semantics, Clone implementation, real callers, threading/API lifetime and compatibility; performance claims need workload | Real project callers demonstrate unnecessary materialization or measured overhead under the promised ownership/thread contract; validate nearest ownership-required/semver/trait exceptions before adding advisory coverage. |
 | <a id="f04"></a>F04 | General resource retention, strong cycles and global lock/alias/order dependencies | Need actual destruction/teardown graph, identity, expected release/budget or concrete waiting schedule; visible Tokio same-lock cases are narrower | Provide full owner/edge/release or lock/wait trace plus a reachable consequential counterexample and a legitimate retained-resource/acyclic/different-lock control. Promote only that supported residual. |
@@ -320,3 +320,65 @@ support.
 No pack is automatically enabled or published. Finish the remaining
 [F01](#f01) project-evidence gate before treating the semantic packs as
 blocking enforcement. [Usage and repeatable commands](README.md#run-the-checks).
+
+## Rust readability: upstream generic rule accounting
+
+`Bairum/rust-readability` is a separate opt-in review layer, not an extension
+of the strict semantic tier. The upstream inventory below is
+`upstream/master:jevlint.json` (26 rules). Rust ports use
+`rust-readability-` IDs; native ownership is not an instruction to enable all
+optional Clippy groups. See [calibration and project audit](CALIBRATION.md#rust-readability).
+
+Project measurements below use a held-out private Rust workspace (43 files,
+958 units). Its triage shaped candidate selection and rule exceptions, so
+these are **tuning-set/in-sample measurements**, not held-out accuracy.
+
+The shipped prefilters retain cost-control without turning token matches into
+findings. Literal policy selects numeric-literal candidates; two literal-free
+enum/constant repair twins are compile-only. Rustdoc selects attached line,
+block and attribute documentation; **undocumented units are skipped**, not
+explicit model pass judgments. Abstraction review conservatively selects
+local construction/control flow, scalar/bit/array work and byte/character
+codec signals, not only one manual-codec idiom. The frozen-rule public
+`serde_json` check and measured before/after evaluation counts are recorded in
+[calibration](CALIBRATION.md#rust-readability).
+
+| Upstream rule | Disposition | Rust scope / reason |
+| --- | --- | --- |
+| `magic-domain-values` | Ported | Tunable numerical policy, unexplained byte allowances, numeric ordering and sentinel ranks; mathematical coefficients, adjacent wire/status mappings, 0/1 flags and unit conversions are explicit exceptions. |
+| `function-control-flow` | Evaluated, dropped as noisy | Conservative variant reported nothing. Broader variant recovered both upstream actionable items, but 29 project reports were independently classified as 5 actionable, 1 nit and 23 false positives: cohesive numerical algorithms and FFI validation/lifecycle glue dominated. Initial fixture majority recall 1/2, specificity 3/4. Native `too_many_lines`/`cognitive_complexity` remain the numerical heuristics; the contextual residual did not justify shipping this port. |
+| `mixed-levels-of-abstraction` | Ported | Substantial coherent codec/layout detail inside domain orchestration, not every incidental calculation. |
+| `accurate-doc-comments` | Ported | Concrete Rustdoc behavioral and `# Errors`/`# Panics`/`# Safety` contradictions; no missing-documentation mandate. |
+| `boolean-parameter` | Evaluated, dropped | Initial majority recall 1/2, specificity 3/3; its sole project report was independently judged a nit (a clearly named Boolean forwards an external selector). A two-variant enum can help genuinely opaque choices, but this measured port added no actionable project value. Native `fn_params_excessive_bools` retains count ownership. |
+| `invalid-state-representation` | Evaluated, dropped | Initial majority recall 0/2, specificity 3/3, no reported project finding. Impossible-state contracts were not reliably detected despite bounded type context; no rule shipped on fixture syntax alone. Native `struct_excessive_bools` retains count ownership. |
+| `function-name-behavior-mismatch` | Evaluated, dropped | Initial majority recall 1/2, specificity 4/4, no reported project finding. Rust `as_`/`to_`/`into_` and predicate exceptions were preserved, but the measured port lacked demonstrated project value. |
+| `parallel-data-structures` | Evaluated, dropped | Initial majority recall 0/2, specificity 3/3, no reported project finding. Intentional SoA/columnar/ECS/index/FFI layouts remained legitimate; synchronization burdens were not reliably surfaced. |
+| `duplicate-domain-logic` | Evaluated, dropped | Initial majority recall 0/2, specificity 4/4, no reported project finding. Fixtures exposed both policy copies through supplied callees; unseen project-wide duplication was not invented to improve recall. |
+| `wrapper-without-value` | Evaluated, dropped | Initial majority recall 0/2, specificity 5/5, no reported project finding. Newtypes, trait adapters and public/domain boundaries remained legitimate; private redundant chains were not reliably detected. |
+| `unnecessary-abstraction` | Evaluated narrowly, dropped | Merged into the wrapper candidate rather than duplicating reports; the measured residual had 0/2 majority recall and no reported project value. |
+| `stringly-typed-control-flow` | Dropped | All 14 upstream project reports were false positives, primarily external protocol values, metadata and already validated boundaries. |
+| `comment-quality` | Dropped | None of six project reports was actionable (five false positives, one nit); useful invariant/safety/API documentation must remain legitimate. |
+| `database-joins` | Dropped | Database query architecture, not Rust readability. The independent tutorial pack remains separate. |
+| `redundant-if-statements` | Native-owned | Clippy `needless_bool`, `if_same_then_else`, `match_like_matches_macro` and related deterministic simplifications. |
+| `boolean-property-naming` | Dropped | Meaning preferences beyond compiler naming conventions lack demonstrated project value; no mandatory predicate prefix. |
+| `redundant-type-properties` | Dropped | Cheap derivability alone does not establish redundant storage; caches, external schemas and performance layouts require project evidence. |
+| `speculative-generalization` | Dropped | Local extraction cannot prove absence of external consumers, compatibility needs or a useful dependency boundary. |
+| `unnecessary-mutation` | Dropped | Native compiler/Clippy own mechanical unused mutation; semantic value-role reuse has no demonstrated actionable audit finding. |
+| `coincidental-abstraction` | Dropped | Similar syntax cannot establish independent future evolution; no speculative coupling diagnosis. |
+| `temporal-coupling` | Dropped | Lifecycle, builders and protocols legitimately impose ordering; project-wide usage evidence is needed for an additional rule. |
+| `hidden-global-dependency` | Dropped | Dependency injection is not universal Rust policy; startup/configuration/logging boundaries are legitimate and no actionable baseline item supported a port. |
+| `swallowed-errors` | Dropped from readability | Error/recovery policy belongs the semantic packs; native `unused_must_use` owns mechanical discarded Results, not all intentional best-effort handling. |
+| `constructor-side-effects` | Dropped | Resource acquisition is normal Rust construction; surprise requires a concrete API contract, not a universal cheap-constructor preference. |
+| `excessive-optional-configuration` | Dropped | Option count does not prove unrelated responsibilities; cohesive and external configuration remains legitimate. |
+| `unnecessary-complexity` | Dropped | Vague catch-all lacks a stable oracle; specific contextual rules and native lints are more reviewable. |
+
+Native thresholds remain native even when optional:
+[`too_many_lines`](https://rust-lang.github.io/rust-clippy/master/index.html#too_many_lines),
+[`fn_params_excessive_bools`](https://rust-lang.github.io/rust-clippy/master/index.html#fn_params_excessive_bools),
+[`struct_excessive_bools`](https://rust-lang.github.io/rust-clippy/master/index.html#struct_excessive_bools)
+are pedantic, while
+[`cognitive_complexity`](https://rust-lang.github.io/rust-clippy/master/index.html#cognitive_complexity)
+is restriction. The native-first [baseline](TOOLING.md) does not blanket-enable
+either group. Rustdoc heading-presence lints likewise do not establish prose
+accuracy. Readability ports ask for semantic evidence beyond those native
+patterns, not a model reimplementation of their counts.

@@ -1,0 +1,70 @@
+{
+  "rules": [
+    {
+      "id": "rust-readability-magic-domain-values",
+      "description": "Fail unexplained literal values in the primary Rust function encoding meaningful tunable domain policy: numerical convergence thresholds, tolerances, floors, optimizer bounds/steps, iteration budgets, byte/resource admission allowances, ordering dependencies on numeric codes, or sentinel ranks. A named constant or enum should communicate the policy. Naming the calculated result budget, tolerance or rank does not explain embedded coefficients. Unexplained per-record byte allowances and fixed byte overhead in a resource estimate fail; do not guess a concrete storage-layout derivation that the supplied context does not show. These are readability violations even when the computation is correct; do not require a runtime bug or an explicit documentation contract. Mathematical identities, locally explained wire/storage layouts or status encoding, zero/one flags and standard unit conversions pass. Context may explain a primary-unit literal, but a literal appearing only in a supplied callee is not a finding against its caller.",
+      "severity": "warning",
+      "include": [
+        "**/*.rs"
+      ],
+      "kinds": [
+        "function"
+      ],
+      "allowAbstain": true,
+      "exceptions": [
+        "Mathematical formula coefficients, coordinate geometry, interpolation, normalization, bit masks and algorithmic identities pass when the formula is recognizable; tunable convergence/tolerance policy is not a mathematical identity.",
+        "Wire/transport/storage field widths, offsets, buffer counts and status codes defined or decoded adjacently with a clear mapping or declared layout pass. Numeric diagnostic/status assignments or explicit equality/match decoding in clearly named branches are legitimate encoding, not tunable policy; opaque numeric ordering comparisons deciding domain policy do not pass.",
+        "Zero/one initialization, Boolean flags, empty values, simple indices/loop bounds and standard unit conversions pass.",
+        "Named constants, parameters, or adjacent comments explaining both the policy and choice of value pass."
+      ],
+      "context": {
+        "callees": true,
+        "types": true
+      },
+      "sourceMatch": ["\\b[0-9][0-9A-Fa-f_xXoObBeE.]*"]
+    },
+    {
+      "id": "rust-readability-mixed-levels-of-abstraction",
+      "description": "Functions should operate mostly at one conceptual level. Fail Rust high-level orchestration interleaved with substantial low-level encoding/decoding, parsing or storage-layout work that has its own coherent useful name. Manual character classification, nibble/byte assembly, framing or checksumming among domain operations is an independent codec responsibility, not incidental glue. Small calculations, field access, validation and ordinary adapters pass. A runtime defect or reusable public abstraction is not required; one allocation-free named helper can clarify responsibility.",
+      "severity": "info",
+      "include": [
+        "**/*.rs"
+      ],
+      "kinds": [
+        "function"
+      ],
+      "allowAbstain": true,
+      "exceptions": [
+        "Small calculations, field access, validation and incidental serialization glue pass.",
+        "A focused implementation of an algorithm or codec, rather than orchestration, passes.",
+        "Named helpers that already isolate coherent low-level work pass."
+      ],
+      "context": {
+        "callees": true
+      },
+      "sourceMatch": ["\\b(?:let|if|match|for|while|loop|u8|u16|u32|u64|u128|i8|i16|i32|i64|i128|usize|isize|char)\\b|(?:<<|>>|\\^|[&|=\\[\\]])|\\b(?:bytes|chars|to_digit|from_str_radix|to_be_bytes|to_le_bytes|from_be_bytes|from_le_bytes|push|extend_from_slice|copy_from_slice)\\s*\\("]
+    },
+    {
+      "id": "rust-readability-accurate-doc-comments",
+      "description": "The attached Rustdoc must accurately describe the Rust code. Fail concrete contradictions in promised behavior/results or # Errors, # Panics and # Safety: claiming invalid input returns Err while parsing unwraps, claiming no errors while propagating a fallible parse, claiming no panics while indexing unchecked, claiming any pointer including null/dangling/unaligned is allowed while dereferencing it, or claiming complete persistence while writes/errors are ignored. These are inaccurate claims, not merely missing documentation. No doc comment, absent headings and unclaimed detail pass; native missing_errors_doc, missing_panics_doc and missing_safety_doc own completeness. Compare documented claims with visible body and supplied callees/types, and abstain only when the claimed behavior cannot be resolved.",
+      "severity": "warning",
+      "include": [
+        "**/*.rs"
+      ],
+      "kinds": [
+        "function"
+      ],
+      "allowAbstain": true,
+      "exceptions": [
+        "No Rustdoc, missing sections and merely incomplete detail pass.",
+        "Proved invariant unwraps do not contradict recovery claims for invalid input.",
+        "Documented permitted panics/preconditions and accurate safety requirements pass."
+      ],
+      "context": {
+        "callees": true,
+        "types": true
+      },
+      "sourceMatch": ["///", "//!", "/\\*\\*", "/\\*!", "#\\s*!?\\s*\\[\\s*doc\\b"]
+    }
+  ]
+}
