@@ -20,7 +20,7 @@ import (
 func TestRunFailOnSeverity(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(writer, `{"model":"jev-test","answers":{"database-joins":{"type":"choice","choice":"fail","probabilities":{"fail":1,"pass":0}}}}`)
+		fmt.Fprint(writer, `{"model":"jev-test","answers":{"database-joins.s0":{"type":"score","score":2}}}`)
 	}))
 	defer server.Close()
 
@@ -85,7 +85,7 @@ func TestRunRejectsInvalidFailOn(t *testing.T) {
 func TestRunBelowFloorJSONVisibility(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(writer, `{"model":"jev-test","answers":{"database-joins":{"type":"choice","choice":"fail","probabilities":{"fail":0.6,"pass":0.4}}}}`)
+		fmt.Fprint(writer, `{"model":"jev-test","answers":{"database-joins.s0":{"type":"score","score":1}}}`)
 	}))
 	defer server.Close()
 
@@ -123,9 +123,9 @@ func TestRunBelowFloorJSONVisibility(t *testing.T) {
 				t.Fatalf("belowFloor present = %t, want %t; output = %s", present, show, stdout.String())
 			}
 			if show {
-				if len(report.BelowFloor) != 1 || report.BelowFloor[0].FailProbability != 0.6 ||
+				if len(report.BelowFloor) != 1 || report.BelowFloor[0].FailProbability != 0.5 ||
 					report.BelowFloor[0].RuleID != "database-joins" {
-					t.Fatalf("belowFloor = %#v, want database-joins at fail probability 0.6", report.BelowFloor)
+					t.Fatalf("belowFloor = %#v, want database-joins at fail probability 0.5", report.BelowFloor)
 				}
 				if bytes.Count(stdout.Bytes(), []byte(`"description"`)) != 1 {
 					t.Fatalf("below-floor finding repeats the rule description: %s", stdout.String())

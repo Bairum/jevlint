@@ -107,10 +107,9 @@ func JoinInCode() {
 		fmt.Fprint(writer, `{
 			"model": "jev-test",
 			"answers": {
-				"database-joins": {
-					"type": "choice",
-					"choice": "fail",
-					"probabilities": {"fail": 0.92, "pass": 0.08}
+				"database-joins.s0": {
+					"type": "score",
+					"score": 2
 				}
 			}
 		}`)
@@ -516,9 +515,8 @@ func TestRunClearsProjectCacheBeforeAPIValidation(t *testing.T) {
 		Model: "jev-test",
 		Answers: map[string]evaluation.QuestionAnswer{
 			"rule": {
-				Type:          "choice",
-				Choice:        "pass",
-				Probabilities: map[string]float64{"pass": 1, "fail": 0},
+				Type:  "score",
+				Score: new(0.0),
 			},
 		},
 	}) {
@@ -784,10 +782,9 @@ func passingJevServer(t *testing.T) *httptest.Server {
 			fmt.Fprint(writer, `{
 				"model": "jev-test",
 				"answers": {
-					"database-joins": {
-						"type": "choice",
-						"choice": "pass",
-						"probabilities": {"pass": 1, "fail": 0}
+					"database-joins.s0": {
+						"type": "score",
+						"score": 0
 					}
 				}
 			}`)

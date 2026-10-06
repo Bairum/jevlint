@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const hardeningAnswers = `{"answers":{"database-joins":{"type":"choice","choice":"pass","probabilities":{"pass":1,"fail":0}},"semicolons":{"type":"choice","choice":"pass","probabilities":{"pass":1,"fail":0}}},"extra":"RESPONSE_SECRET"}`
+const hardeningAnswers = `{"model":"jev-test","answers":{"database-joins.s0":{"type":"score","score":0},"semicolons.s0":{"type":"score","score":0}},"extra":"RESPONSE_SECRET"}`
 
 func TestClientDebugMetadataOnly(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

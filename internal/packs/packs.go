@@ -177,6 +177,9 @@ func loadRules(path string) ([]config.Rule, error) {
 	if err := config.RejectMinConfidence(data); err != nil {
 		return nil, fmt.Errorf("decode pack rules: %w", err)
 	}
+	if err := config.RejectRemovedRuleFields(data); err != nil {
+		return nil, fmt.Errorf("decode pack rules: %w", err)
+	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var document struct {
@@ -296,6 +299,9 @@ func overlayRule(base config.Rule, overlay config.Rule) config.Rule {
 	}
 	if overlay.Checks != nil {
 		base.Checks = overlay.Checks
+	}
+	if overlay.Score != nil {
+		base.Score = overlay.Score
 	}
 	return base
 }

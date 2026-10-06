@@ -1,5 +1,5 @@
 {
-  "minFailProbability": 0.5,
+  "minFailProbability": 0.8,
   "languages": {
     "c": {},
     "cpp": {},

@@ -297,8 +297,8 @@ func passingRulesServer(t *testing.T, ids ...string) *httptest.Server {
 	answers := make([]string, 0, len(ids))
 	for _, id := range ids {
 		answers = append(answers, fmt.Sprintf(
-			`%q: {"type":"choice","choice":"pass","probabilities":{"pass":1,"fail":0}}`,
-			id,
+			`%q: {"type":"score","score":0}`,
+			id+".s0",
 		))
 	}
 	body := fmt.Sprintf(`{"model":"jev-test","answers":{%s}}`, strings.Join(answers, ","))

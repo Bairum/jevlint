@@ -994,11 +994,9 @@ func TestCheckSkipAndAbstainProduceNoFindings(t *testing.T) {
 	}
 	cfg := config.Config{
 		Rules: []config.Rule{{
-			ID:           "database-joins",
-			Description:  "Join related records in the database.",
-			Severity:     config.SeverityError,
-			AllowSkip:    true,
-			AllowAbstain: true,
+			ID:          "database-joins",
+			Description: "Join related records in the database.",
+			Severity:    config.SeverityError,
 		}},
 	}
 

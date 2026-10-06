@@ -18,9 +18,8 @@ func TestFileCacheRoundTripUsesPrivateAtomicStorage(t *testing.T) {
 		Model: "jev-test",
 		Answers: map[string]QuestionAnswer{
 			"rule": {
-				Type:          answerTypeChoice,
-				Choice:        "fail",
-				Probabilities: map[string]float64{"fail": 0.9, "pass": 0.1},
+				Type:  answerTypeScore,
+				Score: new(2.0),
 			},
 		},
 	}
@@ -59,17 +58,15 @@ func TestFileCacheRoundTripUsesPrivateAtomicStorage(t *testing.T) {
 	}
 
 	got, ok := cache.Get("key")
-	answer := got.Answers["rule"]
-	if !ok || got.Model != hit.Model || answer.Choice != "fail" || answer.Probabilities["fail"] != 0.9 {
+	if !ok || got.Model != hit.Model || got.Answers["rule"].Score == nil || *got.Answers["rule"].Score != 2 {
 		t.Fatalf("Get() = %#v, %v", got, ok)
 	}
 	got.Answers["rule"] = QuestionAnswer{
-		Type:          answerTypeChoice,
-		Choice:        "pass",
-		Probabilities: map[string]float64{"pass": 1, "fail": 0},
+		Type:  answerTypeScore,
+		Score: new(0.0),
 	}
 	again, ok := cache.Get("key")
-	if !ok || again.Answers["rule"].Choice != "fail" {
+	if !ok || again.Answers["rule"].Score == nil || *again.Answers["rule"].Score != 2 {
 		t.Fatalf("Get() returned shared answers: %#v, %v", again, ok)
 	}
 }
@@ -138,9 +135,8 @@ func TestFileCacheScopesAndClearsEntries(t *testing.T) {
 		Model: "jev-test",
 		Answers: map[string]QuestionAnswer{
 			"rule": {
-				Type:          answerTypeChoice,
-				Choice:        "pass",
-				Probabilities: map[string]float64{"pass": 1, "fail": 0},
+				Type:  answerTypeScore,
+				Score: new(0.0),
 			},
 		},
 	}

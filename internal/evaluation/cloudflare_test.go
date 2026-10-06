@@ -204,8 +204,8 @@ func TestDecodeResultsUnwrapsCloudflareEnvelope(t *testing.T) {
 		"result": {
 			"model": "clef",
 			"answers": {
-				"database-joins": {"type": "choice", "choice": "fail", "probabilities": {"fail": 0.91, "pass": 0.09}},
-				"semicolons": {"type": "choice", "choice": "pass", "probabilities": {"pass": 0.87, "fail": 0.13}}
+				"database-joins.s0": {"type": "score", "score": 2},
+				"semicolons.s0": {"type": "score", "score": 0}
 			},
 			"usage": {"input_tokens": 10, "output_tokens": 0}
 		},
@@ -221,8 +221,8 @@ func TestDecodeResultsUnwrapsCloudflareEnvelope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decodeAnswers() error = %v", err)
 	}
-	if results["database-joins"].Status != StatusFail || results["database-joins"].FailProbability != 0.91 ||
-		results["semicolons"].Status != StatusPass || results["semicolons"].FailProbability != 0.13 {
+	if results["database-joins"].Status != StatusFail || results["database-joins"].FailProbability != 1 ||
+		results["semicolons"].Status != StatusPass || results["semicolons"].FailProbability != 0 {
 		t.Fatalf("decodeAnswers() = %#v", results)
 	}
 }

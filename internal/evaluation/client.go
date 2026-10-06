@@ -26,7 +26,7 @@ const (
 	defaultTimeout      = 10 * time.Second
 	defaultMaxRetries   = 2
 	maxResponseBytes    = 1 << 20
-	cacheKeyVersion     = "typesafe-evaluation-v2"
+	cacheKeyVersion     = "typesafe-evaluation-v3"
 	httpSuccessMin      = 200
 	httpSuccessLimit    = 300
 	retryBackoffBase    = 500 * time.Millisecond
@@ -93,6 +93,7 @@ type Client struct {
 // evaluationCall tracks one running request that callers share.
 type evaluationCall struct {
 	done    chan struct{}
+	waiters atomic.Int32
 	answers map[string]QuestionAnswer
 	model   string
 	err     error
@@ -400,6 +401,7 @@ func (client *Client) evaluateOnce(
 ) (map[string]QuestionAnswer, string, error) {
 	client.inflightMu.Lock()
 	if call, ok := client.inflight[key]; ok {
+		call.waiters.Add(1)
 		client.inflightMu.Unlock()
 		select {
 		case <-ctx.Done():
@@ -419,6 +421,17 @@ func (client *Client) evaluateOnce(
 	close(call.done)
 	client.inflightMu.Unlock()
 	return cloneAnswers(call.answers), call.model, call.err
+}
+
+// inflightAttached reports how many callers are on the current single-flight calls.
+func (client *Client) inflightAttached() int {
+	client.inflightMu.Lock()
+	defer client.inflightMu.Unlock()
+	total := 0
+	for _, call := range client.inflight {
+		total += 1 + int(call.waiters.Load())
+	}
+	return total
 }
 
 // RunMeta returns models, usage, and budget fallout recorded so far.
@@ -486,10 +499,13 @@ func cloneAnswers(answers map[string]QuestionAnswer) map[string]QuestionAnswer {
 	}
 	cloned := make(map[string]QuestionAnswer, len(answers))
 	for id, answer := range answers {
-		answer.Probabilities = copyProbabilities(answer.Probabilities)
 		if answer.Noul != nil {
 			value := *answer.Noul
 			answer.Noul = &value
+		}
+		if answer.Score != nil {
+			value := *answer.Score
+			answer.Score = &value
 		}
 		cloned[id] = answer
 	}

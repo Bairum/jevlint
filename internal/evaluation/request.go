@@ -17,19 +17,20 @@ import (
 var ErrOversized = errors.New("evaluation unit exceeds the model input budget")
 
 const (
-	answerTypeChoice = "choice"
-	answerTypeNoul   = "noul"
-	// probabilitySumTolerance accepts distributions that round to 1.
-	probabilitySumTolerance = 0.02
-	maxLocalizationRegions  = 24
+	answerTypeNoul         = "noul"
+	answerTypeScore        = "score"
+	maxLocalizationRegions = 24
+	defaultScoreQuestion   = "How clearly does `source` violate `rule`?"
+	defaultLevelFollows    = "`source` follows `rule`, `rule` does not apply to it, or one of `exceptions` applies."
+	defaultLevelUnclear    = "It is unclear from `source` whether `rule` is violated."
+	defaultLevelViolates   = "`source` clearly violates `rule` and none of `exceptions` applies."
 )
 
 // QuestionAnswer is one parsed per-question answer stored in the cache.
 type QuestionAnswer struct {
-	Type          string             `json:"type"`
-	Choice        string             `json:"choice,omitempty"`
-	Probabilities map[string]float64 `json:"probabilities,omitempty"`
-	Noul          *float64           `json:"noul,omitempty"`
+	Type  string   `json:"type"`
+	Noul  *float64 `json:"noul,omitempty"`
+	Score *float64 `json:"score,omitempty"`
 }
 
 // Usage counts provider calls in one run. Cache hits add nothing.
@@ -146,10 +147,9 @@ type wireResponse struct {
 }
 
 type wireAnswer struct {
-	Type          string             `json:"type"`
-	Choice        string             `json:"choice"`
-	Probabilities map[string]float64 `json:"probabilities"`
-	Noul          *float64           `json:"noul"`
+	Type  string   `json:"type"`
+	Noul  *float64 `json:"noul"`
+	Score *float64 `json:"score"`
 }
 
 // questionsFor builds the questions for a batch against the state that will
@@ -167,22 +167,50 @@ func questionsFor(batch Batch, state requestState) (map[string]question, error) 
 		if err := config.ValidateChecks(rule, rule.ID); err != nil {
 			return nil, err
 		}
-		if len(rule.Checks) > 0 {
-			for _, check := range rule.Checks {
-				id := rule.ID + "." + check.ID
-				if _, exists := questions[id]; exists {
-					return nil, fmt.Errorf("duplicate question id %q", id)
-				}
-				questions[id] = noulCheckQuestion(rule, check, state)
+		for id, item := range ruleQuestions(rule, state) {
+			if _, exists := questions[id]; exists {
+				return nil, fmt.Errorf("duplicate question id %q", id)
 			}
-			continue
+			questions[id] = item
 		}
-		if _, exists := questions[rule.ID]; exists {
-			return nil, fmt.Errorf("duplicate rule id %q in evaluation batch", rule.ID)
-		}
-		questions[rule.ID] = choiceQuestion(rule, state)
 	}
 	return questions, nil
+}
+
+func ruleQuestions(rule config.Rule, state requestState) map[string]question {
+	questions := make(map[string]question)
+	for index, wording := range scoreWordings(rule) {
+		id := fmt.Sprintf("%s.s%d", rule.ID, index)
+		questions[id] = scoreQuestion(rule, wording.Question, wording.Levels, state, rule.Score == nil && rule.Checks == nil)
+	}
+	if rule.Checks == nil {
+		return questions
+	}
+	for index, subject := range rule.Checks.Subject {
+		questions[fmt.Sprintf("%s.sub%d", rule.ID, index)] = noulQuestion(rule, subject, state)
+	}
+	for index, violation := range rule.Checks.Violation {
+		questions[fmt.Sprintf("%s.v%d.w0", rule.ID, index)] = noulQuestion(rule, config.CheckWording{
+			Question: violation.Question, Yes: violation.Yes, No: violation.No,
+		}, state)
+		for wording, paraphrase := range violation.Paraphrases {
+			questions[fmt.Sprintf("%s.v%d.w%d", rule.ID, index, wording+1)] = noulQuestion(rule, paraphrase, state)
+		}
+	}
+	return questions
+}
+
+func scoreWordings(rule config.Rule) []config.ScoreWording {
+	if rule.Score == nil {
+		return []config.ScoreWording{{
+			Question: defaultScoreQuestion,
+			Levels:   []string{defaultLevelFollows, defaultLevelUnclear, defaultLevelViolates},
+		}}
+	}
+	wordings := make([]config.ScoreWording, 0, 1+len(rule.Score.Paraphrases))
+	wordings = append(wordings, config.ScoreWording{Question: rule.Score.Question, Levels: rule.Score.Levels})
+	wordings = append(wordings, rule.Score.Paraphrases...)
+	return wordings
 }
 
 func localizationQuestions(batch Batch, state requestState) (map[string]question, error) {
@@ -196,16 +224,18 @@ func localizationQuestions(batch Batch, state requestState) (map[string]question
 	questions := make(map[string]question, len(batch.Regions))
 	for index := range batch.Regions {
 		id := fmt.Sprintf("%s.r%d", rule.ID, index)
+		text := fmt.Sprintf("Does `regions.r%d` itself violate `rule`?", index)
+		if len(rule.Exceptions) > 0 {
+			text = fmt.Sprintf("Does `regions.r%d` itself violate `rule`, with none of `exceptions` applying?", index)
+		}
+		text += " `source` is surrounding context only."
 		questions[id] = question{
 			Type: answerTypeNoul,
 			Instructions: questionInstructions{
 				Rule:       rule.Description,
 				Exceptions: rule.Exceptions,
 				Guidance:   rule.Guidance,
-				Question: fmt.Sprintf(
-					"Does `regions.r%d` itself violate `rule`? `source` is surrounding context only.",
-					index,
-				),
+				Question:   text,
 			},
 		}
 	}
@@ -215,50 +245,35 @@ func localizationQuestions(batch Batch, state requestState) (map[string]question
 	return questions, nil
 }
 
-func choiceQuestion(rule config.Rule, state requestState) question {
-	questionText := "Does `source` violate `rule`"
-	pass := "`source` follows `rule`"
-	fail := "`source` violates `rule`"
-	if len(rule.Exceptions) > 0 {
-		questionText += ", with none of `exceptions` applying"
-		pass += ", or one of `exceptions` applies"
-		fail += " and none of `exceptions` applies"
-	}
-	questionText += "? Judge only `source`." + scopeSentences(state)
-	pass += "."
-	fail += "."
-	criteria := choiceCriteria{Pass: pass, Fail: fail}
-	if rule.AllowSkip {
-		criteria.Skip = "`rule`'s subject is not present in `source`; the rule does not apply."
-	}
-	if rule.AllowAbstain {
-		criteria.Abstain = "`rule` is relevant, but the supplied state does not contain enough context to decide pass or fail."
-	}
-	return question{
-		Type: answerTypeChoice,
-		Instructions: questionInstructions{
-			Rule:       rule.Description,
-			Exceptions: rule.Exceptions,
-			Guidance:   rule.Guidance,
-			Question:   questionText,
-		},
-		Criteria: criteria,
-	}
-}
-
-func noulCheckQuestion(rule config.Rule, check config.Check, state requestState) question {
+func scoreQuestion(rule config.Rule, text string, levels []string, state requestState, exceptions bool) question {
 	item := question{
-		Type: answerTypeNoul,
-		Instructions: questionInstructions{
-			Rule:     rule.Description,
-			Guidance: rule.Guidance,
-			Question: check.Question + " Judge only `source`." + scopeSentences(state),
-		},
+		Type:         answerTypeScore,
+		Instructions: explicitInstructions(rule, strings.TrimRight(text, " \t\r\n")+" Judge only `source`."+scopeSentences(state)),
+		Criteria:     append([]string(nil), levels...),
 	}
-	if check.Yes != "" || check.No != "" {
-		item.Criteria = noulCriteria{True: check.Yes, False: check.No}
+	if exceptions && len(rule.Exceptions) > 0 {
+		item.Instructions.Exceptions = append([]string(nil), rule.Exceptions...)
 	}
 	return item
+}
+
+func noulQuestion(rule config.Rule, wording config.CheckWording, state requestState) question {
+	item := question{
+		Type:         answerTypeNoul,
+		Instructions: explicitInstructions(rule, strings.TrimRight(wording.Question, " \t\r\n")+" Judge only `source`."+scopeSentences(state)),
+	}
+	if wording.Yes != "" || wording.No != "" {
+		item.Criteria = noulCriteria{True: wording.Yes, False: wording.No}
+	}
+	return item
+}
+
+func explicitInstructions(rule config.Rule, questionText string) questionInstructions {
+	return questionInstructions{
+		Rule:     rule.Description,
+		Guidance: rule.Guidance,
+		Question: questionText,
+	}
 }
 
 func scopeSentences(state requestState) string {
@@ -361,10 +376,9 @@ func parseServiceResponse(body []byte) (serviceResponse, error) {
 	answers := make(map[string]QuestionAnswer, len(raw))
 	for id, answer := range raw {
 		parsed := QuestionAnswer{
-			Type:          answer.Type,
-			Choice:        answer.Choice,
-			Probabilities: answer.Probabilities,
-			Noul:          answer.Noul,
+			Type:  answer.Type,
+			Noul:  answer.Noul,
+			Score: answer.Score,
 		}
 		answers[id] = parsed
 	}
@@ -394,34 +408,48 @@ func decodeAnswers(answers map[string]QuestionAnswer, batch Batch, model string)
 }
 
 func decodeRule(answers map[string]QuestionAnswer, rule config.Rule, model string) (Result, error) {
-	if len(rule.Checks) > 0 {
-		return decodeChecks(answers, rule, model)
+	wordings := scoreWordings(rule)
+	scoreValues := make([]float64, len(wordings))
+	used := make(map[string]QuestionAnswer, len(wordings))
+	for index := range wordings {
+		id := fmt.Sprintf("%s.s%d", rule.ID, index)
+		value, answer, err := scoreAnswer(answers, id)
+		if err != nil {
+			return Result{}, fmt.Errorf("decode response: rule %q: %w", rule.ID, err)
+		}
+		scoreValues[index] = value / 2
+		used[id] = answer
 	}
-	answer, ok := answers[rule.ID]
-	if !ok {
-		return Result{}, fmt.Errorf("decode response: answer for rule %q is missing", rule.ID)
+	scoreMean := mean(scoreValues)
+	checksMean := scoreMean
+	subjectGate := true
+	if rule.Checks != nil {
+		gate, err := subjectGateValue(answers, rule, used)
+		if err != nil {
+			return Result{}, fmt.Errorf("decode response: rule %q: %w", rule.ID, err)
+		}
+		subjectGate = gate
+		violation, err := maxViolation(answers, rule, used)
+		if err != nil {
+			return Result{}, fmt.Errorf("decode response: rule %q: %w", rule.ID, err)
+		}
+		checksMean = 0
+		if subjectGate {
+			checksMean = violation
+		}
 	}
-	if answer.Type != answerTypeChoice {
-		return Result{}, fmt.Errorf("decode response: answer for rule %q has unsupported type", rule.ID)
-	}
-	failProbability, err := failProbabilityFromChoice(answer.Probabilities)
-	if err != nil {
-		return Result{}, fmt.Errorf("decode response: rule %q: %w", rule.ID, err)
-	}
-	status, err := argmaxStatus(answer.Probabilities)
-	if err != nil {
-		return Result{}, fmt.Errorf("decode response: rule %q: %w", rule.ID, err)
-	}
-	if status == StatusSkip && !rule.AllowSkip {
-		return Result{}, fmt.Errorf("decode response: rule %q returned skip without allowSkip", rule.ID)
-	}
-	if status == StatusAbstain && !rule.AllowAbstain {
-		return Result{}, fmt.Errorf("decode response: rule %q returned abstain without allowAbstain", rule.ID)
+	failProbability := math.Min(scoreMean, checksMean)
+	status := StatusPass
+	if failProbability >= 0.5 {
+		status = StatusFail
 	}
 	result := Result{
 		Status:          status,
 		FailProbability: failProbability,
-		Probabilities:   copyProbabilities(answer.Probabilities),
+		Score:           scoreMean,
+		Checks:          checksMean,
+		SubjectGate:     subjectGate,
+		Answers:         used,
 		Model:           model,
 	}
 	if err := result.Validate(); err != nil {
@@ -430,36 +458,83 @@ func decodeRule(answers map[string]QuestionAnswer, rule config.Rule, model strin
 	return result, nil
 }
 
-func decodeChecks(answers map[string]QuestionAnswer, rule config.Rule, model string) (Result, error) {
-	nouls := make([]float64, len(rule.Checks))
-	for index, check := range rule.Checks {
-		id := rule.ID + "." + check.ID
-		answer, ok := answers[id]
-		if !ok {
-			return Result{}, fmt.Errorf("decode response: answer for check %q is missing", id)
+func scoreAnswer(answers map[string]QuestionAnswer, id string) (float64, QuestionAnswer, error) {
+	answer, ok := answers[id]
+	if !ok {
+		return 0, QuestionAnswer{}, fmt.Errorf("answer for %q is missing", id)
+	}
+	if answer.Type != answerTypeScore || answer.Score == nil {
+		return 0, QuestionAnswer{}, fmt.Errorf("score for %q is missing", id)
+	}
+	value := *answer.Score
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 2 {
+		return 0, QuestionAnswer{}, fmt.Errorf("score for %q must be between 0 and 2", id)
+	}
+	return value, answer, nil
+}
+
+func subjectGateValue(answers map[string]QuestionAnswer, rule config.Rule, used map[string]QuestionAnswer) (bool, error) {
+	if len(rule.Checks.Subject) == 0 {
+		return true, nil
+	}
+	minimum := 1.0
+	for index := range rule.Checks.Subject {
+		id := fmt.Sprintf("%s.sub%d", rule.ID, index)
+		value, answer, err := noulAnswer(answers, id)
+		if err != nil {
+			return false, err
 		}
-		if answer.Type != answerTypeNoul || answer.Noul == nil {
-			return Result{}, fmt.Errorf("decode response: noul for check %q is missing", id)
+		used[id] = answer
+		if value < minimum {
+			minimum = value
 		}
-		if !validProbability(*answer.Noul) {
-			return Result{}, fmt.Errorf("decode response: noul for check %q is invalid", id)
+	}
+	return minimum >= 0.5, nil
+}
+
+func maxViolation(answers map[string]QuestionAnswer, rule config.Rule, used map[string]QuestionAnswer) (float64, error) {
+	maximum := 0.0
+	for index, violation := range rule.Checks.Violation {
+		ids := []string{fmt.Sprintf("%s.v%d.w0", rule.ID, index)}
+		for wording := range violation.Paraphrases {
+			ids = append(ids, fmt.Sprintf("%s.v%d.w%d", rule.ID, index, wording+1))
 		}
-		nouls[index] = *answer.Noul
+		values := make([]float64, len(ids))
+		for wording, id := range ids {
+			value, answer, err := noulAnswer(answers, id)
+			if err != nil {
+				return 0, err
+			}
+			used[id] = answer
+			values[wording] = value
+		}
+		if averaged := mean(values); averaged > maximum {
+			maximum = averaged
+		}
 	}
-	failProbability := combineChecks(rule.Checks, nouls)
-	status := StatusPass
-	if failProbability >= 0.5 {
-		status = StatusFail
+	return maximum, nil
+}
+
+func noulAnswer(answers map[string]QuestionAnswer, id string) (float64, QuestionAnswer, error) {
+	answer, ok := answers[id]
+	if !ok {
+		return 0, QuestionAnswer{}, fmt.Errorf("answer for %q is missing", id)
 	}
-	result := Result{
-		Status:          status,
-		FailProbability: failProbability,
-		Model:           model,
+	if answer.Type != answerTypeNoul || answer.Noul == nil || !validProbability(*answer.Noul) {
+		return 0, QuestionAnswer{}, fmt.Errorf("noul for %q is missing or invalid", id)
 	}
-	if err := result.Validate(); err != nil {
-		return Result{}, fmt.Errorf("decode response: rule %q: %w", rule.ID, err)
+	return *answer.Noul, answer, nil
+}
+
+func mean(values []float64) float64 {
+	if len(values) == 0 {
+		return 0
 	}
-	return result, nil
+	sum := 0.0
+	for _, value := range values {
+		sum += value
+	}
+	return sum / float64(len(values))
 }
 
 func decodeLocalization(
@@ -491,95 +566,21 @@ func decodeLocalization(
 	return results, nil
 }
 
-// combineChecks is the failure probability of a checks rule.
-// ponytail: product assumes independent checks; fitted weights if calibration shows dependence.
-func combineChecks(checks []config.Check, nouls []float64) float64 {
-	probability := 1.0
-	for index, check := range checks {
-		if check.FailWhen {
-			probability *= nouls[index]
-		} else {
-			probability *= 1 - nouls[index]
-		}
-	}
-	return probability
-}
-
-func failProbabilityFromChoice(probabilities map[string]float64) (float64, error) {
-	if len(probabilities) == 0 {
-		return 0, errors.New("probabilities are missing")
-	}
-	fail, ok := probabilities["fail"]
-	if !ok {
-		return 0, errors.New("probabilities missing fail")
-	}
-	sum := 0.0
-	for key, value := range probabilities {
-		if !validProbability(value) {
-			return 0, fmt.Errorf("invalid probability %q", key)
-		}
-		sum += value
-	}
-	if math.Abs(sum-1) > probabilitySumTolerance {
-		return 0, fmt.Errorf("probabilities sum to %v", sum)
-	}
-	return fail, nil
-}
-
-func argmaxStatus(probabilities map[string]float64) (Status, error) {
-	order := []string{"fail", "pass", "skip", "abstain"}
-	known := make(map[string]struct{}, len(order))
-	for _, key := range order {
-		known[key] = struct{}{}
-	}
-	extras := make([]string, 0)
-	for key := range probabilities {
-		if _, ok := known[key]; !ok {
-			extras = append(extras, key)
-		}
-	}
-	sort.Strings(extras)
-	best := ""
-	bestValue := 0.0
-	seen := false
-	for _, key := range append(order, extras...) {
-		value, ok := probabilities[key]
-		if !ok {
-			continue
-		}
-		if !seen || value > bestValue {
-			best = key
-			bestValue = value
-			seen = true
-		}
-	}
-	status, err := ParseStatus(best)
-	if err != nil {
-		return StatusUnknown, fmt.Errorf("invalid evaluation status %q", best)
-	}
-	return status, nil
-}
-
 func validProbability(value float64) bool {
 	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= 0 && value <= 1
 }
 
-func copyProbabilities(probabilities map[string]float64) map[string]float64 {
-	if len(probabilities) == 0 {
-		return nil
-	}
-	copied := make(map[string]float64, len(probabilities))
-	for key, value := range probabilities {
-		copied[key] = value
-	}
-	return copied
-}
-
 func (answer QuestionAnswer) validate() error {
 	switch answer.Type {
-	case answerTypeChoice:
-		_, err := failProbabilityFromChoice(answer.Probabilities)
-		return err
+	case answerTypeScore:
+		if answer.Score == nil {
+			return errors.New("score is missing")
+		}
+		value := *answer.Score
+		if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 2 {
+			return errors.New("invalid score")
+		}
+		return nil
 	case answerTypeNoul:
 		if answer.Noul == nil || !validProbability(*answer.Noul) {
 			return errors.New("invalid noul")
