@@ -231,6 +231,51 @@ func TestRunRequiresApplicableUnits(t *testing.T) {
 	}
 }
 
+// oversizedEvaluator skips every unit as the budgeted client does.
+type oversizedEvaluator struct {
+	mu        sync.Mutex
+	oversized []evaluation.Oversized
+}
+
+func (evaluator *oversizedEvaluator) Evaluate(
+	_ context.Context,
+	batch evaluation.Batch,
+) (map[string]evaluation.Result, error) {
+	evaluator.mu.Lock()
+	defer evaluator.mu.Unlock()
+	evaluator.oversized = append(evaluator.oversized, evaluation.Oversized{
+		Path: batch.CodeUnit.Path, Name: batch.CodeUnit.Name, Kind: batch.CodeUnit.Kind.String(), Tokens: 70000, Limit: 65533,
+	})
+	return nil, evaluation.ErrOversized
+}
+
+func (evaluator *oversizedEvaluator) RunMeta() evaluation.RunMeta {
+	evaluator.mu.Lock()
+	defer evaluator.mu.Unlock()
+	return evaluation.RunMeta{Models: []string{}, Oversized: append([]evaluation.Oversized(nil), evaluator.oversized...)}
+}
+
+func TestRunRejectsCaseWhoseUnitsAreAllOversized(t *testing.T) {
+	t.Parallel()
+
+	root := writeEvalDir(t, validEvalsJSON("sample.go"), "package sample\n\nfunc Load() {}\n")
+	document, err := Load(filepath.Join(root, DefaultFile), sampleConfig(nil), testExtractor(t))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	_, err = Run(
+		context.Background(),
+		document,
+		sampleConfig(nil),
+		testExtractor(t),
+		&oversizedEvaluator{},
+		Options{Root: root, Concurrency: 1},
+	)
+	if !errors.Is(err, ErrOversizedCase) || !strings.Contains(err.Error(), "70000 tokens, limit 65533") {
+		t.Fatalf("Run() error = %v, want %v naming the unit", err, ErrOversizedCase)
+	}
+}
+
 type pathRecordingEvaluator struct {
 	mu    sync.Mutex
 	paths []string

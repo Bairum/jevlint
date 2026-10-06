@@ -380,7 +380,9 @@ preflighted. Over budget, questions are split across requests (Cloudflare is
 also split at 64 questions). If that is not enough, callees are dropped, then
 types, and the report says so. A unit that still does not fit is skipped:
 `oversized` lists it, the text summary warns, and the run continues. Oversized
-units alone do not change the exit code.
+units alone do not change the exit code of `check`. In `eval`, a case whose
+units are all oversized stops the run with an error naming the unit, because
+the rule was never asked; split that fixture into smaller units.
 
 ```json
 {
