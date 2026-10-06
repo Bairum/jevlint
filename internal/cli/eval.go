@@ -352,8 +352,8 @@ func stripUnits(report evals.Report) evals.Report {
 // writeRunLegend explains how eval outcomes and decisions are classified.
 func writeRunLegend(writer io.Writer, style outputStyle) {
 	fmt.Fprintln(writer, style.paint("1", "legend"))
-	fmt.Fprintln(writer, "  Each case runs one rule on every code unit in one fixture. Jev answers")
-	fmt.Fprintln(writer, "  pass, fail, skip, or abstain for each unit and scores its fail probability.")
+	fmt.Fprintln(writer, "  Each case runs one rule on every code unit in one fixture. Jev scores each")
+	fmt.Fprintln(writer, "  unit's fail probability from the rule's score and checks.")
 	fmt.Fprintln(writer, "    matched       the rule decided what the case expected")
 	fmt.Fprintln(writer, "    mismatched    the rule decided the opposite of what the case expected")
 	fmt.Fprintln(writer, "    inconclusive  the rule did not clearly pass or fail")

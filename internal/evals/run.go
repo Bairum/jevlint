@@ -18,7 +18,12 @@ import (
 	"github.com/codegirl-007/jevlint/internal/runner"
 )
 
-var ErrNoApplicableUnits = errors.New("no applicable code units")
+var (
+	ErrNoApplicableUnits = errors.New("no applicable code units")
+	// ErrOversizedCase means every applicable unit exceeded the input budget,
+	// so the rule was never asked and the case has no outcome.
+	ErrOversizedCase = errors.New("every applicable code unit exceeds the Jev input budget")
+)
 
 // Outcome is the truthful result of one eval case after its rule's raw
 // decisions are aggregated across the fixture's code units.
@@ -210,6 +215,13 @@ func runCase(
 	}
 	if checkReport.Evaluations == 0 && len(checkReport.Oversized) == 0 {
 		return Result{}, checkReport, fmt.Errorf("%s: %w", caseLabel(evalCase), ErrNoApplicableUnits)
+	}
+	if checkReport.Evaluations == 0 {
+		unit := checkReport.Oversized[0]
+		return Result{}, checkReport, fmt.Errorf(
+			"%s: %w (%s %s: %d tokens, limit %d); split the fixture into smaller units",
+			caseLabel(evalCase), ErrOversizedCase, unit.Kind, unit.Name, unit.Tokens, unit.Limit,
+		)
 	}
 
 	decisions := checkReport.Rules[evalCase.Rule].Decisions
