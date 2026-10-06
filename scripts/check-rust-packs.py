@@ -120,6 +120,40 @@ def run_eval(executable, config_path, eval_path, cases, name, run):
     return result
 
 
+def outcome_gate(packs, runs):
+    """Same pass/fail gate as before: mismatches, missing outcomes, flips, errors."""
+    mismatches = inconclusive = flips = 0
+    for name, _, _, fixtures in packs:
+        pack_runs = [run for run in runs if run["pack"] == name]
+        for fixture in fixtures:
+            counts = {}
+            for run in pack_runs:
+                case = next(
+                    (item for item in run.get("cases") or [] if item.get("name") == fixture["name"]),
+                    None,
+                )
+                actual = case.get("actual") if case else None
+                mismatches += actual in ("pass", "fail") and actual != fixture["expect"]
+                inconclusive += actual not in ("pass", "fail")
+                counts[actual] = counts.get(actual, 0) + 1
+            if len(counts) > 1:
+                flips += 1
+    return {
+        "mismatches": mismatches,
+        "inconclusive": inconclusive,
+        "flippedCases": flips,
+        "errors": [
+            {"pack": run["pack"], "run": run["run"], "message": error}
+            for run in runs for error in run.get("errors") or []
+        ],
+    }
+
+
+def calibration_failed(summary):
+    return bool(summary["mismatches"] or summary["inconclusive"] or
+                summary["flippedCases"] or summary["errors"])
+
+
 def main():
     parser = argument_parser()
     args = parser.parse_args()
@@ -179,26 +213,30 @@ def main():
                 report["pack"] = name
                 report["cases"] = result["cases"]
                 reports.append(report)
+        expected = {
+            name: cases for name, _, _, cases in packs
+        }
         summary = score_evals.score_reports(
             reports,
             threshold=args.min_fail_probability,
             specificity_target=args.target_specificity,
             rule_thresholds=overrides or None,
+            expected=expected,
         )
-        summary["errors"] = [
-            {"pack": run["pack"], "run": run["run"], "message": error}
-            for run in runs for error in run["errors"]
-        ]
+        gate = outcome_gate(packs, runs)
+        if any(metrics["inconclusive"] for metrics in summary["packs"].values()) and not gate["inconclusive"]:
+            gate["inconclusive"] = sum(metrics["inconclusive"] for metrics in summary["packs"].values())
+        summary.update(gate)
         print(score_evals.format_table(summary), flush=True)
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
         summary_path = args.summary or Path(gettempdir()) / f"rust-pack-evals-{timestamp}.json"
         summary_path.parent.mkdir(parents=True, exist_ok=True)
         summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
         print(f"Calibration summary: {summary_path.resolve()}", flush=True)
-        if summary["errors"]:
-            print("Calibration incomplete: eval errors.", file=sys.stderr)
+        if calibration_failed(gate):
+            print("Calibration failed: mismatches, inconclusive outcomes, flips, or eval errors.", file=sys.stderr)
             return 1
-        print("Fixture compilation and repeated real model evals were scored for the selected packs.")
+        print("Fixture compilation and repeated real model evals passed for the selected packs.")
         return 0
 
 

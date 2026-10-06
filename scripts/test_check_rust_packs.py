@@ -149,5 +149,63 @@ class ScoreTests(unittest.TestCase):
             with contextlib.redirect_stderr(io.StringIO()):
                 parser.parse_args(["--min-confidence", "0.8"])
 
+
+def calibration(expected, outcomes):
+    fixtures = [{"name": name, "rule": "rule", "file": f"{name}.rs", "expect": expect}
+                for name, expect in expected.items()]
+    packs = [("rust-core", [], None, fixtures)]
+    runs = []
+    for index, answers in enumerate(outcomes, 1):
+        cases = [{"name": name, "actual": actual} for name, actual in answers.items()]
+        runs.append({"pack": "rust-core", "run": index, "cases": cases, "errors": []})
+    return packs, runs
+
+
+class GateTests(unittest.TestCase):
+    def test_stable_success_passes(self):
+        packs, runs = calibration(
+            {"bug": "fail", "clean": "pass"},
+            [{"bug": "fail", "clean": "pass"}] * 3,
+        )
+        self.assertFalse(runner.calibration_failed(runner.outcome_gate(packs, runs)))
+
+    def test_mismatch_missing_flip_and_errors_fail(self):
+        packs, runs = calibration(
+            {"detected": "fail", "missed": "fail", "clean": "pass", "unstable": "pass"},
+            [
+                {"detected": "fail", "missed": "pass", "clean": "pass", "unstable": "fail"},
+                {"detected": "fail", "missed": "pass", "clean": "pass", "unstable": "pass"},
+                {"detected": "pass", "missed": "pass", "clean": "pass", "unstable": "pass"},
+            ],
+        )
+        gate = runner.outcome_gate(packs, runs)
+        self.assertEqual(gate["flippedCases"], 2)
+        self.assertEqual(gate["mismatches"], 5)
+        self.assertTrue(runner.calibration_failed(gate))
+        packs, runs = calibration({"fixture": "fail"}, [{"fixture": "fail"}, {}, {}])
+        runs[1]["errors"] = ["eval exited 2"]
+        gate = runner.outcome_gate(packs, runs)
+        self.assertEqual(gate["inconclusive"], 2)
+        self.assertTrue(runner.calibration_failed(gate))
+        for key in ("mismatches", "inconclusive", "flippedCases", "errors"):
+            failing = {"mismatches": 0, "inconclusive": 0, "flippedCases": 0, "errors": []}
+            failing[key] = ["error"] if key == "errors" else 1
+            self.assertTrue(runner.calibration_failed(failing))
+
+    def test_case_absent_from_every_repeat_is_inconclusive(self):
+        expected = [{"rule": "rule", "name": "gone", "file": "gone.rs", "expect": "fail"}]
+        summary = score_evals.score_reports(
+            [{"pack": "root", "cases": []}, {"pack": "root", "cases": []}],
+            expected=expected,
+        )
+        metrics = summary["packs"]["root"]
+        self.assertEqual(metrics["inconclusive"], 1)
+        self.assertEqual(metrics["failCases"], 1)
+        self.assertIsNone(metrics["auc"])
+        packs, runs = calibration({"gone": "fail"}, [{}, {}])
+        gate = runner.outcome_gate(packs, runs)
+        self.assertEqual(gate["inconclusive"], 2)
+        self.assertTrue(runner.calibration_failed(gate))
+
 if __name__ == "__main__":
     unittest.main()

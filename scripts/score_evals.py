@@ -94,33 +94,53 @@ def case_probability(case):
     return max(values) if values else None
 
 
-def align_cases(reports):
-    """One record per case. probabilities[i] is repeat i, None if missing."""
+def expected_case(case):
+    """Normalize an eval-file case (expect) or a report case (expected)."""
+    return {
+        "rule": case.get("rule") or "",
+        "name": case.get("name") or "",
+        "file": case.get("file") or "",
+        "expected": case.get("expected", case.get("expect")),
+    }
+
+
+def align_cases(reports, expected=None):
+    """One record per case. probabilities[i] is repeat i, None if missing.
+
+    `expected` is the eval manifest. A case absent from every report stays
+    inconclusive instead of disappearing.
+    """
     order = []
     seen = {}
+
+    def add(case):
+        key = case_key(case)
+        label = case.get("expected", case.get("expect"))
+        if key not in seen:
+            seen[key] = {
+                "rule": key[0],
+                "name": case.get("name") or case.get("file") or "",
+                "file": case.get("file") or "",
+                "expected": label,
+                "probabilities": [],
+            }
+            order.append(seen[key])
+        elif seen[key]["expected"] is None and label is not None:
+            seen[key]["expected"] = label
+
+    for case in expected or []:
+        add(expected_case(case))
     for report in reports:
         for case in report.get("cases") or []:
-            key = case_key(case)
-            if key not in seen:
-                seen[key] = {
-                    "rule": key[0],
-                    "name": case.get("name") or case.get("file") or "",
-                    "file": case.get("file") or "",
-                    "expected": case.get("expected"),
-                    "probabilities": [],
-                }
-                order.append(seen[key])
-            elif seen[key]["expected"] is None:
-                seen[key]["expected"] = case.get("expected")
+            add(case)
     width = len(reports)
     for record in order:
         record["probabilities"] = [None] * width
     for index, report in enumerate(reports):
         for case in report.get("cases") or []:
             record = seen.get(case_key(case))
-            if record is None:
-                continue
-            record["probabilities"][index] = case_probability(case)
+            if record is not None:
+                record["probabilities"][index] = case_probability(case)
     return order
 
 
@@ -197,15 +217,30 @@ def _group_metrics(records, threshold, target, rule_thresholds):
     }
 
 
-def score_reports(reports, threshold=0.5, specificity_target=0.9, rule_thresholds=None):
-    """Score one or more eval JSON reports. Repeats are consecutive reports of one pack."""
+def score_reports(reports, threshold=0.5, specificity_target=0.9, rule_thresholds=None, expected=None):
+    """Score one or more eval JSON reports. Repeats are consecutive reports of one pack.
+
+    `expected` is a case list, or a pack-name → case list dict. Cases in it that
+    no report returns are inconclusive.
+    """
     by_pack = {}
     for report in reports:
         pack = report.get("pack") or "root"
         by_pack.setdefault(pack, []).append(report)
+    expected_by_pack = {}
+    if isinstance(expected, dict):
+        expected_by_pack = expected
+        for pack in expected:
+            by_pack.setdefault(pack, [])
+    elif expected:
+        if len(by_pack) > 1:
+            raise ValueError("expected cases must be a dict when reports cover more than one pack")
+        pack = next(iter(by_pack), "root")
+        by_pack.setdefault(pack, [])
+        expected_by_pack[pack] = expected
     packs = {}
     for pack in sorted(by_pack):
-        records = align_cases(by_pack[pack])
+        records = align_cases(by_pack[pack], expected_by_pack.get(pack))
         for record in records:
             record["pack"] = pack
         rules = {}
@@ -316,13 +351,17 @@ def main():
         parser.error("--repeat must be positive")
     if not 0 <= args.target_specificity <= 1:
         parser.error("--target-specificity must be between 0 and 1")
-    if (args.config is None) != (args.evals is None):
-        parser.error("--config and --evals are used together")
+    if args.config is not None and args.evals is None:
+        parser.error("--config requires --evals")
     if args.config is None and not args.reports:
         parser.error("pass eval JSON reports, or --config and --evals")
     rule_thresholds = None
     threshold = 0.5 if args.threshold is None else args.threshold
     errors = []
+    expected = None
+    if args.evals is not None:
+        document = json.loads(args.evals.read_text(encoding="utf-8"))
+        expected = document.get("cases") or []
     if args.config is not None:
         config = json.loads(args.config.read_text(encoding="utf-8"))
         config_threshold, rule_thresholds = thresholds_from_config(config)
@@ -340,6 +379,7 @@ def main():
         threshold=threshold,
         specificity_target=args.target_specificity,
         rule_thresholds=rule_thresholds,
+        expected=expected,
     )
     if errors:
         summary["errors"] = errors
