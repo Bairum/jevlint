@@ -2,7 +2,6 @@
 """Compile Rust pack fixtures; optionally run real, uncached model evals."""
 
 import argparse
-from collections import Counter
 from datetime import datetime, timezone
 import json
 import os
@@ -10,6 +9,11 @@ from pathlib import Path
 import subprocess
 import sys
 from tempfile import TemporaryDirectory, gettempdir
+
+_SCRIPT_DIR = Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
+import score_evals
 
 
 PACKS = ("rust-core", "rust-core-advisory", "rust-tokio", "rust-api", "rust-unsafe", "rust-performance", "rust-readability")
@@ -70,6 +74,22 @@ def load_packs(repo, selected=PACKS):
     return packs, sorted(fixtures)
 
 
+def eval_config(rules, threshold):
+    return {"languages": {"rust": {}}, "minFailProbability": threshold, "rules": rules}
+
+
+def argument_parser():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--eval", action="store_true", help="also run real model evals (requires configured provider credentials)")
+    parser.add_argument("--jevlint", default="jevlint", help="real jevlint executable for --eval (default: jevlint)")
+    parser.add_argument("--pack", choices=PACKS, action="append", help="check only this pack (repeatable)")
+    parser.add_argument("--repeat", type=int, default=1, help="number of real uncached eval runs (default: 1)")
+    parser.add_argument("--summary", type=Path, help="JSON summary path (default: timestamped file in the system temporary directory)")
+    parser.add_argument("--min-fail-probability", type=float, default=0.5, help="minFailProbability written into the eval config (default: 0.5)")
+    parser.add_argument("--target-specificity", type=float, default=0.9, help="fitted-threshold specificity target (default: 0.90)")
+    return parser
+
+
 def run_eval(executable, config_path, eval_path, cases, name, run):
     """Keep every run, including failed commands, so calibration cannot hide errors."""
     result = {"pack": name, "run": run, "cases": [], "errors": []}
@@ -84,95 +104,31 @@ def run_eval(executable, config_path, eval_path, cases, name, run):
         report = json.loads(process.stdout)
         expected = {case["name"]: case for case in cases}
         seen = set()
-        for case in report["cases"]:
-            fixture = expected.get(case["name"])
+        for case in report.get("cases") or []:
+            fixture = expected.get(case.get("name"))
             if fixture is None or case["name"] in seen:
                 raise ValueError("unexpected or duplicate eval case")
-            if case["rule"] != fixture["rule"] or case["expected"] != fixture["expect"]:
+            if case.get("rule") != fixture["rule"] or case.get("expected") != fixture["expect"]:
                 raise ValueError("eval case rule or expectation differs from fixture")
-            if case["actual"] not in ("pass", "fail", "inconclusive"):
-                raise ValueError("invalid eval outcome")
-            for key in ("pass", "fail", "skip", "abstain", "reported", "belowFloor"):
-                count = case["decisions"][key]
-                if type(count) is not int or count < 0:
-                    raise ValueError(f"invalid decision count: {key}")
             seen.add(case["name"])
             result["cases"].append(case)
         if seen != expected.keys():
             result["errors"].append("eval did not return every fixture case")
-    except (OSError, ValueError, KeyError, TypeError) as error:
+        result["report"] = report
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
         result["errors"].append(str(error))
     return result
 
 
-def summarize(packs, runs, repeat):
-    cases = []
-    rules = {}
-    mismatches = inconclusive = abstain = below_floor = flips = 0
-    for name, _, _, fixtures in packs:
-        pack_runs = [run for run in runs if run["pack"] == name]
-        for fixture in fixtures:
-            samples = []
-            for run in pack_runs:
-                case = next((case for case in run["cases"] if case["name"] == fixture["name"]), None)
-                actual = case["actual"] if case else None
-                samples.append({"run": run["run"], "actual": actual})
-                mismatches += actual in ("pass", "fail") and actual != fixture["expect"]
-                inconclusive += actual not in ("pass", "fail")
-                if case:
-                    abstain += case["decisions"]["abstain"]
-                    below_floor += case["decisions"]["belowFloor"]
-            counts = Counter(sample["actual"] for sample in samples)
-            outcome, votes = counts.most_common(1)[0]
-            majority = outcome if outcome is not None and votes > repeat / 2 else "inconclusive"
-            flipped = len(counts) > 1
-            flips += flipped
-            cases.append({
-                "pack": name, "name": fixture["name"], "rule": fixture["rule"],
-                "file": fixture["file"], "expected": fixture["expect"], "runs": samples,
-                "majority": majority, "flipped": flipped,
-                "mismatches": sum(sample["actual"] in ("pass", "fail") and
-                                  sample["actual"] != fixture["expect"] for sample in samples),
-                "inconclusive": sum(sample["actual"] not in ("pass", "fail") for sample in samples),
-            })
-            metric = rules.setdefault(fixture["rule"], {
-                "pack": name, "failCases": 0, "detected": 0, "passCases": 0, "passed": 0,
-            })
-            if fixture["expect"] == "fail":
-                metric["failCases"] += 1
-                metric["detected"] += majority == "fail"
-            else:
-                metric["passCases"] += 1
-                metric["passed"] += majority == "pass"
-    for metric in rules.values():
-        metric["recall"] = metric["detected"] / metric["failCases"] if metric["failCases"] else None
-        metric["specificity"] = metric["passed"] / metric["passCases"] if metric["passCases"] else None
-    errors = [{"pack": run["pack"], "run": run["run"], "message": error}
-              for run in runs for error in run["errors"]]
-    return {
-        "repeat": repeat, "runs": runs, "cases": cases, "rules": rules,
-        "flippedCases": flips, "flipRate": flips / len(cases) if cases else 0,
-        "mismatches": mismatches, "inconclusive": inconclusive,
-        "abstain": abstain, "belowFloor": below_floor, "errors": errors,
-    }
-
-
-def calibration_failed(summary):
-    return bool(summary["mismatches"] or summary["inconclusive"] or
-                summary["flippedCases"] or summary["errors"])
-
-
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--eval", action="store_true", help="also run real model evals (requires configured provider credentials)")
-    parser.add_argument("--jevlint", default="jevlint", help="real jevlint executable for --eval (default: jevlint)")
-    parser.add_argument("--pack", choices=PACKS, action="append", help="check only this pack (repeatable)")
-    parser.add_argument("--repeat", type=int, default=1, help="number of real uncached eval runs (default: 1)")
-    parser.add_argument("--summary", type=Path, help="JSON summary path (default: timestamped file in the system temporary directory)")
-    parser.add_argument("--min-confidence", type=float, default=0.8, help="confidence floor used for evals, matching the recommended consumer config (default: 0.8)")
+    parser = argument_parser()
     args = parser.parse_args()
     if args.repeat < 1:
         parser.error("--repeat must be positive")
+    if not 0 <= args.min_fail_probability <= 1:
+        parser.error("--min-fail-probability must be between 0 and 1")
+    if not 0 <= args.target_specificity <= 1:
+        parser.error("--target-specificity must be between 0 and 1")
     if not args.eval and (args.repeat != 1 or args.summary is not None):
         parser.error("--repeat and --summary require --eval")
     repo = Path(__file__).resolve().parent.parent
@@ -203,22 +159,46 @@ def main():
             print("Only fixture compilation checked; model outcomes remain unverified.")
             return
         runs = []
+        reports = []
+        overrides = {}
         for name, rules, eval_path, cases in packs:
+            for rule in rules:
+                if "minFailProbability" in rule:
+                    overrides[rule["id"]] = rule["minFailProbability"]
             config_path = temporary / f"{name}.json"
-            config_path.write_text(json.dumps({"languages": {"rust": {}}, "minConfidence": args.min_confidence, "rules": rules}), encoding="utf-8")
+            config_path.write_text(
+                json.dumps(eval_config(rules, args.min_fail_probability)),
+                encoding="utf-8",
+            )
             for run in range(1, args.repeat + 1):
                 print(f"Running real model evals: {name} ({run}/{args.repeat})", flush=True)
-                runs.append(run_eval(args.jevlint, config_path, eval_path, cases, name, run))
-        summary = summarize(packs, runs, args.repeat)
+                result = run_eval(args.jevlint, config_path, eval_path, cases, name, run)
+                runs.append(result)
+                report = result.get("report") or {"cases": result["cases"]}
+                report = dict(report)
+                report["pack"] = name
+                report["cases"] = result["cases"]
+                reports.append(report)
+        summary = score_evals.score_reports(
+            reports,
+            threshold=args.min_fail_probability,
+            specificity_target=args.target_specificity,
+            rule_thresholds=overrides or None,
+        )
+        summary["errors"] = [
+            {"pack": run["pack"], "run": run["run"], "message": error}
+            for run in runs for error in run["errors"]
+        ]
+        print(score_evals.format_table(summary), flush=True)
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
         summary_path = args.summary or Path(gettempdir()) / f"rust-pack-evals-{timestamp}.json"
         summary_path.parent.mkdir(parents=True, exist_ok=True)
         summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
         print(f"Calibration summary: {summary_path.resolve()}", flush=True)
-        if calibration_failed(summary):
-            print("Calibration failed: mismatches, inconclusive outcomes, flips, or eval errors.", file=sys.stderr)
+        if summary["errors"]:
+            print("Calibration incomplete: eval errors.", file=sys.stderr)
             return 1
-        print("Fixture compilation and repeated real model evals passed for the selected packs.")
+        print("Fixture compilation and repeated real model evals were scored for the selected packs.")
         return 0
 
 
