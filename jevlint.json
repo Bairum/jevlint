@@ -187,6 +187,7 @@
       "id": "comment-quality",
       "description": "Comments should explain intent, constraints, non-obvious reasoning, surprising behavior, or important context rather than merely restating the adjacent code. Fail comments that closely paraphrase what the code already says without adding useful information. Documentation comments describing public APIs, TODOs with meaningful context, warnings, and explanations of non-obvious algorithms pass.",
       "severity": "warning",
+      "minFailProbability": 0.9,
       "include": [
         "**/*"
       ],
@@ -539,85 +540,6 @@
             "question": "Does `source` declare a type with fields?",
             "yes": "`source` declares a type with fields.",
             "no": "`source` does not declare a type with fields."
-          }
-        ]
-      }
-    },
-    {
-      "id": "unnecessary-abstraction",
-      "description": "Fail abstractions that add indirection without providing meaningful reuse, encapsulation, substitution, domain meaning, or separation of responsibility. Examples include one-use abstractions that merely forward behavior, interfaces with a single implementation created without a clear boundary, and types that only delegate to another object. Small named helpers that improve readability, adapters, stable API boundaries, and abstractions isolating likely change pass.",
-      "severity": "warning",
-      "include": [
-        "**/*"
-      ],
-      "exclude": [
-        "**/examples/**"
-      ],
-      "kinds": [
-        "function",
-        "type"
-      ],
-      "context": {
-        "callees": true
-      },
-      "score": {
-        "question": "How clearly does `source` add a forwarding-only abstraction?",
-        "levels": [
-          "No extra interface, wrapper, or forwarding method, or the abstraction is a helper, an adapter, a public API, or a change boundary.",
-          "Borderline: a single forward that also names a boundary, so it is unclear whether the forward is the whole abstraction.",
-          "Clear violation: an interface, wrapper type, or method whose only effect is to forward a call."
-        ],
-        "paraphrases": [
-          {
-            "question": "How completely is the added interface, type, or method in `source` just a forward to another call?",
-            "levels": [
-              "No added interface, wrapper, or forwarding method, or what was added is a helper, an adapter, a public API, or a boundary around a likely change.",
-              "Ambiguous: the forward is accompanied by a name that might itself be the boundary, so the forward may not be the whole abstraction.",
-              "Clear violation: the added interface, wrapper type, or method exists only to forward a call."
-            ]
-          },
-          {
-            "question": "How thin is the extra type or function `source` places in front of another call?",
-            "levels": [
-              "Nothing extra sits in front of a call, or the extra piece is a readability helper, an adapter, a stable public API, or a change boundary.",
-              "Uncertain: a lone forward whose name might be doing the work of a real boundary.",
-              "Clear violation: the extra piece's only effect is to pass the call onward."
-            ]
-          }
-        ]
-      },
-      "checks": {
-        "violation": [
-          {
-            "question": "Does `source` add an interface or wrapper type that only forwards to another function?",
-            "yes": "The interface or wrapper only forwards to another function.",
-            "no": "There is no interface or wrapper that only forwards.",
-            "paraphrases": [
-              {
-                "question": "Does `source` insert an interface or a wrapper type whose implementation only calls another function?",
-                "yes": "The inserted interface or wrapper type only calls another function.",
-                "no": "No inserted interface or wrapper type only calls another function."
-              }
-            ]
-          },
-          {
-            "question": "Does `source` add a method or function whose body only forwards to another function?",
-            "yes": "The method or function only forwards to another function.",
-            "no": "There is no method or function that only forwards.",
-            "paraphrases": [
-              {
-                "question": "Does `source` add a function or method that does nothing except call another function and return?",
-                "yes": "The added function or method only calls another function and returns.",
-                "no": "No added function or method only calls another function and returns."
-              }
-            ]
-          }
-        ],
-        "subject": [
-          {
-            "question": "Does `source` declare an interface, a type, or a function?",
-            "yes": "`source` declares an interface, a type, or a function.",
-            "no": "`source` declares none of those."
           }
         ]
       }
