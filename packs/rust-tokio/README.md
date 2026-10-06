@@ -1,6 +1,6 @@
 # Optional Tokio semantic pack
 
-`Bairum/rust-tokio` is an opt-in, data-only pack for concrete Tokio lifecycle, cancellation, admission and lock-dependency contradictions. It is not a general async style pack or a proof of concurrency correctness. All seven rules use warning severity, Rust-only file matching, function units and abstention when an identified obligation cannot be decided from available evidence. Common evidence and primary-unit judging instructions live in [`guidance.md`](guidance.md), loaded once through the manifest. No rule-level `minFailProbability` is set.
+`Bairum/rust-tokio` is an opt-in, data-only pack for concrete Tokio lifecycle, cancellation, admission and lock-dependency contradictions. It is not a general async style pack or a proof of concurrency correctness. All seven rules use warning severity, Rust-only file matching, and function units. Missing evidence is not a violation. Common evidence and primary-unit judging instructions live in [`guidance.md`](guidance.md), loaded once through the manifest. No rule-level `minFailProbability` is set.
 
 ## Source and runtime applicability
 
@@ -18,6 +18,8 @@ Jevlint extracts functions without compiler name resolution or macro expansion. 
 | `rust-tokio-lock-dependency` | C11; limited C02/M03 | [RwLock read warning](https://docs.rs/tokio/1.53.2/tokio/sync/struct.RwLock.html#method.read), [Mutex](https://docs.rs/tokio/1.53.2/tokio/sync/struct.Mutex.html). Only concrete same-lock/dependent-child waits; valid async guards across await pass. C02 guard syntax remains Clippy-owned, and M03 is covered only when guard retention causes this visible dependency. |
 | `rust-tokio-blocking-cancellation` | C10 | [spawn_blocking cancellation](https://docs.rs/tokio/1.53.2/tokio/task/fn.spawn_blocking.html), [block_in_place](https://docs.rs/tokio/1.53.2/tokio/task/fn.block_in_place.html), [timeout](https://docs.rs/tokio/1.53.2/tokio/time/fn.timeout.html). Started blocking work does not stop merely because an async handle was aborted/timed out; cooperative joined termination and explicitly permitted finite background completion pass. |
 
+Each listed rule asks a 3-level score plus subject-gated violation checks. Fail probability is the minimum of those signals. Subjects are the Tokio tokens in `source` (`spawn`, `select!`, `JoinHandle`, `Semaphore`, `abort`/`recv`, `Mutex`/`RwLock`, `spawn_blocking`). Violations are the blocking call, restarted cancellable I/O, dropped handle, unbound spawn, undrained sender, same-lock wait, or blocking work that ignores cancellation.
+
 ### Source prefilters
 
 `sourceMatch` runs on each function's source before evaluation, not the entire file. Patterns deliberately accept unqualified API names as well as `tokio`/`Tokio` identity in the unit, so conventional imports and locally identified aliases are not tied to one path spelling. The filter is cheap subject selection, not proof that an API belongs to Tokio; semantic judgment still requires its identity. Arbitrarily renamed APIs with no locally visible Tokio identity cannot be resolved by the parser.
@@ -32,7 +34,7 @@ Jevlint extracts functions without compiler name resolution or macro expansion. 
 | `lock-dependency` | Tokio identity, `Mutex`, `RwLock`, read/write/lock acquisitions including owned and try forms |
 | `blocking-cancellation` | Tokio identity, `spawn_blocking`, `block_in_place`, `shutdown_timeout` |
 
-Test units are excluded by the engine by default, including `#[test]`/`#[tokio::test]` functions and structurally detected test modules. Fixtures use ordinary non-test library functions so their semantic cases remain applicable. Contract-requiring rules include no-contract variants expected to pass: a missing application obligation is not invented. Missing evidence for an already identified obligation may instead require abstention.
+Test units are excluded by the engine by default, including `#[test]`/`#[tokio::test]` functions and structurally detected test modules. Fixtures use ordinary non-test library functions so their semantic cases remain applicable. Contract-requiring rules include no-contract variants expected to pass: a missing application obligation is not invented. Missing evidence is not a violation.
 
 ### Deferred protocol topics
 
@@ -98,18 +100,4 @@ No tokio-util, filesystem/network feature or mock runtime is required. Capacitie
 
 All **98 isolated Rust 2021 fixture targets** passed the shared compile harness without compiler warnings. The focused `TestRustPackEvalCasesHaveApplicableUnits/rust-tokio` check also passed, confirming every case has a non-test function matching its rule's kinds and `sourceMatch`. Faulty fixtures were never executed, because some deliberately block or deadlock. Compilation and applicability establish syntax and subject selection, not judgment correctness.
 
-Three real provider-backed runs (`python3 scripts/check-rust-packs.py --eval --repeat 3`) measured fixture recall and specificity at global choice-confidence floor 0.8; the floors were not refit. Opaque fixture names were used. The table reports per-run decision metrics: below-floor failures are not reported, matching `check` behavior.
-
-| Rule | Recall @0.8 | Specificity @0.8 | Recommended override | Recall @override | Specificity @override |
-| --- | --- | --- | --- | --- | --- |
-| `rust-tokio-blocking-boundary` | 0.33 | 1.00 | 0.40 | 0.80 | 1.00 |
-| `rust-tokio-cancellation-progress` | 0.00 | 1.00 | 0.50 | 0.17 | 1.00 |
-| `rust-tokio-required-task-ownership` | 0.00 | 1.00 | 0.35 | 0.07 | 1.00 |
-| `rust-tokio-admission-bound` | 0.40 | 1.00 | 0.60 | 0.60 | 1.00 |
-| `rust-tokio-shutdown-contract` | 0.20 | 1.00 | 0.60 | 0.60 | 1.00 |
-| `rust-tokio-lock-dependency` | 0.00 | 1.00 | 0.40 | 0.33 | 1.00 |
-| `rust-tokio-blocking-cancellation` | 0.00 | 1.00 | 0.45 | 1.00 | 0.95 |
-
-`rust-tokio-cancellation-progress`, `rust-tokio-required-task-ownership` and `rust-tokio-lock-dependency` are not yet useful even at the recommended overrides: fixture recall is only 0.17, 0.07 and 0.33 respectively. High fixture specificity does not compensate for these missed failures or establish real-project precision.
-
-All six Rust packs retain the global floor of **0.8** and contain no rule-level `minFailProbability`; no pack-level floor changes were made. Only consuming projects may opt into the recommended overrides through project rule overlays such as `{"id": "rust-tokio-blocking-boundary", "minFailProbability": 0.40}`. An overlay replaces the rule floor, which overrides the global floor; `—` means keep 0.8. Those recorded floors were fitted on the old choice-confidence metric and pack calibration will refit them; the field name is `minFailProbability`. Overrides were fitted on these same fixtures and are starting points, not guarantees. Real-project precision remains unmeasured. `jevlint-evals.json` records intended outcomes, not observed provider decisions. See [calibration method, caveats and override configuration](../../docs/rust/CALIBRATION.md).
+Fixture rates at 0.80 are in [CALIBRATION.md](../../docs/rust/CALIBRATION.md). This pack sets no rule-level floor. The shipped default is 0.80. `jevlint-evals.json` records intended outcomes, not observed provider decisions. High fixture specificity does not establish real-project precision.

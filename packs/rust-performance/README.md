@@ -1,6 +1,6 @@
 # Rust performance pack
 
-`Bairum/rust-performance` is an **opt-in advisory** pack with two warning rules. It is not a default Rust baseline, a benchmark, a correctness certificate, or a guarantee of fewer allocations/syscalls or better runtime speed. Both rules permit abstention when the necessary evidence is unavailable.
+`Bairum/rust-performance` is an **opt-in advisory** pack with two warning rules. It is not a default Rust baseline, a benchmark, a correctness certificate, or a guarantee of fewer allocations/syscalls or better runtime speed. Missing evidence is not a violation.
 
 ## Research and sources
 
@@ -11,7 +11,9 @@
 
 API26 is supporting conditional reuse guidance here, not a blanket demand to expose every intermediate or a complete implementation of all public-API result-design cases. Repeated-materialization fixtures use invariant parsing and collect/sort preprocessing, not Clippy's simple `redundant_clone` pattern. Necessary snapshots, independent owned results, changing inputs and justified workload tradeoffs remain legitimate. Small-write exceptions include interactive round trips and an already-buffered sink. Flush completion is not file durability.
 
-Both descriptions contain only rule-specific criteria. [`guidance.md`](guidance.md), referenced by `pack.json`, supplies shared primary-unit judging, evidence and abstention requirements. Neither rule enables type/callee context or sets `minFailProbability`: fixtures make the std operations, consumer requirements and workload contract visible in the primary function. Missing hidden implementation context is not evidence that work or buffering is absent. An absent workload/performance contract passes these strict rules; uncertainty about a necessary fact under an established contract can instead justify abstention.
+Both descriptions contain only rule-specific criteria. [`guidance.md`](guidance.md), referenced by `pack.json`, supplies shared primary-unit judging and evidence requirements. Neither rule enables type/callee context or sets `minFailProbability`: fixtures make the std operations, consumer requirements and workload contract visible in the primary function. Missing hidden implementation context is not evidence that work or buffering is absent. An absent workload/performance contract passes.
+
+Each rule asks a 3-level score plus subject-gated violation checks. Fail probability is the minimum of those signals. `rust-perf-repeated-materialization` scores an owned rebuild inside a hot loop; the subject is a loop plus an owned-value call. `rust-perf-small-writes` scores repeated small writes to an unbuffered sink; the subject is a loop plus a write call.
 
 ## Applicability filters
 
@@ -56,7 +58,7 @@ The original invariant-parse, invariant-sort, owned-consumer, changing-snapshot,
 | `rust-perf-repeated-materialization` | 5: invariant parse, collect/sort, owned byte copying, service ingestion, upstream template rendering | 7: reused parse/sort, changing snapshots, independent owned consumers, no-contract variant, service exceptions, upstream fix | `fail_service.rs` / `pass_service.rs` (each at least 80 lines); only `scan_ingestion_batch` violates in the failing file |
 | `rust-perf-small-writes` | 6: byte/record export, formatted append, bulk TCP, upstream bootstrap, archive export | 11: buffered byte/record export, caller buffering, interactive protocols, in-memory vectors, bounded qualified streaming, few/large writes, no-contract variant, upstream fix, clean archive | `fail_archive.rs` / `pass_archive.rs` (each at least 80 lines); only `export_pending` violates in the failing file |
 
-The clean materialization service covers cheap `Arc`/`Rc` sharing, scratch capacity reuse, bounded cold setup/reservation and lock-release snapshot lifetime requirements. Small-write exceptions cover both passed-in and locally connected interactive streams. The no-contract fixtures preserve the corresponding failing code while removing its workload documentation, so missing contract evidence is calibrated as `pass`, not `abstain`.
+The clean materialization service covers cheap `Arc`/`Rc` sharing, scratch capacity reuse, bounded cold setup/reservation and lock-release snapshot lifetime requirements. Small-write exceptions cover both passed-in and locally connected interactive streams. The no-contract fixtures preserve the corresponding failing code while removing its workload documentation, so missing contract evidence is a pass.
 
 After installing a real committed pack and configuring a provider, the existing CLI can run its eval cases:
 
@@ -67,13 +69,4 @@ jevlint eval --packs --rule rust-perf-small-writes
 
 ## Verification status
 
-`python3 scripts/check-rust-packs.py --pack rust-performance` compiled all 29 isolated Rust 2021 fixture targets without errors or warnings. Faulty fixtures were never executed. Three real provider runs (`python3 scripts/check-rust-packs.py --eval --repeat 3`) measured fixture recall and specificity; the per-run results below treat below-floor failures as not reported. The table is choice confidence; the floors were not refit.
-
-| Rule | Recall @0.8 | Specificity @0.8 | Recommended override | Recall @override | Specificity @override |
-| --- | --- | --- | --- | --- | --- |
-| `rust-perf-repeated-materialization` | 0.13 | 1.00 | 0.45 | 0.80 | 1.00 |
-| `rust-perf-small-writes` | 1.00 | 1.00 | — | 1.00 | 1.00 |
-
-Repeated-materialization has low recall at `0.8`; its recommended override improves fixture recall but still misses cases. Small-writes' perfect fixture results do not guarantee real-project performance or precision. Recall is measured on fixtures; real-project precision and runtime speedups remain unmeasured.
-
-Global `minFailProbability` stays `0.8`; the pack has no rule-level `minFailProbability`. Only consuming projects may opt into recommended rule overlays, such as `{"id": "rust-perf-repeated-materialization", "minFailProbability": 0.45}`. An overlay replaces the rule floor, which overrides the global floor; `—` means keep `0.8`. Those recorded floors were fitted on the old choice-confidence metric and pack calibration will refit them; the field name is `minFailProbability`. Recommendations were fitted on the same fixtures and are starting points, not guarantees. See [calibration method, caveats and override configuration](../../docs/rust/CALIBRATION.md).
+Fixture rates at 0.80 are in [CALIBRATION.md](../../docs/rust/CALIBRATION.md). This pack sets no rule-level floor. The shipped default is 0.80. Fixture recall is not a runtime speedup.

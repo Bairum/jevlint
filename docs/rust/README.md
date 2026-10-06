@@ -14,12 +14,9 @@ the semantic workflow.
 The [coverage ledger](COVERAGE.md) maps every research candidate to implementation,
 native-tool ownership, or an explicit outstanding item and promotion trigger.
 Rule files and fixture compilation are not evidence of model precision.
-[Fixture calibration](CALIBRATION.md) now records three real-provider runs,
-measured recall/specificity, tradeoffs and optional per-rule project overrides.
-Readability separately records a tuning-set/in-sample audit of a held-out private
-Rust workspace (43 files, 958 units); its triage shaped the rules, so this is not
-held-out accuracy. Real-project precision for the semantic packs remains
-unmeasured before blocking adoption.
+The [2026-10-06 calibration](CALIBRATION.md) records fixture rates at the shipped
+0.80 fail-probability threshold, the decision experiment, labelled real-code
+precision, and held-out scans. No pack is a blocking gate.
 
 | Layer | Deliverable | Purpose |
 | --- | --- | --- |
@@ -55,22 +52,20 @@ sh scripts/check-rust.sh /path/to/rust-project -p server -p shared --skip-fmt
 # Compile all pack fixtures; deliberately bad/unsafe examples are never executed.
 python3 scripts/check-rust-packs.py
 
-# Compile and calibrate only the strict core, with three uncached provider runs.
+# Compile and score the strict core the way the 2026-10-06 table was recorded.
+# The runner's config default is 0.5; pass 0.8 to match shipped reporting.
 # Requires the built jevlint binary and its configured provider credentials.
-python3 scripts/check-rust-packs.py --eval --repeat 3 --pack rust-core \
-  --jevlint /path/to/jevlint
+python3 scripts/check-rust-packs.py --eval --repeat 2 --min-fail-probability 0.8 \
+  --pack rust-core --jevlint /path/to/jevlint
 
 # Optionally choose the JSON summary destination.
-python3 scripts/check-rust-packs.py --eval --repeat 3 --pack rust-core \
-  --jevlint /path/to/jevlint --summary /path/to/rust-core-summary.json
+python3 scripts/check-rust-packs.py --eval --repeat 2 --min-fail-probability 0.8 \
+  --pack rust-core --jevlint /path/to/jevlint --summary /path/to/rust-core-summary.json
 ```
 
-After the native baseline, consult [CALIBRATION.md](CALIBRATION.md) before
-selecting semantic rules or changing a consuming project's fail-probability floors.
-It includes the original six-pack baseline and the separately measured
-readability fixture calibration and tuning-set/in-sample audit, alongside the
-low-recall/false-positive caveats and optional overlay recommendations. Keep the
-global floor at 0.8; the packs ship no rule-level `minFailProbability`. Those recorded floors were fitted on the old choice-confidence metric and pack calibration will refit them; the field name is `minFailProbability`.
+After the native baseline, read [CALIBRATION.md](CALIBRATION.md) before
+treating a semantic pack as a gate. Packs ship no rule-level `minFailProbability`.
+The shipped default is 0.80.
 
 The native script accepts a project directory or `Cargo.toml`. It selects
 `--workspace` by default; repeated `-p` options select packages instead.
@@ -94,11 +89,8 @@ counts are per-run case counts: mismatches compare each run's result with the
 fixture expectation, while inconclusive counts include missing results from
 errors. Errors are also recorded separately. Per-rule fixture recall and
 specificity use majority outcomes; a metric with no fixture denominator is
-`null`. These corpus metrics, alongside abstain and below-confidence-floor
-counts, do not establish production accuracy. The [recorded calibration](CALIBRATION.md)
-also reports per-run recall/specificity under `check` reporting semantics; its
-recommended overrides are fitted on the same fixtures, not held-out project
-code. Compilation alone establishes neither precision nor recall.
+`null`. These corpus metrics do not establish production precision. See
+[CALIBRATION.md](CALIBRATION.md). Compilation alone establishes neither precision nor recall.
 
 ### Use a pack in a Rust project
 
