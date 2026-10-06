@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/codegirl-007/jevlint/internal/config"
-	"github.com/codegirl-007/jevlint/internal/parsing"
 )
 
 func privacyRule(id string) config.Rule {
@@ -189,7 +188,7 @@ func TestRuleExcludesCalleeSourceInMixedBatchesAndLocalization(t *testing.T) {
 				if strings.Contains(string(payload), "PRIVATE_CALLEE") || !strings.Contains(string(payload), "ALLOWED_CALLEE") {
 					t.Fatalf("excluded source or missing allowed context in %s: %s", rule.ID, payload)
 				}
-				localized = localized || batch.CodeUnit.Kind == parsing.CodeKindRegion
+				localized = localized || len(batch.Regions) > 0
 			case "permitted":
 				if !strings.Contains(string(payload), "PRIVATE_CALLEE") || !strings.Contains(string(payload), "ALLOWED_CALLEE") {
 					t.Fatalf("permitted callee context missing: %s", payload)

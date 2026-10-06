@@ -16,7 +16,7 @@ type fixtureBoundaryEvaluator struct {
 
 func (evaluator *fixtureBoundaryEvaluator) Evaluate(ctx context.Context, batch evaluation.Batch) (map[string]evaluation.Result, error) {
 	evaluator.calls.Add(1)
-	return fixedEvaluator{status: evaluation.StatusFail, confidence: 1}.Evaluate(ctx, batch)
+	return fixedEvaluator{status: evaluation.StatusFail, failProbability: 1}.Evaluate(ctx, batch)
 }
 
 func TestLoadRejectsFixtureEscapesBeforeEvaluation(t *testing.T) {

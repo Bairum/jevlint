@@ -10,14 +10,20 @@ import (
 )
 
 const (
-	cacheEntryVersion   = 1
+	cacheEntryVersion   = 2
 	cacheEntryExtension = ".json"
 )
 
-// ResultCache stores results under string keys.
+// CacheHit is the parsed answers and answering model stored for one request.
+type CacheHit struct {
+	Model   string
+	Answers map[string]QuestionAnswer
+}
+
+// ResultCache stores per-question answers under string keys.
 type ResultCache interface {
-	Get(string) (map[string]Result, bool)
-	Put(string, map[string]Result) bool
+	Get(string) (CacheHit, bool)
+	Put(string, CacheHit) bool
 	Clear() error
 }
 
@@ -26,11 +32,12 @@ type FileCache struct {
 	root string
 }
 
-// cacheEntry is the stored form of one set of results.
+// cacheEntry is the stored form of one set of answers.
 type cacheEntry struct {
-	Version   int               `json:"version"`
-	CreatedAt time.Time         `json:"createdAt"`
-	Results   map[string]Result `json:"results"`
+	Version   int                       `json:"version"`
+	CreatedAt time.Time                 `json:"createdAt"`
+	Model     string                    `json:"model"`
+	Answers   map[string]QuestionAnswer `json:"answers"`
 }
 
 // NewFileCache builds a cache for a project under the user cache directory.
@@ -64,21 +71,21 @@ func newFileCacheAt(root string) (*FileCache, error) {
 	return cache, nil
 }
 
-// Get reads the results stored under a key.
-func (cache *FileCache) Get(key string) (map[string]Result, bool) {
+// Get reads the answers stored under a key.
+func (cache *FileCache) Get(key string) (CacheHit, bool) {
 	path := filepath.Join(cache.root, key+cacheEntryExtension)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, false
+		return CacheHit{}, false
 	}
 	entry, err := decodeCacheEntry(data)
 	if err != nil {
 		if removeErr := os.Remove(path); removeErr != nil && !os.IsNotExist(removeErr) {
-			return nil, false
+			return CacheHit{}, false
 		}
-		return nil, false
+		return CacheHit{}, false
 	}
-	return cloneResults(entry.Results), true
+	return CacheHit{Model: entry.Model, Answers: cloneAnswers(entry.Answers)}, true
 }
 
 // decodeCacheEntry reads and checks one stored entry.
@@ -90,24 +97,24 @@ func decodeCacheEntry(data []byte) (cacheEntry, error) {
 	if entry.Version != cacheEntryVersion {
 		return cacheEntry{}, fmt.Errorf("unsupported cache entry version %d", entry.Version)
 	}
-	if len(entry.Results) == 0 {
+	if len(entry.Answers) == 0 || entry.Model == "" {
 		return cacheEntry{}, fmt.Errorf("invalid cache entry results")
 	}
-	for _, result := range entry.Results {
-		if err := result.Validate(); err != nil {
+	for _, answer := range entry.Answers {
+		if err := answer.validate(); err != nil {
 			return cacheEntry{}, fmt.Errorf("invalid cache entry results")
 		}
 	}
 	return entry, nil
 }
 
-// Put writes the results under a key.
-func (cache *FileCache) Put(key string, results map[string]Result) bool {
-	if len(results) == 0 {
+// Put writes the answers under a key.
+func (cache *FileCache) Put(key string, hit CacheHit) bool {
+	if len(hit.Answers) == 0 || hit.Model == "" {
 		return false
 	}
-	for _, result := range results {
-		if err := result.Validate(); err != nil {
+	for _, answer := range hit.Answers {
+		if err := answer.validate(); err != nil {
 			return false
 		}
 	}
@@ -117,7 +124,8 @@ func (cache *FileCache) Put(key string, results map[string]Result) bool {
 	data, err := json.Marshal(cacheEntry{
 		Version:   cacheEntryVersion,
 		CreatedAt: time.Now().UTC(),
-		Results:   results,
+		Model:     hit.Model,
+		Answers:   hit.Answers,
 	})
 	if err != nil {
 		return false
@@ -179,13 +187,4 @@ func (cache *FileCache) ensureRoot() error {
 		return fmt.Errorf("secure evaluation cache: %w", err)
 	}
 	return nil
-}
-
-// cloneResults copies a result map so callers cannot change the stored one.
-func cloneResults(results map[string]Result) map[string]Result {
-	cloned := make(map[string]Result, len(results))
-	for ruleID, result := range results {
-		cloned[ruleID] = result
-	}
-	return cloned
 }

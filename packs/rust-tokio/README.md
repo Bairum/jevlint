@@ -1,6 +1,6 @@
 # Optional Tokio semantic pack
 
-`Bairum/rust-tokio` is an opt-in, data-only pack for concrete Tokio lifecycle, cancellation, admission and lock-dependency contradictions. It is not a general async style pack or a proof of concurrency correctness. All seven rules use warning severity, Rust-only file matching, function units and abstention when an identified obligation cannot be decided from available evidence. Common evidence and primary-unit judging instructions live in [`guidance.md`](guidance.md), loaded once through the manifest. No rule-specific confidence thresholds are set.
+`Bairum/rust-tokio` is an opt-in, data-only pack for concrete Tokio lifecycle, cancellation, admission and lock-dependency contradictions. It is not a general async style pack or a proof of concurrency correctness. All seven rules use warning severity, Rust-only file matching, function units and abstention when an identified obligation cannot be decided from available evidence. Common evidence and primary-unit judging instructions live in [`guidance.md`](guidance.md), loaded once through the manifest. No rule-level `minFailProbability` is set.
 
 ## Source and runtime applicability
 
@@ -98,7 +98,7 @@ No tokio-util, filesystem/network feature or mock runtime is required. Capacitie
 
 All **98 isolated Rust 2021 fixture targets** passed the shared compile harness without compiler warnings. The focused `TestRustPackEvalCasesHaveApplicableUnits/rust-tokio` check also passed, confirming every case has a non-test function matching its rule's kinds and `sourceMatch`. Faulty fixtures were never executed, because some deliberately block or deadlock. Compilation and applicability establish syntax and subject selection, not judgment correctness.
 
-Three real provider-backed runs (`python3 scripts/check-rust-packs.py --eval --repeat 3`) measured fixture recall and specificity at global `minConfidence: 0.8`, with opaque fixture names. The table reports per-run decision metrics: below-floor failures are not reported, matching `check` behavior.
+Three real provider-backed runs (`python3 scripts/check-rust-packs.py --eval --repeat 3`) measured fixture recall and specificity at global choice-confidence floor 0.8; the floors were not refit. Opaque fixture names were used. The table reports per-run decision metrics: below-floor failures are not reported, matching `check` behavior.
 
 | Rule | Recall @0.8 | Specificity @0.8 | Recommended override | Recall @override | Specificity @override |
 | --- | --- | --- | --- | --- | --- |
@@ -112,4 +112,4 @@ Three real provider-backed runs (`python3 scripts/check-rust-packs.py --eval --r
 
 `rust-tokio-cancellation-progress`, `rust-tokio-required-task-ownership` and `rust-tokio-lock-dependency` are not yet useful even at the recommended overrides: fixture recall is only 0.17, 0.07 and 0.33 respectively. High fixture specificity does not compensate for these missed failures or establish real-project precision.
 
-All six Rust packs retain the global floor of **0.8** and contain no rule-level `minConfidence`; no pack-level floor changes were made. Only consuming projects may opt into the recommended overrides through project rule overlays such as `{"id": "rust-tokio-blocking-boundary", "minConfidence": 0.40}`. An overlay replaces the rule floor, which overrides the global floor; `—` means keep 0.8. Overrides were fitted on these same fixtures and are starting points, not guarantees. Real-project precision remains unmeasured. `jevlint-evals.json` records intended outcomes, not observed provider decisions. See [calibration method, caveats and override configuration](../../docs/rust/CALIBRATION.md).
+All six Rust packs retain the global floor of **0.8** and contain no rule-level `minFailProbability`; no pack-level floor changes were made. Only consuming projects may opt into the recommended overrides through project rule overlays such as `{"id": "rust-tokio-blocking-boundary", "minFailProbability": 0.40}`. An overlay replaces the rule floor, which overrides the global floor; `—` means keep 0.8. Those recorded floors were fitted on the old choice-confidence metric and pack calibration will refit them; the field name is `minFailProbability`. Overrides were fitted on these same fixtures and are starting points, not guarantees. Real-project precision remains unmeasured. `jevlint-evals.json` records intended outcomes, not observed provider decisions. See [calibration method, caveats and override configuration](../../docs/rust/CALIBRATION.md).

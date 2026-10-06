@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -44,8 +45,8 @@ type Options struct {
 	Progress func(done, total int)
 }
 
-// Decisions counts primary rule answers. Reported failures reached the
-// confidence floor; below-floor failures did not.
+// Decisions counts primary rule answers. Reported and belowFloor follow the
+// fail-probability threshold, not the status alone.
 type Decisions struct {
 	Pass       int `json:"pass"`
 	Fail       int `json:"fail"`
@@ -64,37 +65,41 @@ type RuleReport struct {
 
 // Report is the outcome of a run.
 type Report struct {
-	ScannedFiles int                    `json:"scannedFiles"`
-	CodeUnits    int                    `json:"codeUnits"`
-	Evaluations  int                    `json:"evaluations"`
-	Cache        *evaluation.CacheStats `json:"cache,omitempty"`
-	Rules        map[string]RuleReport  `json:"rules"`
-	Findings     []Finding              `json:"findings"`
-	BelowFloor   []BelowFloorFinding    `json:"belowFloor,omitempty"`
-	SourcePaths  []string               `json:"-"`
+	ScannedFiles   int                      `json:"scannedFiles"`
+	CodeUnits      int                      `json:"codeUnits"`
+	Evaluations    int                      `json:"evaluations"`
+	Cache          *evaluation.CacheStats   `json:"cache,omitempty"`
+	Models         []string                 `json:"models"`
+	Usage          evaluation.Usage         `json:"usage"`
+	Rules          map[string]RuleReport    `json:"rules"`
+	Findings       []Finding                `json:"findings"`
+	BelowFloor     []BelowFloorFinding      `json:"belowFloor,omitempty"`
+	Oversized      []evaluation.Oversized   `json:"oversized,omitempty"`
+	ContextDropped []evaluation.ContextDrop `json:"contextDropped,omitempty"`
+	SourcePaths    []string                 `json:"-"`
 }
 
-// Finding is one rule failure for one piece of code.
+// Finding is one reported or below-floor result for one piece of code.
 type Finding struct {
-	RuleID      string            `json:"ruleId"`
-	Severity    config.Severity   `json:"severity"`
-	Status      evaluation.Status `json:"status"`
-	Path        string            `json:"path"`
-	Language    string            `json:"language"`
-	Kind        parsing.CodeKind  `json:"kind"`
-	Name        string            `json:"name"`
-	StartLine   uint              `json:"startLine"`
-	EndLine     uint              `json:"endLine"`
-	StartColumn uint              `json:"startColumn"`
-	EndColumn   uint              `json:"endColumn"`
-	Snippet     string            `json:"snippet"`
-	Locations   []Location        `json:"locations,omitempty"`
+	RuleID          string            `json:"ruleId"`
+	Severity        config.Severity   `json:"severity"`
+	Status          evaluation.Status `json:"status"`
+	Path            string            `json:"path"`
+	Language        string            `json:"language"`
+	Kind            parsing.CodeKind  `json:"kind"`
+	Name            string            `json:"name"`
+	StartLine       uint              `json:"startLine"`
+	EndLine         uint              `json:"endLine"`
+	StartColumn     uint              `json:"startColumn"`
+	EndColumn       uint              `json:"endColumn"`
+	Snippet         string            `json:"snippet"`
+	Locations       []Location        `json:"locations,omitempty"`
+	FailProbability float64           `json:"failProbability"`
 }
 
-// BelowFloorFinding is a failure that did not reach the confidence floor.
+// BelowFloorFinding is a notable result that did not reach the reporting threshold.
 type BelowFloorFinding struct {
 	Finding
-	Confidence float64 `json:"confidence"`
 }
 
 // Location is a smaller place inside a finding.
@@ -129,18 +134,18 @@ type pendingFinding struct {
 	unit    parsing.CodeUnit
 }
 
-// localizationJob is one attempt to point at the exact place that failed.
+// localizationJob is one request locating a failed unit.
 type localizationJob struct {
 	findingIndex int
 	rule         config.Rule
 	parent       parsing.CodeUnit
-	region       parsing.Region
+	regions      []parsing.Region
 }
 
-// localizationOutcome is the place found for one finding.
+// localizationOutcome is the places found for one finding.
 type localizationOutcome struct {
 	findingIndex int
-	location     *Location
+	locations    []Location
 }
 
 // checkSetup holds the resolved settings for a run.
@@ -177,6 +182,10 @@ func (runner Runner) Evaluate(ctx context.Context, cfg config.Config, options Op
 	cacheBefore, hasCacheStats := evaluation.CacheStats{}, false
 	if provider, ok := runner.Evaluator.(evaluation.CacheStatsProvider); ok {
 		cacheBefore, hasCacheStats = provider.CacheStats(), true
+	}
+	metaBefore := evaluation.RunMeta{}
+	if provider, ok := runner.Evaluator.(evaluation.RunMetaProvider); ok {
+		metaBefore = provider.RunMeta()
 	}
 	setup, err := runner.prepareCheck(options)
 	if err != nil {
@@ -238,6 +247,11 @@ func (runner Runner) Evaluate(ctx context.Context, cfg config.Config, options Op
 			report.Cache = &cacheDelta
 		}
 	}
+	if provider, ok := runner.Evaluator.(evaluation.RunMetaProvider); ok {
+		applyRunMeta(&report, metaBefore, provider.RunMeta())
+	} else {
+		report.Models = []string{}
+	}
 	return report, nil
 }
 
@@ -251,6 +265,38 @@ func subtractCacheStats(
 		Misses: after.Misses - before.Misses,
 		Writes: after.Writes - before.Writes,
 	}
+}
+func applyRunMeta(report *Report, before, after evaluation.RunMeta) {
+	report.Models = modelsSince(before.Models, after.Models)
+	report.Usage = evaluation.Usage{
+		Requests:     after.Usage.Requests - before.Usage.Requests,
+		InputTokens:  after.Usage.InputTokens - before.Usage.InputTokens,
+		OutputTokens: after.Usage.OutputTokens - before.Usage.OutputTokens,
+	}
+	if len(after.Oversized) > len(before.Oversized) {
+		report.Oversized = append([]evaluation.Oversized(nil), after.Oversized[len(before.Oversized):]...)
+	}
+	if len(after.ContextDropped) > len(before.ContextDropped) {
+		report.ContextDropped = append(
+			[]evaluation.ContextDrop(nil),
+			after.ContextDropped[len(before.ContextDropped):]...,
+		)
+	}
+}
+
+func modelsSince(before, after []string) []string {
+	seen := make(map[string]struct{}, len(before))
+	for _, name := range before {
+		seen[name] = struct{}{}
+	}
+	added := make([]string, 0)
+	for _, name := range after {
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		added = append(added, name)
+	}
+	return added
 }
 
 // prepareCheck checks the settings and resolves the project root.
@@ -327,7 +373,7 @@ func (runner Runner) planEvaluations(
 		parsing.ResolveCallees(functionUnits(extracted))
 	}
 
-	report := Report{Findings: make([]Finding, 0)}
+	report := Report{Findings: make([]Finding, 0), Models: []string{}}
 	jobs := make([]evaluationJob, 0)
 	for _, planned := range extracted {
 		if len(planned.applicable) == 0 {
@@ -810,6 +856,9 @@ func evaluateJob(
 		Rules:    job.rules,
 		CodeUnit: job.unit,
 	})
+	if errors.Is(err, evaluation.ErrOversized) {
+		return evaluationOutcome{}, nil
+	}
 	if err != nil {
 		return evaluationOutcome{}, fmt.Errorf(
 			"evaluate %s:%d: %w",
@@ -844,8 +893,9 @@ func evaluateJob(
 		}
 		outcome.evaluations++
 
-		belowFloor := result.Status == evaluation.StatusFail &&
-			result.Confidence < cfg.ConfidenceFloor(rule)
+		floor := cfg.FailProbabilityFloor(rule)
+		reported := result.FailProbability >= floor
+		notable := result.FailProbability >= floor/2 && result.FailProbability < floor
 		if job.unit.Kind != parsing.CodeKindRegion {
 			decisions := Decisions{}
 			switch result.Status {
@@ -853,15 +903,15 @@ func evaluateJob(
 				decisions.Pass = 1
 			case evaluation.StatusFail:
 				decisions.Fail = 1
-				if belowFloor {
-					decisions.BelowFloor = 1
-				} else {
-					decisions.Reported = 1
-				}
 			case evaluation.StatusSkip:
 				decisions.Skip = 1
 			case evaluation.StatusAbstain:
 				decisions.Abstain = 1
+			}
+			if reported {
+				decisions.Reported = 1
+			} else if notable {
+				decisions.BelowFloor = 1
 			}
 			outcome.rules[rule.ID] = RuleReport{
 				Description: rule.Description,
@@ -869,29 +919,27 @@ func evaluateJob(
 				Decisions:   decisions,
 			}
 		}
-		if result.Status != evaluation.StatusFail {
+		if !reported && !notable {
 			continue
 		}
 		finding := Finding{
-			RuleID:      rule.ID,
-			Severity:    rule.Severity,
-			Status:      result.Status,
-			Path:        job.unit.Path,
-			Language:    job.unit.Language.String(),
-			Kind:        job.unit.Kind,
-			Name:        job.unit.Name,
-			StartLine:   job.unit.StartLine,
-			EndLine:     job.unit.EndLine,
-			StartColumn: job.unit.StartColumn,
-			EndColumn:   job.unit.EndColumn,
-			Snippet:     job.unit.Source,
-			Locations:   directUnitLocations(job.unit),
+			RuleID:          rule.ID,
+			Severity:        rule.Severity,
+			Status:          result.Status,
+			Path:            job.unit.Path,
+			Language:        job.unit.Language.String(),
+			Kind:            job.unit.Kind,
+			Name:            job.unit.Name,
+			StartLine:       job.unit.StartLine,
+			EndLine:         job.unit.EndLine,
+			StartColumn:     job.unit.StartColumn,
+			EndColumn:       job.unit.EndColumn,
+			Snippet:         job.unit.Source,
+			Locations:       directUnitLocations(job.unit),
+			FailProbability: result.FailProbability,
 		}
-		if belowFloor {
-			outcome.belowFloor = append(outcome.belowFloor, BelowFloorFinding{
-				Finding:    finding,
-				Confidence: result.Confidence,
-			})
+		if !reported {
+			outcome.belowFloor = append(outcome.belowFloor, BelowFloorFinding{Finding: finding})
 			continue
 		}
 		outcome.findings = append(outcome.findings, pendingFinding{
@@ -920,6 +968,7 @@ func directUnitLocations(unit parsing.CodeUnit) []Location {
 }
 
 // localizeFindings points at the exact places inside failed units.
+// One request covers every matching region of a finding.
 func localizeFindings(
 	ctx context.Context,
 	evaluator evaluation.Evaluator,
@@ -941,107 +990,99 @@ func localizeFindings(
 		return 0, err
 	}
 	for _, outcome := range outcomes {
-		if outcome.location != nil {
-			item := &findings[outcome.findingIndex]
-			item.finding.Locations = append(item.finding.Locations, *outcome.location)
-		}
+		item := &findings[outcome.findingIndex]
+		item.finding.Locations = append(item.finding.Locations, outcome.locations...)
 	}
 	return len(jobs), nil
 }
 
-// localizationJobs builds one job for each place a rule wants to point at.
+// localizationJobs builds one job per finding that has matching regions.
 func localizationJobs(findings []pendingFinding) []localizationJob {
 	jobs := make([]localizationJob, 0)
 	for findingIndex, item := range findings {
+		regions := make([]parsing.Region, 0)
 		for _, region := range item.unit.Regions {
 			if !localizesTo(item.rule, region.Category) {
 				continue
 			}
-			jobs = append(jobs, localizationJob{
-				findingIndex: findingIndex,
-				rule:         item.rule,
-				parent:       item.unit,
-				region:       region,
-			})
+			regions = append(regions, region)
+			if len(regions) == 24 {
+				break
+			}
 		}
+		if len(regions) == 0 {
+			continue
+		}
+		jobs = append(jobs, localizationJob{
+			findingIndex: findingIndex,
+			rule:         item.rule,
+			parent:       item.unit,
+			regions:      regions,
+		})
 	}
 	return jobs
 }
 
-// evaluateLocalizationJob checks one place and returns it when it failed.
+// evaluateLocalizationJob asks one noul per region and keeps those at the threshold.
 func evaluateLocalizationJob(
 	ctx context.Context,
 	evaluator evaluation.Evaluator,
 	job localizationJob,
 	cfg config.Config,
 ) (localizationOutcome, error) {
-	candidate := parsing.CodeUnit{
-		Kind:         parsing.CodeKindRegion,
-		Name:         job.parent.Name + ":" + string(job.region.Kind),
-		Language:     job.parent.Language,
-		Path:         job.parent.Path,
-		Test:         job.parent.Test,
-		Source:       job.region.Source,
-		ParentSource: job.parent.Source,
-		StartLine:    job.region.StartLine,
-		EndLine:      job.region.EndLine,
-		StartColumn:  job.region.StartColumn,
-		EndColumn:    job.region.EndColumn,
-		StartByte:    job.region.StartByte,
-		EndByte:      job.region.EndByte,
-		RelatedTypes: job.parent.RelatedTypes,
-	}
-	if job.rule.Context.Callees {
-		callees, err := allowedCallees(job.parent.Resolved, job.rule)
-		if err != nil {
-			return localizationOutcome{}, err
-		}
-		candidate.Callees = callees
-	}
 	results, err := evaluator.Evaluate(ctx, evaluation.Batch{
 		Rules:    []config.Rule{job.rule},
-		CodeUnit: candidate,
+		CodeUnit: job.parent,
+		Regions:  job.regions,
 	})
+	if errors.Is(err, evaluation.ErrOversized) {
+		return localizationOutcome{findingIndex: job.findingIndex}, nil
+	}
 	if err != nil {
 		return localizationOutcome{}, fmt.Errorf(
 			"localize rule %q at %s:%d: %w",
 			job.rule.ID,
 			job.parent.Path,
-			job.region.StartLine,
+			job.parent.StartLine,
 			err,
 		)
 	}
-	result, ok := results[job.rule.ID]
-	if !ok {
-		return localizationOutcome{}, fmt.Errorf(
-			"invalid localization result for rule %q at %s:%d: result is missing",
-			job.rule.ID,
-			job.parent.Path,
-			job.region.StartLine,
-		)
-	}
-	if err := result.Validate(); err != nil {
-		return localizationOutcome{}, fmt.Errorf(
-			"invalid localization result for rule %q at %s:%d: %w",
-			job.rule.ID,
-			job.parent.Path,
-			job.region.StartLine,
-			err,
-		)
-	}
-
+	floor := cfg.FailProbabilityFloor(job.rule)
 	outcome := localizationOutcome{findingIndex: job.findingIndex}
-	if result.Status == evaluation.StatusFail &&
-		result.Confidence >= cfg.ConfidenceFloor(job.rule) {
-		outcome.location = &Location{
-			Category:    job.region.Category.String(),
-			Kind:        string(job.region.Kind),
-			Source:      job.region.Source,
-			StartLine:   job.region.StartLine,
-			EndLine:     job.region.EndLine,
-			StartColumn: job.region.StartColumn,
-			EndColumn:   job.region.EndColumn,
+	for index, region := range job.regions {
+		id := fmt.Sprintf("r%d", index)
+		result, ok := results[id]
+		if !ok {
+			return localizationOutcome{}, fmt.Errorf(
+				"invalid localization result for rule %q region %s at %s:%d: result is missing",
+				job.rule.ID,
+				id,
+				job.parent.Path,
+				region.StartLine,
+			)
 		}
+		if err := result.Validate(); err != nil {
+			return localizationOutcome{}, fmt.Errorf(
+				"invalid localization result for rule %q region %s at %s:%d: %w",
+				job.rule.ID,
+				id,
+				job.parent.Path,
+				region.StartLine,
+				err,
+			)
+		}
+		if result.FailProbability < floor {
+			continue
+		}
+		outcome.locations = append(outcome.locations, Location{
+			Category:    region.Category.String(),
+			Kind:        string(region.Kind),
+			Source:      region.Source,
+			StartLine:   region.StartLine,
+			EndLine:     region.EndLine,
+			StartColumn: region.StartColumn,
+			EndColumn:   region.EndColumn,
+		})
 	}
 	return outcome, nil
 }
@@ -1060,7 +1101,7 @@ func localizesTo(rule config.Rule, category parsing.CodeKind) bool {
 // HasFailures reports whether a reported failure meets the severity threshold.
 func (report Report) HasFailures(threshold config.Severity) bool {
 	for _, finding := range report.Findings {
-		if finding.Status == evaluation.StatusFail && finding.Severity >= threshold {
+		if finding.Severity >= threshold {
 			return true
 		}
 	}

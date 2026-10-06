@@ -1,7 +1,6 @@
 package evaluation
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -9,7 +8,7 @@ import (
 
 const (
 	defaultBaseURL = "https://api.typesafe.ai"
-	defaultModel   = "jev-latest"
+	defaultModel   = "jev-1.13.0"
 )
 
 // TypeSafeProvider talks to TypeSafe's Jev over the SystemOne API.
@@ -44,16 +43,15 @@ func (TypeSafeProvider) Configure(options *Options, getenv func(string) string) 
 // ValidateQuestions applies no extra limits.
 func (TypeSafeProvider) ValidateQuestions(map[string]question) error { return nil }
 
+// MaxQuestions applies no question cap.
+func (TypeSafeProvider) MaxQuestions() int { return 0 }
+
 // MaxBodyBytes applies no explicit body cap.
 func (TypeSafeProvider) MaxBodyBytes() int { return 0 }
 
-// Answers reads the top-level answers from a Jev response.
-func (TypeSafeProvider) Answers(body []byte) (map[string]choiceAnswer, error) {
-	var response systemOneResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
-	}
-	return response.Answers, nil
+// Answers reads the model, answers, and usage from a Jev response.
+func (TypeSafeProvider) Answers(body []byte) (serviceResponse, error) {
+	return parseServiceResponse(body)
 }
 
 // ResponseError reads Jev's {"error": "..."} shape.
@@ -76,8 +74,3 @@ func (TypeSafeProvider) DescribeCredential(key string) string {
 
 // Headers returns no extra request headers.
 func (TypeSafeProvider) Headers() map[string]string { return nil }
-
-// systemOneResponse is the body returned by a Jev/SystemOne service.
-type systemOneResponse struct {
-	Answers map[string]choiceAnswer `json:"answers"`
-}

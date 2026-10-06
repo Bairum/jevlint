@@ -281,10 +281,10 @@ there were **4 abstain decisions** and **264 below-floor fail decisions**.
 These majority aggregates differ from the per-run reporting metrics in the
 [complete rule table and method](CALIBRATION.md).
 
-The global floor stays **0.8**, and no pack rule sets `minConfidence`.
+The global floor stays **0.8**, and no pack rule sets `minFailProbability`.
 Recommended consuming-project overrides improve fixture recall for some
 rules; a rule floor replaces and overrides the global floor, not a maximum
-with it. The overrides were fitted on these same fixtures, which double as
+with it. Those recorded floors were fitted on the old choice-confidence metric and pack calibration will refit them; the field name is `minFailProbability`. The overrides were fitted on these same fixtures, which double as
 the calibration set. Only three runs were measured; **real-project precision
 is still unmeasured**. The earlier **42/42** result was inflated by fixture
 comments and verdict-bearing file names reaching the model, so it is not

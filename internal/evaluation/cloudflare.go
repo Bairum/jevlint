@@ -1,7 +1,6 @@
 package evaluation
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -125,22 +124,15 @@ func (CloudflareProvider) ValidateQuestions(questions map[string]question) error
 	return nil
 }
 
+// MaxQuestions is Cloudflare's per-request question cap.
+func (CloudflareProvider) MaxQuestions() int { return maxCloudflareQuestions }
+
 // MaxBodyBytes caps the request body at Cloudflare's limit.
 func (CloudflareProvider) MaxBodyBytes() int { return maxCloudflareBodyBytes }
 
-// Answers reads the answers from Cloudflare's {"result": {...}} envelope.
-func (CloudflareProvider) Answers(body []byte) (map[string]choiceAnswer, error) {
-	var response envelopeResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
-	}
-	if response.Answers != nil {
-		return response.Answers, nil
-	}
-	if response.Result != nil {
-		return response.Result.Answers, nil
-	}
-	return nil, nil
+// Answers reads the model, answers, and usage from Cloudflare's envelope.
+func (CloudflareProvider) Answers(body []byte) (serviceResponse, error) {
+	return parseServiceResponse(body)
 }
 
 // ResponseError reads Cloudflare's errors[] shape and adds an actionable hint.
@@ -234,11 +226,4 @@ func errorHint(code int) string {
 	default:
 		return ""
 	}
-}
-
-// envelopeResponse handles hosts such as Cloudflare Workers AI that wrap the
-// SystemOne body in a "result" field.
-type envelopeResponse struct {
-	Answers map[string]choiceAnswer `json:"answers"`
-	Result  *systemOneResponse      `json:"result"`
 }

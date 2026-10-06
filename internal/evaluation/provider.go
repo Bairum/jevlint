@@ -20,10 +20,12 @@ type Provider interface {
 	Configure(options *Options, getenv func(string) string) error
 	// ValidateQuestions checks a batch against the provider's limits.
 	ValidateQuestions(questions map[string]question) error
+	// MaxQuestions is the provider's question cap, or 0 for no cap.
+	MaxQuestions() int
 	// MaxBodyBytes caps the request body size, or 0 for no explicit cap.
 	MaxBodyBytes() int
-	// Answers extracts the answers from a response body.
-	Answers(body []byte) (map[string]choiceAnswer, error)
+	// Answers extracts the model, answers, and usage from a response body.
+	Answers(body []byte) (serviceResponse, error)
 	// ResponseError turns a failed response into an error.
 	ResponseError(status int, headers http.Header, body []byte) error
 	// DescribeCredential names the credential without revealing it.

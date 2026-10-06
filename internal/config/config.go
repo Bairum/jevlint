@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,12 +13,20 @@ import (
 	"strings"
 )
 
+const (
+	// DefaultMinFailProbability is the reporting threshold when neither the
+	// rule nor the config sets one.
+	DefaultMinFailProbability = 0.5
+	// MinConfidenceReplaced is the decode error for the removed field.
+	MinConfidenceReplaced = `minConfidence was replaced by minFailProbability; see README "Reporting threshold"`
+)
+
 // Config is the rule file loaded from disk.
 type Config struct {
-	Languages     map[string]Language `json:"languages"`
-	MinConfidence *float64            `json:"minConfidence,omitempty"`
-	Packs         []PackRef           `json:"packs,omitempty"`
-	Rules         []Rule              `json:"rules,omitempty"`
+	Languages          map[string]Language `json:"languages"`
+	MinFailProbability *float64            `json:"minFailProbability,omitempty"`
+	Packs              []PackRef           `json:"packs,omitempty"`
+	Rules              []Rule              `json:"rules,omitempty"`
 }
 
 type PackRef struct {
@@ -37,23 +46,33 @@ type Language struct {
 	Regions            map[string][]string `json:"regions,omitempty"`
 }
 
+// Check is one yes/no component of a decomposed rule.
+type Check struct {
+	ID       string `json:"id"`
+	Question string `json:"question"`
+	Yes      string `json:"yes,omitempty"`
+	No       string `json:"no,omitempty"`
+	FailWhen bool   `json:"failWhen"`
+}
+
 // Rule describes one check, the code it covers, and how it is reported.
 type Rule struct {
-	ID            string       `json:"id"`
-	Description   string       `json:"description"`
-	Severity      Severity     `json:"severity,omitempty"`
-	Include       []string     `json:"include,omitempty"`
-	Exclude       []string     `json:"exclude,omitempty"`
-	SourceMatch   []string     `json:"sourceMatch,omitempty"`
-	Guidance      string       `json:"guidance,omitempty"`
-	IncludeTests  bool         `json:"includeTests,omitempty"`
-	Exceptions    []string     `json:"exceptions,omitempty"`
-	Kinds         []TargetKind `json:"kinds,omitempty"`
-	Localize      []TargetKind `json:"localize,omitempty"`
-	MinConfidence *float64     `json:"minConfidence,omitempty"`
-	AllowSkip     bool         `json:"allowSkip,omitempty"`
-	AllowAbstain  bool         `json:"allowAbstain,omitempty"`
-	Context       RuleContext  `json:"context,omitempty"`
+	ID                 string       `json:"id"`
+	Description        string       `json:"description"`
+	Severity           Severity     `json:"severity,omitempty"`
+	Include            []string     `json:"include,omitempty"`
+	Exclude            []string     `json:"exclude,omitempty"`
+	SourceMatch        []string     `json:"sourceMatch,omitempty"`
+	Guidance           string       `json:"guidance,omitempty"`
+	IncludeTests       bool         `json:"includeTests,omitempty"`
+	Exceptions         []string     `json:"exceptions,omitempty"`
+	Kinds              []TargetKind `json:"kinds,omitempty"`
+	Localize           []TargetKind `json:"localize,omitempty"`
+	MinFailProbability *float64     `json:"minFailProbability,omitempty"`
+	AllowSkip          bool         `json:"allowSkip,omitempty"`
+	AllowAbstain       bool         `json:"allowAbstain,omitempty"`
+	Context            RuleContext  `json:"context,omitempty"`
+	Checks             []Check      `json:"checks,omitempty"`
 }
 
 // RuleContext asks for extra material to send with a rule.
@@ -230,10 +249,17 @@ func Load(path string) (Config, error) {
 
 // Decode reads and checks the rule file from a reader.
 func Decode(reader io.Reader) (Config, error) {
-	var cfg Config
-	decoder := json.NewDecoder(reader)
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return Config{}, fmt.Errorf("decode config: %w", err)
+	}
+	if err := RejectMinConfidence(data); err != nil {
+		return Config{}, fmt.Errorf("decode config: %w", err)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 
+	var cfg Config
 	if err := decoder.Decode(&cfg); err != nil {
 		return Config{}, fmt.Errorf("decode config: %w", err)
 	}
@@ -252,20 +278,48 @@ func Decode(reader io.Reader) (Config, error) {
 	return cfg, nil
 }
 
-// MinimumConfidence returns the global confidence floor, or zero when unset.
-func (cfg Config) MinimumConfidence() float64 {
-	if cfg.MinConfidence == nil {
-		return 0
+// RejectMinConfidence reports the removed field anywhere in a config or pack.
+func RejectMinConfidence(data []byte) error {
+	var probe any
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return nil
 	}
-	return *cfg.MinConfidence
+	if hasMinConfidence(probe) {
+		return errors.New(MinConfidenceReplaced)
+	}
+	return nil
 }
 
-// ConfidenceFloor returns the confidence floor for a rule.
-func (cfg Config) ConfidenceFloor(rule Rule) float64 {
-	if rule.MinConfidence != nil {
-		return *rule.MinConfidence
+func hasMinConfidence(value any) bool {
+	switch typed := value.(type) {
+	case map[string]any:
+		if _, ok := typed["minConfidence"]; ok {
+			return true
+		}
+		for _, child := range typed {
+			if hasMinConfidence(child) {
+				return true
+			}
+		}
+	case []any:
+		for _, child := range typed {
+			if hasMinConfidence(child) {
+				return true
+			}
+		}
 	}
-	return cfg.MinimumConfidence()
+	return false
+}
+
+// FailProbabilityFloor returns the reporting threshold for a rule.
+func (cfg Config) FailProbabilityFloor(rule Rule) float64 {
+	if rule.MinFailProbability != nil {
+		return *rule.MinFailProbability
+	}
+	if cfg.MinFailProbability != nil {
+		return *cfg.MinFailProbability
+	}
+	return DefaultMinFailProbability
 }
 
 func Write(path string, cfg Config) error {
@@ -332,7 +386,7 @@ func (cfg Config) Validate() error {
 	if err := validateLanguages(cfg.Languages); err != nil {
 		return err
 	}
-	if err := validateMinConfidence(cfg.MinConfidence); err != nil {
+	if err := validateFailProbability(cfg.MinFailProbability); err != nil {
 		return err
 	}
 	if err := validatePackRefs(cfg.Packs); err != nil {
@@ -348,8 +402,11 @@ func (cfg Config) Validate() error {
 			return fmt.Errorf("duplicate rule id %q", rule.ID)
 		}
 		ids[rule.ID] = struct{}{}
-		if err := validateMinConfidence(rule.MinConfidence); err != nil {
-			return fmt.Errorf("%s.minConfidence must be between 0 and 1", prefix)
+		if err := validateFailProbability(rule.MinFailProbability); err != nil {
+			return fmt.Errorf("%s.minFailProbability must be between 0 and 1", prefix)
+		}
+		if err := ValidateChecks(rule, prefix); err != nil {
+			return err
 		}
 		if len(cfg.Packs) > 0 && !ruleLooksComplete(rule) {
 			if err := validateRulePatterns(rule, prefix); err != nil {
@@ -426,13 +483,47 @@ func ValidatePackSHA(sha string) error {
 	return nil
 }
 
-// validateMinConfidence checks that a confidence floor is between zero and one.
-func validateMinConfidence(value *float64) error {
+// validateFailProbability checks that a reporting threshold is between zero and one.
+func validateFailProbability(value *float64) error {
 	if value == nil {
 		return nil
 	}
 	if *value < 0 || *value > 1 {
-		return errors.New("minConfidence must be between 0 and 1")
+		return errors.New("minFailProbability must be between 0 and 1")
+	}
+	return nil
+}
+
+var checkID = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,40}$`)
+
+// ValidateChecks checks a decomposed rule. A rule without checks is unchanged.
+func ValidateChecks(rule Rule, prefix string) error {
+	if len(rule.Checks) == 0 {
+		return nil
+	}
+	if len(rule.Exceptions) > 0 || rule.AllowSkip || rule.AllowAbstain {
+		return fmt.Errorf("%s with checks must not set exceptions, allowSkip, or allowAbstain", prefix)
+	}
+	seen := make(map[string]struct{}, len(rule.Checks))
+	failing := false
+	for index, check := range rule.Checks {
+		checkPrefix := fmt.Sprintf("%s.checks[%d]", prefix, index)
+		if !checkID.MatchString(check.ID) {
+			return fmt.Errorf("%s.id must match %s", checkPrefix, checkID.String())
+		}
+		if _, exists := seen[check.ID]; exists {
+			return fmt.Errorf("%s.id %q is duplicated", checkPrefix, check.ID)
+		}
+		seen[check.ID] = struct{}{}
+		if strings.TrimSpace(check.Question) == "" {
+			return fmt.Errorf("%s.question is required", checkPrefix)
+		}
+		if check.FailWhen {
+			failing = true
+		}
+	}
+	if !failing {
+		return fmt.Errorf("%s.checks must include at least one failWhen check", prefix)
 	}
 	return nil
 }

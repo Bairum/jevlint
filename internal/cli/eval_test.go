@@ -46,7 +46,7 @@ func TestEvalReportsJSONWithConfidence(t *testing.T) {
 				"database-joins": {
 					"type": "choice",
 					"choice": "fail",
-					"confidence": 0.92
+					"probabilities": {"fail": 0.92, "pass": 0.08}
 				}
 			}
 		}`)
@@ -77,8 +77,8 @@ func TestEvalReportsJSONWithConfidence(t *testing.T) {
 	if report.Matched != 1 || report.Total != 1 {
 		t.Fatalf("report = %#v", report)
 	}
-	if report.Cases[0].Confidence == nil || *report.Cases[0].Confidence != 0.92 {
-		t.Fatalf("confidence = %v", report.Cases[0].Confidence)
+	if report.Cases[0].FailProbability != 0.92 {
+		t.Fatalf("failProbability = %v", report.Cases[0].FailProbability)
 	}
 }
 
@@ -135,8 +135,8 @@ func TestEvalFiltersRuleFlag(t *testing.T) {
 		fmt.Fprint(writer, `{
 			"model": "jev-test",
 			"answers": {
-				"database-joins": {"type": "choice", "choice": "pass", "confidence": 1},
-				"naming": {"type": "choice", "choice": "fail", "confidence": 1}
+				"database-joins": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}},
+				"naming": {"type": "choice", "choice": "fail", "probabilities": {"fail": 1, "pass": 0}}
 			}
 		}`)
 	}))
@@ -358,7 +358,7 @@ func TestEvalReusesCacheOnSecondRun(t *testing.T) {
 		fmt.Fprint(writer, `{
 			"model": "jev-test",
 			"answers": {
-				"database-joins": {"type": "choice", "choice": "pass", "confidence": 1}
+				"database-joins": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}}
 			}
 		}`)
 	}))
@@ -478,7 +478,7 @@ func TestEvalInconclusiveExitsOne(t *testing.T) {
 	})
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(writer, `{"answers":{"database-joins":{"type":"choice","choice":"skip","confidence":0.9}}}`)
+		fmt.Fprint(writer, `{"answers":{"database-joins":{"type":"choice","choice":"skip","probabilities":{"skip":0.9,"fail":0.1}}}}`)
 	}))
 	defer server.Close()
 	setEvalEnv(t, server.URL)
@@ -517,7 +517,7 @@ func TestEvalVerboseJSONIncludesUnits(t *testing.T) {
 		writer.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(writer, `{
 			"model": "jev-test",
-			"answers": {"database-joins": {"type": "choice", "choice": "fail", "confidence": 0.92}}
+			"answers": {"database-joins": {"type": "choice", "choice": "fail", "probabilities": {"fail": 0.92, "pass": 0.08}}}
 		}`)
 	}))
 	defer server.Close()
@@ -542,8 +542,8 @@ func TestEvalVerboseJSONIncludesUnits(t *testing.T) {
 	if !bytes.Contains(verbose, []byte(`"units"`)) {
 		t.Fatalf("verbose JSON omits units: %s", verbose)
 	}
-	if !bytes.Contains(verbose, []byte(`"confidence": 0.92`)) {
-		t.Fatalf("verbose JSON omits confidence: %s", verbose)
+	if !bytes.Contains(verbose, []byte(`"failProbability": 0.92`)) {
+		t.Fatalf("verbose JSON omits failProbability: %s", verbose)
 	}
 }
 
@@ -614,12 +614,12 @@ func TestStreamPrinterWritesUnitsThenCase(t *testing.T) {
 	printer.unit(
 		evals.Case{Rule: "database-joins", File: "bad/example.go"},
 		evals.UnitDecision{
-			Name:       "Join",
-			Kind:       parsing.CodeKindFunction,
-			StartLine:  12,
-			EndLine:    20,
-			Status:     evaluation.StatusFail,
-			Confidence: 0.62,
+			Name:            "Join",
+			Kind:            parsing.CodeKindFunction,
+			StartLine:       12,
+			EndLine:         20,
+			Status:          evaluation.StatusFail,
+			FailProbability: 0.62,
 		},
 	)
 	printer.caseResult(evals.Result{

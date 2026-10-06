@@ -44,7 +44,7 @@ func TestEvalPacksConfinesFixturesToDocumentDirectory(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 				calls.Add(1)
 				writer.Header().Set("Content-Type", "application/json")
-				fmt.Fprint(writer, `{"model":"jev-test","answers":{"local-rule":{"type":"choice","choice":"pass","confidence":1},"pack-rule":{"type":"choice","choice":"pass","confidence":1}}}`)
+				fmt.Fprint(writer, `{"model":"jev-test","answers":{"local-rule":{"type":"choice","choice":"pass","probabilities":{"pass":1,"fail":0}},"pack-rule":{"type":"choice","choice":"pass","probabilities":{"pass":1,"fail":0}}}}`)
 			}))
 			defer server.Close()
 			setEvalEnv(t, server.URL)

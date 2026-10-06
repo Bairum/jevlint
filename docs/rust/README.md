@@ -66,11 +66,11 @@ python3 scripts/check-rust-packs.py --eval --repeat 3 --pack rust-core \
 ```
 
 After the native baseline, consult [CALIBRATION.md](CALIBRATION.md) before
-selecting semantic rules or changing a consuming project's confidence floors.
+selecting semantic rules or changing a consuming project's fail-probability floors.
 It includes the original six-pack baseline and the separately measured
 readability fixture calibration and tuning-set/in-sample audit, alongside the
 low-recall/false-positive caveats and optional overlay recommendations. Keep the
-global floor at 0.8; the packs ship no rule-level `minConfidence`.
+global floor at 0.8; the packs ship no rule-level `minFailProbability`. Those recorded floors were fitted on the old choice-confidence metric and pack calibration will refit them; the field name is `minFailProbability`.
 
 The native script accepts a project directory or `Cargo.toml`. It selects
 `--workspace` by default; repeated `-p` options select packages instead.

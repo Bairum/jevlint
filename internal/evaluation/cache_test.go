@@ -14,10 +14,17 @@ func TestFileCacheRoundTripUsesPrivateAtomicStorage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newFileCacheAt() error = %v", err)
 	}
-	results := map[string]Result{
-		"rule": {Status: StatusFail, Confidence: 0.9},
+	hit := CacheHit{
+		Model: "jev-test",
+		Answers: map[string]QuestionAnswer{
+			"rule": {
+				Type:          answerTypeChoice,
+				Choice:        "fail",
+				Probabilities: map[string]float64{"fail": 0.9, "pass": 0.1},
+			},
+		},
 	}
-	if !cache.Put("key", results) {
+	if !cache.Put("key", hit) {
 		t.Fatal("Put() = false")
 	}
 
@@ -52,13 +59,18 @@ func TestFileCacheRoundTripUsesPrivateAtomicStorage(t *testing.T) {
 	}
 
 	got, ok := cache.Get("key")
-	if !ok || got["rule"] != results["rule"] {
+	answer := got.Answers["rule"]
+	if !ok || got.Model != hit.Model || answer.Choice != "fail" || answer.Probabilities["fail"] != 0.9 {
 		t.Fatalf("Get() = %#v, %v", got, ok)
 	}
-	got["rule"] = Result{Status: StatusPass, Confidence: 1}
+	got.Answers["rule"] = QuestionAnswer{
+		Type:          answerTypeChoice,
+		Choice:        "pass",
+		Probabilities: map[string]float64{"pass": 1, "fail": 0},
+	}
 	again, ok := cache.Get("key")
-	if !ok || again["rule"].Status != StatusFail {
-		t.Fatalf("Get() returned shared results: %#v, %v", again, ok)
+	if !ok || again.Answers["rule"].Choice != "fail" {
+		t.Fatalf("Get() returned shared answers: %#v, %v", again, ok)
 	}
 }
 
@@ -68,16 +80,23 @@ func TestFileCacheRejectsCorruptInvalidAndOldEntries(t *testing.T) {
 	tests := map[string]string{
 		"corrupt": `not json`,
 		"old version": `{
-			"version": 0,
-			"results": {"rule": {"status": "pass", "confidence": 1}}
-		}`,
-		"invalid result": `{
 			"version": 1,
-			"results": {"rule": {"status": "maybe", "confidence": 1}}
+			"model": "jev-test",
+			"answers": {"rule": {"type": "choice", "probabilities": {"pass": 1, "fail": 0}}}
 		}`,
-		"empty results": `{
-			"version": 1,
-			"results": {}
+		"invalid answer": `{
+			"version": 2,
+			"model": "jev-test",
+			"answers": {"rule": {"type": "choice", "probabilities": {"maybe": 1}}}
+		}`,
+		"empty answers": `{
+			"version": 2,
+			"model": "jev-test",
+			"answers": {}
+		}`,
+		"missing model": `{
+			"version": 2,
+			"answers": {"rule": {"type": "choice", "probabilities": {"pass": 1, "fail": 0}}}
 		}`,
 	}
 	for name, contents := range tests {
@@ -93,8 +112,8 @@ func TestFileCacheRejectsCorruptInvalidAndOldEntries(t *testing.T) {
 			if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 				t.Fatalf("write cache entry: %v", err)
 			}
-			if results, ok := cache.Get("key"); ok || results != nil {
-				t.Fatalf("Get() = %#v, %v; want miss", results, ok)
+			if hit, ok := cache.Get("key"); ok || hit.Answers != nil {
+				t.Fatalf("Get() = %#v, %v; want miss", hit, ok)
 			}
 			if _, err := os.Stat(path); !os.IsNotExist(err) {
 				t.Fatalf("invalid cache entry still exists: %v", err)
@@ -115,10 +134,17 @@ func TestFileCacheScopesAndClearsEntries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newFileCacheAt() error = %v", err)
 	}
-	results := map[string]Result{
-		"rule": {Status: StatusPass, Confidence: 1},
+	hit := CacheHit{
+		Model: "jev-test",
+		Answers: map[string]QuestionAnswer{
+			"rule": {
+				Type:          answerTypeChoice,
+				Choice:        "pass",
+				Probabilities: map[string]float64{"pass": 1, "fail": 0},
+			},
+		},
 	}
-	if !first.Put("same-key", results) {
+	if !first.Put("same-key", hit) {
 		t.Fatal("first Put() = false")
 	}
 	if _, ok := second.Get("same-key"); ok {

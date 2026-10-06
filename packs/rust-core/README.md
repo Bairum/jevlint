@@ -87,7 +87,7 @@ jevlint eval --config jevlint.json --evals packs/rust-core/jevlint-evals.json --
 
 All **140 isolated Rust 2021 fixture targets** were compiled with zero errors or warnings in the final six-pack fixture compilation (432 targets total). The earlier `go test ./internal/packs -run 'RustPack'` covered the original cases' non-test primary-kind/sourceMatch applicability; it was not rerun for this refresh. Faulty fixtures were never executed. Compilation and applicability establish syntax and subject selection, not judgment correctness; compiler/Clippy checks remain the first layer.
 
-The original three real provider-backed runs (`python3 scripts/check-rust-packs.py --eval --repeat 3`) measured fixture recall and specificity at global `minConfidence: 0.8`, with opaque fixture names. This historical table reports per-run decision metrics: below-floor failures are not reported, matching `check` behavior. Current core/advisory refresh rows and held-out measurements are in [CALIBRATION.md](../../docs/rust/CALIBRATION.md#core-and-advisory-refresh-2026-10-05).
+The original three real provider-backed runs (`python3 scripts/check-rust-packs.py --eval --repeat 3`) measured fixture recall and specificity at global choice-confidence floor 0.8; the floors were not refit. Opaque fixture names were used. This historical table reports per-run decision metrics: below-floor failures are not reported, matching `check` behavior. Current core/advisory refresh rows and held-out measurements are in [CALIBRATION.md](../../docs/rust/CALIBRATION.md#core-and-advisory-refresh-2026-10-05).
 
 | Rule | Recall @0.8 | Specificity @0.8 | Recommended override | Recall @override | Specificity @override |
 | --- | --- | --- | --- | --- | --- |
@@ -104,7 +104,7 @@ The original three real provider-backed runs (`python3 scripts/check-rust-packs.
 
 In the baseline, `rust-shared-clone-isolation` recall was only 0.27. At 0.8, `rust-expected-failure-panics`, `rust-error-cause-loss`, `rust-conversion-contract`, `rust-unbounded-input-buffering`, `rust-exclusive-create-race` and `rust-shared-clone-isolation` were false-positive-prone (specificity below 0.90). These rules are not blanket bans on unwrap, From, public fields, buffering, Drop, clone or overwrite.
 
-All six Rust packs retain the global floor of **0.8** and contain no rule-level `minConfidence`; no pack-level floor changes were made. Only consuming projects may opt into the recommended overrides through project rule overlays such as `{"id": "rust-validation-bypass", "minConfidence": 0.40}`. An overlay replaces the rule floor, which overrides the global floor; `—` means keep 0.8. Overrides were fitted on these same fixtures and are starting points, not guarantees. Real-project precision remains unmeasured. See [calibration method, caveats and override configuration](../../docs/rust/CALIBRATION.md).
+All six Rust packs retain the global floor of **0.8** and contain no rule-level `minFailProbability`; no pack-level floor changes were made. Only consuming projects may opt into the recommended overrides through project rule overlays such as `{"id": "rust-validation-bypass", "minFailProbability": 0.40}`. An overlay replaces the rule floor, which overrides the global floor; `—` means keep 0.8. Those recorded floors were fitted on the old choice-confidence metric and pack calibration will refit them; the field name is `minFailProbability`. Overrides were fitted on these same fixtures and are starting points, not guarantees. Real-project precision remains unmeasured. See [calibration method, caveats and override configuration](../../docs/rust/CALIBRATION.md).
 
 ### Error-mapping refresh (2026-10-05)
 
@@ -121,7 +121,7 @@ error-cause wording, its reporting recall/specificity is **9/18 (0.50)** and
 reports 3/3 at 0.86/0.89/0.89; its faithful counterpart passes 3/3.
 This is not an overall no-regression calibration: the original cause-loss
 failures report 6/15 (0.40), and unchanged fallible-drop/shared-clone recall
-measured 0.93/0.20 versus 1.00/0.27. No confidence floor was lowered.
+measured 0.93/0.20 versus 1.00/0.27. No choice-confidence floor was lowered; those floors were not refit.
 
 The seeded error-category mapper is now selected, but three full-workspace scans
 produce **pass/pass/fail at 0.34** (0/3 reports); confidence for passes is not

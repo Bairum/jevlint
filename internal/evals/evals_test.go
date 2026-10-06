@@ -18,8 +18,8 @@ import (
 )
 
 type fixedEvaluator struct {
-	status     evaluation.Status
-	confidence float64
+	status          evaluation.Status
+	failProbability float64
 }
 
 func TestLoadRejectsUnknownRule(t *testing.T) {
@@ -143,7 +143,7 @@ func TestRunPassAndFailCases(t *testing.T) {
 		document,
 		sampleConfig(nil),
 		testExtractor(t),
-		fixedEvaluator{status: evaluation.StatusPass, confidence: 0.9},
+		fixedEvaluator{status: evaluation.StatusPass},
 		Options{Root: root, Concurrency: 1},
 	)
 	if err != nil {
@@ -152,8 +152,8 @@ func TestRunPassAndFailCases(t *testing.T) {
 	if passReport.Matched != 1 || passReport.Mismatched != 1 {
 		t.Fatalf("pass report = %#v", passReport)
 	}
-	if passReport.Cases[0].Confidence != nil {
-		t.Fatalf("pass confidence = %v", passReport.Cases[0].Confidence)
+	if passReport.Cases[0].FailProbability != 0 {
+		t.Fatalf("pass fail probability = %v", passReport.Cases[0].FailProbability)
 	}
 
 	failReport, err := Run(
@@ -161,7 +161,7 @@ func TestRunPassAndFailCases(t *testing.T) {
 		document,
 		sampleConfig(nil),
 		testExtractor(t),
-		fixedEvaluator{status: evaluation.StatusFail, confidence: 0.91},
+		fixedEvaluator{status: evaluation.StatusFail, failProbability: 0.91},
 		Options{Root: root, Concurrency: 1},
 	)
 	if err != nil {
@@ -170,8 +170,8 @@ func TestRunPassAndFailCases(t *testing.T) {
 	if failReport.Matched != 1 || failReport.Mismatched != 1 {
 		t.Fatalf("fail report = %#v", failReport)
 	}
-	if failReport.Cases[1].Confidence == nil || *failReport.Cases[1].Confidence != 0.91 {
-		t.Fatalf("fail confidence = %v", failReport.Cases[1].Confidence)
+	if failReport.Cases[1].FailProbability != 0.91 {
+		t.Fatalf("fail probability = %v", failReport.Cases[1].FailProbability)
 	}
 }
 
@@ -199,7 +199,7 @@ func TestRunEvaluatesExcludedFixture(t *testing.T) {
 		document,
 		cfg,
 		testExtractor(t),
-		fixedEvaluator{status: evaluation.StatusFail, confidence: 1},
+		fixedEvaluator{status: evaluation.StatusFail, failProbability: 1},
 		Options{Root: root, Concurrency: 1},
 	)
 	if err != nil {
@@ -223,7 +223,7 @@ func TestRunRequiresApplicableUnits(t *testing.T) {
 		document,
 		sampleConfig(nil),
 		testExtractor(t),
-		fixedEvaluator{status: evaluation.StatusPass, confidence: 1},
+		fixedEvaluator{status: evaluation.StatusPass},
 		Options{Root: root, Concurrency: 1},
 	)
 	if !errors.Is(err, ErrNoApplicableUnits) {
@@ -245,7 +245,7 @@ func (evaluator *pathRecordingEvaluator) Evaluate(
 	evaluator.mu.Unlock()
 	results := make(map[string]evaluation.Result, len(batch.Rules))
 	for _, rule := range batch.Rules {
-		results[rule.ID] = evaluation.Result{Status: evaluation.StatusPass, Confidence: 1}
+		results[rule.ID] = evaluation.Result{Status: evaluation.StatusPass}
 	}
 	return results, nil
 }
@@ -294,22 +294,21 @@ func TestNeutralizeFixturePathHidesFileDerivedNames(t *testing.T) {
 	}
 }
 
-func TestResultJSONIncludesConfidence(t *testing.T) {
+func TestResultJSONIncludesFailProbability(t *testing.T) {
 	t.Parallel()
 
-	confidence := 0.88
 	data, err := json.Marshal(Result{
-		Rule:       "database-joins",
-		File:       "sample.go",
-		Expected:   ExpectFail,
-		Actual:     OutcomeFail,
-		Matched:    true,
-		Confidence: &confidence,
+		Rule:            "database-joins",
+		File:            "sample.go",
+		Expected:        ExpectFail,
+		Actual:          OutcomeFail,
+		Matched:         true,
+		FailProbability: 0.88,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), `"confidence":0.88`) {
+	if !strings.Contains(string(data), `"failProbability":0.88`) {
 		t.Fatalf("json = %s", data)
 	}
 }
@@ -321,8 +320,8 @@ func (evaluator fixedEvaluator) Evaluate(
 	results := make(map[string]evaluation.Result, len(batch.Rules))
 	for _, rule := range batch.Rules {
 		results[rule.ID] = evaluation.Result{
-			Status:     evaluator.status,
-			Confidence: evaluator.confidence,
+			Status:          evaluator.status,
+			FailProbability: evaluator.failProbability,
 		}
 	}
 	return results, nil
@@ -396,23 +395,23 @@ func TestRunClassifiesRawDecisions(t *testing.T) {
 
 	floor := 0.8
 	tests := []struct {
-		name         string
-		expect       Expect
-		status       evaluation.Status
-		confidence   float64
-		want         Outcome
-		matched      bool
-		inconclusive bool
-		decisions    runner.Decisions
+		name            string
+		expect          Expect
+		status          evaluation.Status
+		failProbability float64
+		want            Outcome
+		matched         bool
+		inconclusive    bool
+		decisions       runner.Decisions
 	}{
-		{"explicit pass matches pass", ExpectPass, evaluation.StatusPass, 0.9, OutcomePass, true, false, runner.Decisions{Pass: 1}},
+		{"explicit pass matches pass", ExpectPass, evaluation.StatusPass, 0, OutcomePass, true, false, runner.Decisions{Pass: 1}},
 		{"reported fail mismatches pass", ExpectPass, evaluation.StatusFail, 0.9, OutcomeFail, false, false, runner.Decisions{Fail: 1, Reported: 1}},
 		{"hidden fail is inconclusive", ExpectPass, evaluation.StatusFail, 0.4, OutcomeInconclusive, false, true, runner.Decisions{Fail: 1, BelowFloor: 1}},
-		{"skip is inconclusive", ExpectPass, evaluation.StatusSkip, 0.9, OutcomeInconclusive, false, true, runner.Decisions{Skip: 1}},
-		{"abstain is inconclusive", ExpectPass, evaluation.StatusAbstain, 0.9, OutcomeInconclusive, false, true, runner.Decisions{Abstain: 1}},
+		{"skip is inconclusive", ExpectPass, evaluation.StatusSkip, 0, OutcomeInconclusive, false, true, runner.Decisions{Skip: 1}},
+		{"abstain is inconclusive", ExpectPass, evaluation.StatusAbstain, 0, OutcomeInconclusive, false, true, runner.Decisions{Abstain: 1}},
 		{"reported fail matches fail", ExpectFail, evaluation.StatusFail, 0.9, OutcomeFail, true, false, runner.Decisions{Fail: 1, Reported: 1}},
 		{"hidden fail cannot match fail", ExpectFail, evaluation.StatusFail, 0.4, OutcomeInconclusive, false, true, runner.Decisions{Fail: 1, BelowFloor: 1}},
-		{"pass mismatches fail", ExpectFail, evaluation.StatusPass, 0.9, OutcomePass, false, false, runner.Decisions{Pass: 1}},
+		{"pass mismatches fail", ExpectFail, evaluation.StatusPass, 0, OutcomePass, false, false, runner.Decisions{Pass: 1}},
 	}
 
 	for _, test := range tests {
@@ -422,13 +421,13 @@ func TestRunClassifiesRawDecisions(t *testing.T) {
 
 			document, root := oneCase(t, test.expect)
 			cfg := sampleConfig(nil)
-			cfg.MinConfidence = &floor
+			cfg.MinFailProbability = &floor
 			report, err := Run(
 				context.Background(),
 				document,
 				cfg,
 				testExtractor(t),
-				fixedEvaluator{status: test.status, confidence: test.confidence},
+				fixedEvaluator{status: test.status, failProbability: test.failProbability},
 				Options{Root: root, Concurrency: 1},
 			)
 			if err != nil {
@@ -438,12 +437,8 @@ func TestRunClassifiesRawDecisions(t *testing.T) {
 			if result.Decisions != test.decisions {
 				t.Fatalf("decisions = %#v, want %#v", result.Decisions, test.decisions)
 			}
-			if test.status == evaluation.StatusFail {
-				if result.Confidence == nil || *result.Confidence != test.confidence {
-					t.Fatalf("confidence = %v, want %v", result.Confidence, test.confidence)
-				}
-			} else if result.Confidence != nil {
-				t.Fatalf("confidence = %v, want nil", result.Confidence)
+			if result.FailProbability != test.failProbability {
+				t.Fatalf("fail probability = %v, want %v", result.FailProbability, test.failProbability)
 			}
 			if result.Actual != test.want {
 				t.Fatalf("actual = %v, want %v", result.Actual, test.want)
@@ -464,11 +459,11 @@ func TestRunClassifiesRawDecisions(t *testing.T) {
 				t.Fatalf("units = %#v", result.Units)
 			}
 			unit := result.Units[0]
-			wantReported := test.status == evaluation.StatusFail && test.confidence >= floor
+			wantReported := test.failProbability >= floor
 			if unit.Reported != wantReported {
 				t.Fatalf("unit reported = %v, want %v", unit.Reported, wantReported)
 			}
-			if unit.Status != test.status || unit.Confidence != test.confidence {
+			if unit.Status != test.status || unit.FailProbability != test.failProbability {
 				t.Fatalf("unit = %#v", unit)
 			}
 		})
@@ -487,7 +482,7 @@ func (evaluator perUnitEvaluator) Evaluate(
 	for _, rule := range batch.Rules {
 		result, ok := evaluator.results[batch.CodeUnit.Name]
 		if !ok {
-			result = evaluation.Result{Status: evaluation.StatusPass, Confidence: 1}
+			result = evaluation.Result{Status: evaluation.StatusPass}
 		}
 		results[rule.ID] = result
 	}
@@ -507,43 +502,43 @@ func TestRunAggregatesDecisionsAcrossCodeUnits(t *testing.T) {
 	}{
 		{
 			name:      "one pass and one skip passes",
-			alpha:     evaluation.Result{Status: evaluation.StatusPass, Confidence: 1},
-			beta:      evaluation.Result{Status: evaluation.StatusSkip, Confidence: 1},
+			alpha:     evaluation.Result{Status: evaluation.StatusPass},
+			beta:      evaluation.Result{Status: evaluation.StatusSkip},
 			want:      OutcomePass,
 			decisions: runner.Decisions{Pass: 1, Skip: 1},
 		},
 		{
 			name:      "all skip is inconclusive",
-			alpha:     evaluation.Result{Status: evaluation.StatusSkip, Confidence: 1},
-			beta:      evaluation.Result{Status: evaluation.StatusSkip, Confidence: 1},
+			alpha:     evaluation.Result{Status: evaluation.StatusSkip},
+			beta:      evaluation.Result{Status: evaluation.StatusSkip},
 			want:      OutcomeInconclusive,
 			decisions: runner.Decisions{Skip: 2},
 		},
 		{
 			name:      "below-floor fail makes it inconclusive",
-			alpha:     evaluation.Result{Status: evaluation.StatusFail, Confidence: 0.4},
-			beta:      evaluation.Result{Status: evaluation.StatusPass, Confidence: 1},
+			alpha:     evaluation.Result{Status: evaluation.StatusFail, FailProbability: 0.4},
+			beta:      evaluation.Result{Status: evaluation.StatusPass},
 			want:      OutcomeInconclusive,
 			decisions: runner.Decisions{Pass: 1, Fail: 1, BelowFloor: 1},
 		},
 		{
 			name:      "reported fail wins",
-			alpha:     evaluation.Result{Status: evaluation.StatusFail, Confidence: 0.9},
-			beta:      evaluation.Result{Status: evaluation.StatusPass, Confidence: 1},
+			alpha:     evaluation.Result{Status: evaluation.StatusFail, FailProbability: 0.9},
+			beta:      evaluation.Result{Status: evaluation.StatusPass},
 			want:      OutcomeFail,
 			decisions: runner.Decisions{Pass: 1, Fail: 1, Reported: 1},
 		},
 		{
 			name:      "one pass and one abstain passes",
-			alpha:     evaluation.Result{Status: evaluation.StatusPass, Confidence: 1},
-			beta:      evaluation.Result{Status: evaluation.StatusAbstain, Confidence: 1},
+			alpha:     evaluation.Result{Status: evaluation.StatusPass},
+			beta:      evaluation.Result{Status: evaluation.StatusAbstain},
 			want:      OutcomePass,
 			decisions: runner.Decisions{Pass: 1, Abstain: 1},
 		},
 		{
 			name:      "reported and below-floor fails retain both counts",
-			alpha:     evaluation.Result{Status: evaluation.StatusFail, Confidence: 0.9},
-			beta:      evaluation.Result{Status: evaluation.StatusFail, Confidence: 0.4},
+			alpha:     evaluation.Result{Status: evaluation.StatusFail, FailProbability: 0.9},
+			beta:      evaluation.Result{Status: evaluation.StatusFail, FailProbability: 0.4},
 			want:      OutcomeFail,
 			decisions: runner.Decisions{Fail: 2, Reported: 1, BelowFloor: 1},
 		},
@@ -567,7 +562,7 @@ func TestRunAggregatesDecisionsAcrossCodeUnits(t *testing.T) {
 				abs:    path,
 			}}}
 			cfg := sampleConfig(nil)
-			cfg.MinConfidence = &floor
+			cfg.MinFailProbability = &floor
 			report, err := Run(
 				context.Background(),
 				document,
@@ -621,7 +616,7 @@ func (evaluator *barrierEvaluator) Evaluate(
 
 	results := make(map[string]evaluation.Result, len(batch.Rules))
 	for _, rule := range batch.Rules {
-		results[rule.ID] = evaluation.Result{Status: evaluation.StatusPass, Confidence: 1}
+		results[rule.ID] = evaluation.Result{Status: evaluation.StatusPass}
 	}
 	return results, nil
 }
@@ -686,8 +681,8 @@ func TestRunEmitsUnitDecisions(t *testing.T) {
 		sampleConfig(nil),
 		testExtractor(t),
 		perUnitEvaluator{results: map[string]evaluation.Result{
-			"Alpha": {Status: evaluation.StatusPass, Confidence: 1},
-			"Beta":  {Status: evaluation.StatusFail, Confidence: 0.9},
+			"Alpha": {Status: evaluation.StatusPass},
+			"Beta":  {Status: evaluation.StatusFail, FailProbability: 0.9},
 		}},
 		Options{
 			Root:        root,
@@ -718,8 +713,8 @@ func TestRecordingEvaluatorExcludesLocalizationDecisions(t *testing.T) {
 	var emitted []UnitDecision
 	recorder := &recordingEvaluator{
 		inner: perUnitEvaluator{results: map[string]evaluation.Result{
-			"Alpha":  {Status: evaluation.StatusFail, Confidence: 0.4},
-			"region": {Status: evaluation.StatusFail, Confidence: 0.99},
+			"Alpha":  {Status: evaluation.StatusFail, FailProbability: 0.4},
+			"region": {Status: evaluation.StatusFail, FailProbability: 0.99},
 		}},
 		floor: 0.8,
 		onUnit: func(unit UnitDecision) {
@@ -737,28 +732,35 @@ func TestRecordingEvaluatorExcludesLocalizationDecisions(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Evaluate() error = %v", err)
 		}
+		got := results[ruleID]
 		want := recorder.inner.(perUnitEvaluator).results[unit.Name]
-		if results[ruleID] != want {
-			t.Fatalf("result = %#v, want %#v", results[ruleID], want)
+		if got.Status != want.Status || got.FailProbability != want.FailProbability {
+			t.Fatalf("result = %#v, want %#v", got, want)
 		}
 	}
-	confidence := recorder.bestFailConfidence(ruleID)
-	if confidence == nil || *confidence != 0.4 {
-		t.Fatalf("confidence = %v, want 0.4", confidence)
+	if got := recorder.maxFailProbability(ruleID); got != 0.4 {
+		t.Fatalf("fail probability = %v, want 0.4", got)
 	}
 	want := UnitDecision{
-		Name:       "Alpha",
-		Kind:       parsing.CodeKindFunction,
-		StartLine:  3,
-		EndLine:    5,
-		Status:     evaluation.StatusFail,
-		Confidence: 0.4,
+		Name:            "Alpha",
+		Kind:            parsing.CodeKindFunction,
+		StartLine:       3,
+		EndLine:         5,
+		Status:          evaluation.StatusFail,
+		FailProbability: 0.4,
 	}
 	units := recorder.unitsFor(ruleID)
-	if len(units) != 1 || units[0] != want {
+	if len(units) != 1 || !sameUnit(units[0], want) {
 		t.Fatalf("units = %#v, want %#v", units, want)
 	}
-	if len(emitted) != 1 || emitted[0] != want {
+	if len(emitted) != 1 || !sameUnit(emitted[0], want) {
 		t.Fatalf("emitted units = %#v, want %#v", emitted, want)
 	}
+}
+
+func sameUnit(got, want UnitDecision) bool {
+	return got.Name == want.Name && got.Kind == want.Kind &&
+		got.StartLine == want.StartLine && got.EndLine == want.EndLine &&
+		got.Status == want.Status && got.FailProbability == want.FailProbability &&
+		got.Reported == want.Reported
 }

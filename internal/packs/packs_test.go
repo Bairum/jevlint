@@ -15,17 +15,17 @@ func TestMergeOverlaysPackRule(t *testing.T) {
 
 	floor := 0.5
 	project := config.Config{
-		Languages:     map[string]config.Language{"go": {}},
-		MinConfidence: ptr(0.8),
+		Languages:          map[string]config.Language{"go": {}},
+		MinFailProbability: ptr(0.8),
 		Packs: []config.PackRef{{
 			ID:     "database-joins",
 			Source: "local",
 			SHA:    strings.Repeat("a", 40),
 		}},
 		Rules: []config.Rule{{
-			ID:            "database-joins",
-			MinConfidence: &floor,
-			Include:       []string{"src/**/*.go"},
+			ID:                 "database-joins",
+			MinFailProbability: &floor,
+			Include:            []string{"src/**/*.go"},
 		}},
 	}
 	loaded := []Loaded{{
@@ -49,14 +49,14 @@ func TestMergeOverlaysPackRule(t *testing.T) {
 	if rule.Description != "Join in the database." {
 		t.Fatalf("description = %q", rule.Description)
 	}
-	if rule.MinConfidence == nil || *rule.MinConfidence != 0.5 {
-		t.Fatalf("minConfidence = %#v", rule.MinConfidence)
+	if rule.MinFailProbability == nil || *rule.MinFailProbability != 0.5 {
+		t.Fatalf("minFailProbability = %#v", rule.MinFailProbability)
 	}
 	if len(rule.Include) != 1 || rule.Include[0] != "src/**/*.go" {
 		t.Fatalf("include = %#v", rule.Include)
 	}
-	if merged.ConfidenceFloor(rule) != 0.5 {
-		t.Fatalf("ConfidenceFloor() = %v", merged.ConfidenceFloor(rule))
+	if merged.FailProbabilityFloor(rule) != 0.5 {
+		t.Fatalf("FailProbabilityFloor() = %v", merged.FailProbabilityFloor(rule))
 	}
 }
 
