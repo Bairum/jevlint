@@ -1,7 +1,1 @@
-# Tokio semantic evidence
-
-Judge only the primary source unit. Supplied callees and types are context, not additional finding targets. Require visible API identity, ownership, lifetimes and the runtime/progress or application contract needed by the particular rule. An `async fn`, an API-like name or an omitted global supervisor does not establish a Tokio execution path or a defect. Fully qualified calls, signatures, imports, explicit documentation and visible ownership transfers may supply evidence; do not assume macro expansion or compiler name resolution.
-
-Fail only for a concrete contradiction of the rule's stated obligation, not a general async style preference. Do not invent application requirements: when the rule requires an explicit completion, capacity, cancellation or shutdown contract and none is stated, pass. Abstain when an identified requirement exists but necessary operation identity, ownership, callee effects or continuation semantics cannot be established. Apply documented exceptions; do not impose universal capacities, timing thresholds, graceful shutdown policies or a particular supervisor abstraction.
-
-Distinguish Tokio behavior from similarly named APIs and other runtimes. Do not reproduce mechanical Clippy guard/unused-result checks. Report the concrete resource, dependency, lost progress or required effect; prefer one root cause over overlapping lifecycle warnings. These rules do not prove overall deadlock freedom or concurrency correctness.
+Use only comments and calls in `source`. A missing obligation comment is not a violation.

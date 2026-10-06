@@ -2,38 +2,170 @@
   "rules": [
     {
       "id": "rust-perf-repeated-materialization",
-      "description": "Review repeated owned materialization or preprocessing of invariant input in an established high-volume or hot loop. Fail only when the primary source establishes actual standard-library operations, a significant workload or explicit project performance requirement, unchanged input across iterations, and a visible consumer that can reuse the result without changing semantics. Identify the loop, preprocessing, invariant input, consumer and reusable-result path; explain why hoisting preserves the documented contract, including empty-input and error behavior. Examples include parsing invariant configuration into a Vec or repeatedly collecting and sorting a lookup table for read-only queries. Do not diagnose clone, allocation or collect by spelling alone or duplicate a simple redundant_clone finding. Pass when the workload/performance requirement is not established, preprocessing is already reused, or a listed exception applies. Do not redesign public APIs merely to expose speculative intermediate results.",
+      "description": "A loop in `source` builds an owned value on each iteration from a literal, key, or other input the loop does not change, or clones a value the loop body only reads, and a documentation comment states a high-volume or hot workload for that loop. A per-element `clone`, `to_owned`, or `to_vec` that the loop only reads counts even when each iteration clones a different element.",
       "severity": "warning",
-      "kinds": ["function"],
-      "include": ["**/*.rs"],
+      "include": [
+        "**/*.rs"
+      ],
       "sourceMatch": [
         "(?s)\\b(?:for|while|loop|for_each|try_for_each|map|fold|try_fold)\\b.*\\b(?:to_vec|to_owned|to_string|clone|clone_from|cloned|copied|collect|parse|from|from_iter|vec|format|sort|sort_by|sort_by_key|sort_unstable|sort_unstable_by|sort_unstable_by_key|resize|reserve|split|split_whitespace|split_terminator|split_inclusive|extend_from_slice)\\b",
         "(?s)\\b(?:to_vec|to_owned|to_string|clone|clone_from|cloned|copied|collect|parse|from|from_iter|vec|format|sort|sort_by|sort_by_key|sort_unstable|sort_unstable_by|sort_unstable_by_key|resize|reserve|split|split_whitespace|split_terminator|split_inclusive|extend_from_slice)\\b.*\\b(?:for|while|loop|for_each|try_for_each|map|fold|try_fold)\\b"
       ],
-      "exceptions": [
-        "Per-iteration inputs change or the contract requires a fresh independent snapshot, and the visible operations implement that requirement.",
-        "Every iteration must transfer a separate owned result to an API/task/retaining consumer; sharing or borrowing would violate the visible ownership or lifetime requirement.",
-        "Cheap Arc/Rc sharing, intentional capacity reuse, avoiding worse lock retention/lifetime coupling, documented optimizer elimination or measured workload tradeoffs establish that the current work is appropriate.",
-        "Small cold-path work, bounded intentional reservation or no demonstrated caller need does not justify a performance finding."
+      "kinds": [
+        "function"
       ],
-      "allowAbstain": true
+      "score": {
+        "question": "How clearly does `source` rebuild an owned value inside a hot loop from data the loop could reuse or borrow?",
+        "levels": [
+          "Out of scope or compliant: no loop builds an owned value, no comment states a high-volume or hot workload, or the owned value is an `Arc`/`Rc` share, a refilled preallocated buffer, a lock-releasing snapshot, a required per-iteration copy, or a documented cold path.",
+          "Borderline: a comment states a hot or high-volume loop and the loop builds an owned value, but it is unclear whether that value is only read, must be retained separately, or comes from input the loop changes.",
+          "Clear violation: a comment states a high-volume or hot workload, and the loop builds an owned value from unchanged input or copies a value it only reads, including a different element each iteration, with no separate-ownership or cold-path requirement."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clear is it that `source` repeats owned construction inside a loop a comment calls hot or high-volume, from data that construction could have shared or borrowed?",
+            "levels": [
+              "Compliant or not in scope: the loop does not build an owned value, the comment never calls a loop high-volume or hot, or the built value is a shared `Arc` or `Rc`, a buffer filled again after it was allocated earlier, a snapshot taken to drop a lock, a copy each iteration must keep, or a cold path the comment names.",
+              "Ambiguous: the comment does call the loop hot or high-volume and an owned value is built there, yet `source` does not show whether that value is only read, must stay owned per iteration, or is taken from input the loop itself changes.",
+              "Plain violation: the comment states the high-volume or hot workload, the loop builds from input it leaves unchanged or copies a value it only reads, a different element each time included, and `source` does not require separate ownership or name a cold path."
+            ]
+          },
+          {
+            "question": "To what degree does `source` show avoidable owned rebuilding on a commented hot path?",
+            "levels": [
+              "Not a finding: either no owned rebuild sits in a loop, or no comment establishes a high-volume or hot workload, or the rebuild is cheap sharing through `Arc` or `Rc`, reuse of one preallocated buffer, a clone that releases a lock, a snapshot the iteration must retain, or work a comment confines to a small cold path.",
+              "Unsettled: both the hot or high-volume comment and the in-loop owned build are visible, but the text leaves open whether the build is read-only, separately retained, or fed by input that changes inside the loop.",
+              "Settled violation: the workload comment is present, the loop's owned build comes from unchanged input or from a read-only copy, including when each pass copies a different element, and neither separate ownership nor a cold-path comment excuses it."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does a loop in `source` build an owned `String`, `Vec`, or other owned value from a literal, key, or other input the loop does not change?",
+            "yes": "That owned value is built inside the loop from input the loop leaves unchanged.",
+            "no": "No owned value in the loop is built from unchanged input.",
+            "paraphrases": [
+              {
+                "question": "Inside a loop, does `source` construct an owned `String`, `Vec`, or similar owned value from a literal, a key, or some other input that stays the same from pass to pass?",
+                "yes": "The construction uses input the loop does not alter.",
+                "no": "The loop does not construct an owned value from input it leaves as it found it."
+              }
+            ]
+          },
+          {
+            "question": "Does a loop in `source` copy a value with `clone`, `to_owned`, or `to_vec` that the loop body only reads?",
+            "yes": "That copy is only read. A different element on each iteration still counts.",
+            "no": "Every such copy is written, stored, or mutated in that iteration.",
+            "paraphrases": [
+              {
+                "question": "Does a loop body in `source` call `clone`, `to_owned`, or `to_vec` and then only read the resulting copy?",
+                "yes": "The body only reads that copy. The source element may differ on each pass.",
+                "no": "Each such copy is written, stored, or mutated before the pass ends."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` contain a loop and a call that builds an owned value, such as `clone`, `to_owned`, `to_vec`, `to_string`, `parse`, `collect`, or `sort`?",
+            "yes": "A loop and an owned-value call both appear in `source`.",
+            "no": "`source` has no loop, or no owned-value call."
+          },
+          {
+            "question": "Does a documentation comment in `source` state a high-volume or hot workload for a loop?",
+            "yes": "That comment states the workload for a loop in `source`.",
+            "no": "No comment in `source` states that workload. An array length alone is not a stated workload."
+          }
+        ]
+      }
     },
     {
       "id": "rust-perf-small-writes",
       "description": "Consider buffering or batching repeated tiny external writes only for an established throughput-oriented high-volume workload. Fail when the primary source establishes the actual unbuffered external sink, repeated tiny standard-library Write operations, and a documented throughput/completion contract without an immediate-delivery requirement or a visible buffering layer. Identify the sink, loop, write sizes and workload; recommend bounded buffering or batching with completion errors observed at the required boundary. A method named write_all alone does not establish its sink or lack of buffering. Pass when the throughput/workload contract is not established, no relevant repeated-write path exists, or a listed exception applies. Do not require whole-file materialization, invent memory ceilings, describe flush as file durability, or add a separate missing-flush finding under this performance rule.",
       "severity": "warning",
-      "kinds": ["function"],
-      "include": ["**/*.rs"],
+      "include": [
+        "**/*.rs"
+      ],
       "sourceMatch": [
         "(?s)\\b(?:for|while|loop|for_each|try_for_each|map|fold|try_fold)\\b.*\\b(?:write|write_all|write_fmt|writeln)\\b",
         "(?s)\\b(?:write|write_all|write_fmt|writeln)\\b.*\\b(?:for|while|loop|for_each|try_for_each|map|fold|try_fold)\\b"
       ],
-      "exceptions": [
-        "A visible std::io::BufWriter or other established buffering/batching layer already coalesces the tiny writes and completion is handled according to the contract.",
-        "An interactive protocol requires each small message to reach the peer before waiting for the corresponding response; delaying until a later batch would violate that requirement.",
-        "Few or large writes, in-memory Vec targets, bounded streaming requirements, or measured performance establish that further buffering is inappropriate."
+      "kinds": [
+        "function"
       ],
-      "allowAbstain": true
+      "score": {
+        "question": "How clearly does `source` repeat small writes to an unbuffered external sink under a documented throughput contract?",
+        "levels": [
+          "Out of scope or compliant: no repeated external write, no comment states a throughput contract with deferred visibility, or the sink is already buffered, in memory, interactive, large-chunk, or a documented latency or memory bound.",
+          "Borderline: a throughput comment and repeated small writes are both present, but it is unclear whether the sink is buffered or whether each write must arrive before the next read.",
+          "Clear violation: a comment states a high-volume throughput workload and that intermediate bytes need not be visible before return, and a loop writes small payloads to an unbuffered file or socket."
+        ],
+        "paraphrases": [
+          {
+            "question": "How plain is the case that `source` keeps sending small external writes without a buffer, under a comment that documents a throughput contract?",
+            "levels": [
+              "Compliant or not in scope: `source` does not repeat an external write, the comment never pairs throughput with deferred visibility, or the destination is wrapped in a buffer, held in memory, tied to a request and reply, fed in large chunks, or kept direct by a documented latency or memory bound.",
+              "Ambiguous: the throughput comment and the repeated small writes are both on the page, yet `source` does not settle whether a buffer already wraps the sink or whether the next write must wait until the peer has answered.",
+              "Plain violation: the comment states a high-volume throughput workload and says intermediate bytes can stay invisible until return, and the loop still sends small payloads to a file or socket with no buffer."
+            ]
+          },
+          {
+            "question": "To what degree does `source` show unbuffered small external writes that a throughput comment would rather batch?",
+            "levels": [
+              "Not a finding: there is no repeated write to an outside sink, or no comment establishes throughput together with deferred visibility, or buffering, an in-memory target, an interactive exchange, large chunks, or a written latency or memory limit already accounts for the writes.",
+              "Unsettled: both a throughput comment and a run of small writes are visible, but the text leaves open the presence of a buffering layer and whether each write must land before the matching read.",
+              "Settled violation: the comment names a high-volume throughput workload and deferred visibility, and a loop writes small payloads straight to an unbuffered file or socket."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does a loop in `source` write a small payload to a file sink that has no buffering wrapper?",
+            "yes": "The loop writes a small payload to that unbuffered file.",
+            "no": "No loop writes a small payload to an unbuffered file.",
+            "paraphrases": [
+              {
+                "question": "On each pass of a loop, does `source` send a little payload to a file that is not wrapped by a buffer?",
+                "yes": "Those passes send a small payload to the bare file.",
+                "no": "The loop does not send a small payload to an unwrapped file."
+              }
+            ]
+          },
+          {
+            "question": "Does a loop in `source` write a small payload to a socket that has no buffering wrapper?",
+            "yes": "The loop writes a small payload to that unbuffered socket.",
+            "no": "No loop writes a small payload to an unbuffered socket.",
+            "paraphrases": [
+              {
+                "question": "On each pass of a loop, does `source` send a little payload to a socket that is not wrapped by a buffer?",
+                "yes": "Those passes send a small payload to the bare socket.",
+                "no": "The loop does not send a small payload to an unwrapped socket."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` contain a loop and a `write`, `write_all`, `write_fmt`, or `writeln` call?",
+            "yes": "A loop and one of those write calls both appear in `source`.",
+            "no": "`source` has no loop, or none of those write calls."
+          },
+          {
+            "question": "Does a documentation comment in `source` state a high-volume throughput workload?",
+            "yes": "That comment states the throughput workload.",
+            "no": "No comment in `source` states a throughput workload. A large buffer length alone is not that statement."
+          },
+          {
+            "question": "Does a documentation comment in `source` state that intermediate writes need not be visible before the function returns?",
+            "yes": "That comment states deferred visibility.",
+            "no": "No comment states that intermediate writes can stay invisible until return."
+          }
+        ]
+      }
     }
   ]
 }

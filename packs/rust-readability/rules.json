@@ -2,47 +2,189 @@
   "rules": [
     {
       "id": "rust-readability-magic-domain-values",
-      "description": "Fail unexplained literal values in the primary Rust function encoding meaningful tunable domain policy: numerical convergence thresholds, tolerances, floors, optimizer bounds/steps, iteration budgets, byte/resource admission allowances, ordering dependencies on numeric codes, or sentinel ranks. A named constant or enum should communicate the policy. Naming the calculated result budget, tolerance or rank does not explain embedded coefficients. Unexplained per-record byte allowances and fixed byte overhead in a resource estimate fail; do not guess a concrete storage-layout derivation that the supplied context does not show. These are readability violations even when the computation is correct; do not require a runtime bug or an explicit documentation contract. Mathematical identities, locally explained wire/storage layouts or status encoding, zero/one flags and standard unit conversions pass. Context may explain a primary-unit literal, but a literal appearing only in a supplied callee is not a finding against its caller.",
+      "description": "The meaning of a literal in `source` is tunable domain policy (a convergence or tolerance knob, a per-record byte or resource allowance, an ordering outcome, or a sentinel rank) rather than a mathematical identity, and `source` does not state that meaning in a name or adjacent comment.",
       "severity": "warning",
       "include": [
         "**/*.rs"
       ],
+      "sourceMatch": [
+        "\\b[0-9][0-9A-Fa-f_xXoObBeE.]*"
+      ],
       "kinds": [
         "function"
       ],
-      "allowAbstain": true,
-      "exceptions": [
-        "Mathematical formula coefficients, coordinate geometry, interpolation, normalization, bit masks and algorithmic identities pass when the formula is recognizable; tunable convergence/tolerance policy is not a mathematical identity.",
-        "Wire/transport/storage field widths, offsets, buffer counts and status codes defined or decoded adjacently with a clear mapping or declared layout pass. Numeric diagnostic/status assignments or explicit equality/match decoding in clearly named branches are legitimate encoding, not tunable policy; opaque numeric ordering comparisons deciding domain policy do not pass.",
-        "Zero/one initialization, Boolean flags, empty values, simple indices/loop bounds and standard unit conversions pass.",
-        "Named constants, parameters, or adjacent comments explaining both the policy and choice of value pass."
-      ],
-      "context": {
-        "callees": true,
-        "types": true
+      "score": {
+        "question": "How clearly does a literal in `source` mean unstated tunable domain policy rather than a mathematical identity?",
+        "levels": [
+          "No literal means tunable policy, or that meaning is stated, or the literal means an identity, a declared encoding, a unit conversion, or a zero/one flag.",
+          "A literal could mean either a retunable allowance or an unstated layout or encoding, and `source` does not show which meaning it has.",
+          "A literal clearly means a retunable knob, allowance, ordering outcome, or sentinel rank, and `source` does not state that meaning."
+        ],
+        "paraphrases": [
+          {
+            "question": "How settled is the role of a literal in `source`: a stated or mathematical meaning, an unsettled reading, or an unnamed policy choice?",
+            "levels": [
+              "Every literal is a formula identity, a mapping `source` declares, a unit conversion, a zero/one flag, or a policy whose meaning is already written beside it.",
+              "One literal sits between a retunable allowance and a layout or status encoding that `source` never declares.",
+              "One literal is unmistakably a knob, allowance, ordering outcome, or sentinel rank whose meaning `source` never writes down."
+            ]
+          },
+          {
+            "question": "If a reader of `source` asks what a literal stands for, how far is that answer from a named identity and toward hidden policy?",
+            "levels": [
+              "The answer is a mathematical identity, a declared encoding, a conversion, a flag, or a policy the name or comment already gives.",
+              "The answer could be a retunable allowance or an encoding the function never spells out, and neither reading is settled.",
+              "The answer is a retunable policy choice, and neither a name nor a neighboring comment supplies it."
+            ]
+          }
+        ]
       },
-      "sourceMatch": ["\\b[0-9][0-9A-Fa-f_xXoObBeE.]*"]
+      "checks": {
+        "violation": [
+          {
+            "question": "Does a literal in `source` mean a convergence or tolerance knob?",
+            "yes": "The literal's meaning is a retunable convergence or tolerance choice.",
+            "no": "No literal means a convergence or tolerance knob.",
+            "paraphrases": [
+              {
+                "question": "Does `source` embed a literal whose job is to decide when a search or fit has come close enough?",
+                "yes": "That job is a retunable convergence or tolerance choice.",
+                "no": "No literal has that job."
+              }
+            ]
+          },
+          {
+            "question": "Does a literal in `source` mean a resource or byte allowance?",
+            "yes": "The literal's meaning is a retunable resource or byte allowance.",
+            "no": "No literal means a resource or byte allowance.",
+            "paraphrases": [
+              {
+                "question": "Does `source` hide a per-item resource or byte budget inside a literal?",
+                "yes": "The literal is a retunable allowance of bytes or another resource.",
+                "no": "No literal is that kind of allowance."
+              }
+            ]
+          },
+          {
+            "question": "Does a literal in `source` mean an ordering outcome used to decide domain policy?",
+            "yes": "The literal's meaning is an ordering outcome that decides policy.",
+            "no": "No literal means an ordering outcome.",
+            "paraphrases": [
+              {
+                "question": "Does a literal in `source` stand for which case wins an ordering, and thereby set domain policy?",
+                "yes": "The literal is an ordering outcome that chooses the policy branch.",
+                "no": "No literal is an ordering outcome."
+              }
+            ]
+          },
+          {
+            "question": "Does a literal in `source` mean a sentinel rank?",
+            "yes": "The literal's meaning is a sentinel rank.",
+            "no": "No literal means a sentinel rank.",
+            "paraphrases": [
+              {
+                "question": "Does a literal in `source` stand in for the rank of something that was never assigned one?",
+                "yes": "The literal is a sentinel rank.",
+                "no": "No literal is a sentinel rank."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` contain a numeric literal?",
+            "yes": "A digit-bearing literal appears in `source`.",
+            "no": "`source` has no numeric literal."
+          }
+        ]
+      }
     },
     {
       "id": "rust-readability-mixed-levels-of-abstraction",
-      "description": "Functions should operate mostly at one conceptual level. Fail Rust high-level orchestration interleaved with substantial low-level encoding/decoding, parsing or storage-layout work that has its own coherent useful name. Manual character classification, nibble/byte assembly, framing or checksumming among domain operations is an independent codec responsibility, not incidental glue. Small calculations, field access, validation and ordinary adapters pass. A runtime defect or reusable public abstraction is not required; one allocation-free named helper can clarify responsibility.",
+      "description": "`source` interleaves domain orchestration with an inline codec.",
       "severity": "info",
       "include": [
         "**/*.rs"
       ],
+      "sourceMatch": [
+        "\\b(?:let|if|match|for|while|loop|u8|u16|u32|u64|u128|i8|i16|i32|i64|i128|usize|isize|char)\\b|(?:<<|>>|\\^|[&|=\\[\\]])|\\b(?:bytes|chars|to_digit|from_str_radix|to_be_bytes|to_le_bytes|from_be_bytes|from_le_bytes|push|extend_from_slice|copy_from_slice)\\s*\\("
+      ],
       "kinds": [
         "function"
       ],
-      "allowAbstain": true,
-      "exceptions": [
-        "Small calculations, field access, validation and incidental serialization glue pass.",
-        "A focused implementation of an algorithm or codec, rather than orchestration, passes.",
-        "Named helpers that already isolate coherent low-level work pass."
-      ],
-      "context": {
-        "callees": true
+      "score": {
+        "question": "How clearly does `source` mix domain orchestration with an inline codec?",
+        "levels": [
+          "`source` stays at one level: a focused codec, orchestration that calls a helper, small glue, or no codec work.",
+          "Low-level steps might be incidental glue or a coherent codec, and it is unclear whether they are a separate responsibility.",
+          "Domain orchestration and a coherent inline codec are both written in `source`."
+        ],
+        "paraphrases": [
+          {
+            "question": "How mixed are the responsibilities inside `source`?",
+            "levels": [
+              "One responsibility only: the codec itself, a caller of a named helper, incidental glue, or no codec at all.",
+              "The low-level lines might be throwaway glue or a codec that deserves its own name, and `source` does not settle that.",
+              "A domain operation and a codec that could stand alone are both spelled out in `source`."
+            ]
+          },
+          {
+            "question": "How obvious is it that `source` both runs a domain operation and writes a codec inline?",
+            "levels": [
+              "`source` does not do both: it is the codec, it delegates the codec, it only glues, or it has no codec.",
+              "Some low-level work is present, but it is ambiguous whether that work is a real codec or just glue.",
+              "Both a domain operation and an inline codec are obvious in `source`."
+            ]
+          }
+        ]
       },
-      "sourceMatch": ["\\b(?:let|if|match|for|while|loop|u8|u16|u32|u64|u128|i8|i16|i32|i64|i128|usize|isize|char)\\b|(?:<<|>>|\\^|[&|=\\[\\]])|\\b(?:bytes|chars|to_digit|from_str_radix|to_be_bytes|to_le_bytes|from_be_bytes|from_le_bytes|push|extend_from_slice|copy_from_slice)\\s*\\("]
+      "checks": {
+        "violation": [
+          {
+            "question": "Does `source` interleave domain orchestration with inline byte or character assembly?",
+            "yes": "Both the domain operation and the assembly are written in `source`.",
+            "no": "`source` does not interleave those two.",
+            "paraphrases": [
+              {
+                "question": "Are domain steps and hand-built bytes or characters written together in `source`?",
+                "yes": "`source` both orchestrates a domain operation and assembles bytes or characters inline.",
+                "no": "Those two jobs are not both inline in `source`."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` interleave domain orchestration with inline framing or checksumming?",
+            "yes": "Both the domain operation and the framing or checksum are written in `source`.",
+            "no": "`source` does not interleave those two.",
+            "paraphrases": [
+              {
+                "question": "Does `source` both run a domain operation and compute a frame or checksum in place?",
+                "yes": "The domain operation and the frame or checksum are written in the same function.",
+                "no": "`source` does not combine those two."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` interleave domain orchestration with inline parsing or storage-layout work?",
+            "yes": "Both the domain operation and the layout work are written in `source`.",
+            "no": "`source` does not interleave those two.",
+            "paraphrases": [
+              {
+                "question": "Does `source` both orchestrate a domain operation and spell out parsing or a storage layout?",
+                "yes": "The domain operation and that parse or layout are inline together.",
+                "no": "`source` does not combine those two."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` contain control flow, a scalar or bit operation, or a byte or character call?",
+            "yes": "`source` has that kind of executable work.",
+            "no": "`source` has none of those signals."
+          }
+        ]
+      }
     },
     {
       "id": "rust-readability-accurate-doc-comments",
@@ -51,20 +193,110 @@
       "include": [
         "**/*.rs"
       ],
+      "sourceMatch": [
+        "///",
+        "//!",
+        "/\\*\\*",
+        "/\\*!",
+        "#\\s*!?\\s*\\[\\s*doc\\b"
+      ],
       "kinds": [
         "function"
-      ],
-      "allowAbstain": true,
-      "exceptions": [
-        "No Rustdoc, missing sections and merely incomplete detail pass.",
-        "Proved invariant unwraps do not contradict recovery claims for invalid input.",
-        "Documented permitted panics/preconditions and accurate safety requirements pass."
       ],
       "context": {
         "callees": true,
         "types": true
       },
-      "sourceMatch": ["///", "//!", "/\\*\\*", "/\\*!", "#\\s*!?\\s*\\[\\s*doc\\b"]
+      "score": {
+        "question": "How clearly does attached Rustdoc in `source` contradict the visible body?",
+        "levels": [
+          "No concrete claim, or the claim matches the visible body.",
+          "A claim might be stronger than the body, but the body does not show the opposite behavior.",
+          "A concrete result, error, panic, or safety claim is the opposite of what the visible body does."
+        ],
+        "paraphrases": [
+          {
+            "question": "How sharp is the clash between the attached doc and what `source` actually does?",
+            "levels": [
+              "The doc makes no concrete promise, or the promise and the body agree.",
+              "The doc may overclaim, yet the body never shows the contrary action.",
+              "A stated result, error, panic, or safety promise is the reverse of the visible body."
+            ]
+          },
+          {
+            "question": "Reading only `source`, how sure is a contradiction between the attached contract and the implementation?",
+            "levels": [
+              "Either no concrete promise is attached, or the attached promise describes what the body does.",
+              "The promise may reach past the body, but the body does not perform the opposite.",
+              "The attached promise and the body are direct opposites on a result, an error, a panic, or pointer safety."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does the doc claim an error outcome that the visible body does not produce?",
+            "yes": "The doc says invalid input returns an error, or that no error is returned, and the body does the opposite.",
+            "no": "No error claim is contradicted.",
+            "paraphrases": [
+              {
+                "question": "Does the attached doc describe an error result the body fails to honor?",
+                "yes": "The doc's error story and the body's error behavior are opposites.",
+                "no": "The body's errors do not oppose a documented error outcome."
+              }
+            ]
+          },
+          {
+            "question": "Does the doc claim a panic outcome that the visible body does not keep?",
+            "yes": "The doc says the body never panics, or panics only in a stated case, and the body does otherwise.",
+            "no": "No panic claim is contradicted.",
+            "paraphrases": [
+              {
+                "question": "Does the attached doc describe when `source` panics in a way the body breaks?",
+                "yes": "The documented panic story does not match an actual panic, or a claimed absence of one.",
+                "no": "No documented panic story is broken by the body."
+              }
+            ]
+          },
+          {
+            "question": "Does the doc claim a pointer may be invalid while the body dereferences it?",
+            "yes": "The doc allows an invalid pointer and the body reads or writes through it.",
+            "no": "No safety claim is contradicted by a dereference.",
+            "paraphrases": [
+              {
+                "question": "Does the attached safety text permit a bad pointer that the body then uses?",
+                "yes": "The doc treats an invalid pointer as allowed, and the body dereferences it.",
+                "no": "The body does not dereference under a doc that permits an invalid pointer."
+              }
+            ]
+          },
+          {
+            "question": "Does the doc claim a result or persistence outcome the visible body does not produce?",
+            "yes": "The doc says a replacement, removal, or completed write happens, and the body does not do that.",
+            "no": "No result or persistence claim is contradicted.",
+            "paraphrases": [
+              {
+                "question": "Does the attached doc promise a finished result or a durable write the body never performs?",
+                "yes": "The doc promises replacement, removal, or a completed write, and the body skips that.",
+                "no": "No such result or write promise is broken."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` contain an attached Rustdoc comment?",
+            "yes": "A `///`, `//!`, block doc, or `#[doc]` comment is attached.",
+            "no": "No attached Rustdoc is present."
+          },
+          {
+            "question": "Does that Rustdoc state a concrete behavior, error, panic, or safety result?",
+            "yes": "The doc states a concrete result or obligation.",
+            "no": "The doc has no such concrete claim."
+          }
+        ]
+      }
     }
   ]
 }

@@ -2,34 +2,82 @@
   "rules": [
     {
       "id": "rust-expected-failure-panics",
-      "description": "Apply to parsing/operations on explicitly external input whose contract permits caller recovery. Fail when ordinary malformed input or recoverable I/O reaches panic, unwrap, expect, or an equivalent assertion instead of the promised error handling. Identify the failing input/path, not merely an unwrap token.",
+      "description": "`source` panics, unwraps, expects, or asserts on ordinary malformed external input or recoverable I/O that visible text says the caller can recover from.",
       "severity": "warning",
-      "include": ["**/*.rs"],
-      "kinds": [
-        "function"
+      "include": [
+        "**/*.rs"
       ],
-      "allowAbstain": true,
       "sourceMatch": [
         "\\b(?:panic|assert(?:_eq|_ne)?|unreachable)\\s*!",
         "\\b(?:unwrap(?:_err)?|expect(?:_err)?)\\s*\\(",
         "\\bResult\\s*<",
         "\\?"
       ],
-      "exceptions": [
-        "Tests/prototypes/examples and test setup may panic.",
-        "Proved invariants and documented programmer-error preconditions may panic.",
-        "Explicit application-owned fatal startup policy is valid; do not demand Result everywhere or particular expect wording."
-      ]
-    },
-    {
-      "id": "rust-error-cause-loss",
-      "description": "Apply at a visible error abstraction boundary where callers need actionable cause/context. Fail when a reachable lower error is erased or misclassified so recovery/diagnosis promised by the boundary is impossible; show the lost identity/resource and the misleading outcome. Direct error-to-error mapping is also a boundary: merging causes that the visible contract explicitly requires callers to distinguish is cause loss, even without Result or an Error trait implementation. That explicit diagnostic distinction suffices without a complete caller body. Retaining a useful error directly or via source is sufficient.",
-      "severity": "warning",
-      "include": ["**/*.rs"],
       "kinds": [
         "function"
       ],
-      "allowAbstain": true,
+      "score": {
+        "question": "How clearly does `source` panic on input or I/O that visible text says the caller can recover from?",
+        "levels": [
+          "No recovery promise is written, the recoverable path returns an error, or a stated panic policy covers the panic.",
+          "A panic or assertion is present, but the recovery promise is partial or the failing path is unclear.",
+          "Visible text promises recovery and that path reaches panic, unwrap, expect, or assert."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clear is it that a recoverable input or I/O failure in `source` ends by unwinding?",
+            "levels": [
+              "Recovery is not promised in the text, the failure comes back as an error, or a written panic policy covers it.",
+              "Unwind is present, yet the recovery wording is incomplete or which path fails is hard to see.",
+              "The text tells the caller to recover, and that same path hits panic, unwrap, expect, or assert."
+            ]
+          },
+          {
+            "question": "To what degree does `source` unwind on bad input or I/O that the text treats as an ordinary recoverable error?",
+            "levels": [
+              "The text never offers recovery, the error is returned, or a documented panic policy applies.",
+              "A panic sits in `source`, but the promise of recovery is only half stated or the failing input is uncertain.",
+              "Recovery is promised in visible text, and the bad input or I/O still reaches a panic or assertion."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does the promised-recoverable path in `source` reach panic, unwrap, expect, assert, or unreachable?",
+            "yes": "That path panics or asserts.",
+            "no": "That path returns an error, or no such path is in `source`.",
+            "paraphrases": [
+              {
+                "question": "Does the path visible text says the caller can recover from end in panic, unwrap, expect, assert, or unreachable?",
+                "yes": "That recoverable path unwinds.",
+                "no": "That path yields an error result, or `source` has no such recoverable path."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` state that a caller can recover from malformed external input or from a recoverable I/O failure?",
+            "yes": "Visible text says that input or I/O failure is an ordinary error the caller recovers from.",
+            "no": "No recovery promise is written in `source`."
+          },
+          {
+            "question": "Does `source` contain panic, unwrap, expect, assert, or unreachable?",
+            "yes": "One of those panic forms is in `source`.",
+            "no": "None of those panic forms is in `source`."
+          }
+        ]
+      }
+    },
+    {
+      "id": "rust-error-cause-loss",
+      "description": "`source` drops, skips, or merges a lower error identity, resource, or category that visible text says callers must distinguish or recover from.",
+      "severity": "warning",
+      "include": [
+        "**/*.rs"
+      ],
       "sourceMatch": [
         "\\b(Result|IoResult|IOResult)\\s*<",
         "\\bfn\\s+source\\s*\\(",
@@ -39,182 +87,756 @@
         "\\b(?:[A-Za-z_][A-Za-z0-9_]*)?(?:Error|Err)\\b",
         "\\bfn\\s+from\\s*\\("
       ],
-      "context": {"types": true},
-      "exceptions": [
-        "Intentional sanitized public errors with appropriate internal diagnostics are valid; never demand secret disclosure.",
-        "Boolean/domain rejection may not need a source; lower errors may already carry sufficient context.",
-        "Do not mandate a crate, representation, Error trait implementation, or context on every question mark."
-      ]
-    },
-    {
-      "id": "rust-conversion-contract",
-      "description": "Apply only to an explicitly standard std::convert::From implementation with visible source/target domain meaning. Fail for accepted source values that panic due to domain conversion or lose semantically significant information, including a plausible-looking successful conversion with changed meaning. Standard From is expected to be infallible, lossless, value-preserving and obvious; use TryFrom or a named operation when appropriate.",
-      "severity": "warning",
-      "include": ["**/*.rs"],
       "kinds": [
         "function"
       ],
-      "allowAbstain": true,
+      "context": {
+        "types": true
+      },
+      "score": {
+        "question": "How clearly does `source` erase a lower error identity that visible text says callers must distinguish?",
+        "levels": [
+          "No distinction is required in visible text, or the immediate error is returned or stored for the caller.",
+          "An error is wrapped or renamed, and it is unclear whether the required identity remains readable.",
+          "Visible text requires an identity, and `source` drops it, skips it by calling `source` on the wrapped error, or merges categories that must stay distinct."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clear is it that callers lose a lower error identity `source` or `types` told them to distinguish?",
+            "levels": [
+              "Visible text never requires a distinction, or the immediate error is handed back or stored for the caller.",
+              "The error is wrapped or renamed, and whether the required identity is still readable is uncertain.",
+              "The text requires an identity, and `source` discards it, delegates to the wrapped error's source, or folds categories that must remain separate."
+            ]
+          },
+          {
+            "question": "To what degree does `source` remove a cause, resource, or category that visible text says callers must still see?",
+            "levels": [
+              "No required identity is written, or the caller can still read the immediate error.",
+              "A wrapper or new name appears, and it is uncertain whether the promised identity survived.",
+              "A required identity is written, and `source` drops it, skips the wrapped error by calling `source` on it, or collapses categories the text keeps apart."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does `source` replace or discard the required error so the caller receives a different identity?",
+            "yes": "The caller receives a different kind, message, or empty cause instead of the required error.",
+            "no": "The required error is what the caller receives, or no required error is written.",
+            "paraphrases": [
+              {
+                "question": "Does the caller of `source` get a different kind, message, or empty cause in place of the required error?",
+                "yes": "What the caller receives is not the required error.",
+                "no": "The caller receives the required error, or no required error is written."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` call `source` on a wrapped error instead of returning that wrapped error?",
+            "yes": "The call delegates to the inner error's source rather than returning the inner error.",
+            "no": "The wrapped error itself is returned or stored, or no such call is in `source`.",
+            "paraphrases": [
+              {
+                "question": "Does `source` delegate to the wrapped error's own source instead of handing back that wrapped error?",
+                "yes": "The inner error's source is what is returned, not the inner error.",
+                "no": "The wrapped error itself is returned or stored, or `source` has no such delegation."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` merge error categories that visible text says callers must keep distinct?",
+            "yes": "Two or more required categories become one outcome.",
+            "no": "Each required category stays distinct, or no such distinction is written.",
+            "paraphrases": [
+              {
+                "question": "Does `source` fold categories that visible text says must stay separate into one outcome?",
+                "yes": "Required categories that should remain distinct share one result.",
+                "no": "Required categories stay separate, or the text never asks callers to distinguish them."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` or `types` state that callers must distinguish a specific lower error identity, resource, or category?",
+            "yes": "Visible text names that identity, resource, or category as required.",
+            "no": "No such requirement is written."
+          }
+        ]
+      }
+    },
+    {
+      "id": "rust-conversion-contract",
+      "description": "An explicit std::convert::From body panics on an accepted value or returns a target whose meaning differs from the visible source and target domain.",
+      "severity": "warning",
+      "include": [
+        "**/*.rs"
+      ],
       "sourceMatch": [
         "\\bfn\\s+(?:from|try_from)\\s*\\(",
         "\\bfn\\s+\\w*(?:truncate|round)\\w*\\s*\\(",
         "\\b(?:std\\s*::\\s*convert\\s*::\\s*)?(?:From|TryFrom|Into)\\s*<"
       ],
-      "context": {"types": true},
-      "exceptions": [
-        "Discarded irrelevant capacity/layout is not semantic loss.",
-        "Ordinary allocation failure is not grounds to ban otherwise valid allocating From.",
-        "Explicitly named truncation/rounding and fallible TryFrom are legitimate; Into bounds are not direct Into implementations.",
-        "Do not report solely the deterministic panic-in-From/from-over-into shape."
-      ]
+      "kinds": [
+        "function"
+      ],
+      "context": {
+        "types": true
+      },
+      "score": {
+        "question": "How clearly does a std::convert::From body in `source` break the domain written in `source` or `types`?",
+        "levels": [
+          "This is not an explicit From body, no domain sentence is written, or the body preserves the written meaning.",
+          "A From body changes a value, and it is unclear whether visible text treats that value as meaningful.",
+          "A domain sentence is written, and the body panics, drops a required field, or applies to_be, to_le, or swap_bytes to an architecture-independent value."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clear is it that a std::convert::From body in `source` fails the domain sentence in `source` or `types`?",
+            "levels": [
+              "There is no explicit From body, no domain sentence, or the body keeps the written meaning.",
+              "The From body alters a value, and whether the text treats that value as meaningful is uncertain.",
+              "A domain sentence is present, and the body panics, omits a required field, or endian-swaps an architecture-independent value with to_be, to_le, or swap_bytes."
+            ]
+          },
+          {
+            "question": "To what degree does the From implementation in `source` contradict the meaning written for its source and target?",
+            "levels": [
+              "This is not From, the meaning is unstated, or the returned value matches that meaning.",
+              "A value changes in the body, and the text does not make clear that the change matters.",
+              "The meaning is stated, and the body panics on an accepted value, drops a field that meaning requires, or swaps endianness of an architecture-independent number."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does the From body panic on an accepted source value?",
+            "yes": "An accepted value reaches panic.",
+            "no": "Accepted values do not panic in `source`.",
+            "paraphrases": [
+              {
+                "question": "Does an accepted source value reach panic inside the From body?",
+                "yes": "Panic is reachable for a value the conversion accepts.",
+                "no": "Accepted values do not unwind in `source`."
+              }
+            ]
+          },
+          {
+            "question": "Does the From body drop or replace a field the domain sentence says must be kept?",
+            "yes": "A required field is omitted or given a different meaning.",
+            "no": "Required fields are preserved, or no domain sentence names them.",
+            "paraphrases": [
+              {
+                "question": "Does the From body omit or rewrite a field the domain sentence requires to survive?",
+                "yes": "A field the domain sentence keeps is missing or means something else.",
+                "no": "Those fields survive, or no domain sentence names them."
+              }
+            ]
+          },
+          {
+            "question": "Does the From body call to_be, to_le, or swap_bytes on a value the text says is architecture-independent?",
+            "yes": "An endian swap is applied to an architecture-independent value.",
+            "no": "No such swap is in `source`, or the text does not claim architecture independence.",
+            "paraphrases": [
+              {
+                "question": "Does the From body endian-swap, via to_be, to_le, or swap_bytes, a number the text says does not depend on host byte order?",
+                "yes": "That architecture-independent value is endian-swapped.",
+                "no": "`source` has no such swap, or the text never claims architecture independence."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source`, `parentSource`, or `types` show an explicit std::convert::From implementation?",
+            "yes": "An explicit std::convert::From impl is visible.",
+            "no": "No explicit std::convert::From impl is visible."
+          },
+          {
+            "question": "Does `source` or `types` contain a sentence stating what the source value and the target value mean?",
+            "yes": "A sentence states that domain meaning.",
+            "no": "No sentence states the domain meaning. A From impl alone is not domain meaning."
+          }
+        ]
+      }
     },
     {
       "id": "rust-validation-bypass",
       "description": "Require an explicit visible validated-type invariant, a reachable safe path that contradicts it, and a visible consumer relying on that invariant. Fail the primary unit that exposes or implements the unchecked construction, field, mutation, accessor, or conversion; give a concrete safe value and consumer consequence. A checked constructor alone does not establish a whole-type contract. Do not report a primary unit solely for defects in attached type or implementation context.",
       "severity": "warning",
-      "include": ["**/*.rs"],
-      "kinds": [
-        "type",
-        "function"
+      "include": [
+        "**/*.rs"
       ],
-      "allowAbstain": true,
       "sourceMatch": [
         "\\b(?:struct|enum)\\s+[A-Za-z_][A-Za-z0-9_]*",
         "\\bfn\\s+[A-Za-z_][A-Za-z0-9_]*"
       ],
-      "context": {"types": true},
-      "exceptions": [
-        "Passive public DTOs have no validated-type promise.",
-        "Unchecked intermediate records followed by required validation are valid.",
-        "Existing constrained std types and genuinely unsafe opt-outs with appropriate caller obligations are valid.",
-        "Missing serializers, macro expansion, constructors or cross-module consumers require abstention only when that evidence is necessary to decide the relevant path; never fabricate bypasses. Unknown additional paths do not prevent diagnosing an already visible concrete safe bypass."
-      ]
+      "kinds": [
+        "type",
+        "function"
+      ],
+      "context": {
+        "types": true
+      },
+      "score": {
+        "question": "How clearly does `source` itself let a safe caller break a validated-type invariant written in `source` or `types`?",
+        "levels": [
+          "No invariant is written, `source` is not the unchecked path, or a stated exception covers the construction.",
+          "A checked constructor exists, and it is unclear whether `source` is a safe bypass or only an intermediate.",
+          "`source` itself is a safe construction, public field, mutation, accessor, or conversion that can break the written invariant."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clear is it that safe code in `source` can build a value the invariant in `source` or `types` forbids?",
+            "levels": [
+              "No invariant is written, `source` is not the unchecked path, or a written exception covers the construction.",
+              "A checked constructor is visible, and whether `source` is a bypass or only a draft is uncertain.",
+              "`source` itself is the safe construction, public field, mutation, accessor, or conversion that can violate the written invariant."
+            ]
+          },
+          {
+            "question": "To what degree does `source` give a safe caller a way around a validated-type invariant stated in `source` or `types`?",
+            "levels": [
+              "The invariant is absent, the bypass is not in `source`, or an exception covers this construction.",
+              "Validation exists nearby, and it is uncertain whether `source` skips it or is checked later.",
+              "The invariant is written, and `source` is a safe field, constructor, mutation, accessor, or conversion that can break it."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does `source` expose a public field that a safe caller can set to a value breaking the invariant?",
+            "yes": "`source` is that public field.",
+            "no": "`source` is not that public field.",
+            "paraphrases": [
+              {
+                "question": "Is `source` a public field a safe caller can assign so the written invariant no longer holds?",
+                "yes": "`source` is that assignable public field.",
+                "no": "`source` is some other unit, not that field."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` provide a safe constructor, conversion, or literal that can build a value breaking the invariant?",
+            "yes": "`source` is that unchecked construction.",
+            "no": "`source` is not that unchecked construction.",
+            "paraphrases": [
+              {
+                "question": "Is `source` a safe constructor, conversion, or literal that can produce a value the invariant rejects?",
+                "yes": "`source` is that unchecked build path.",
+                "no": "`source` is not that build path."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` provide a safe mutation or accessor that can change a value so it breaks the invariant?",
+            "yes": "`source` is that mutation or accessor.",
+            "no": "`source` is not that mutation or accessor.",
+            "paraphrases": [
+              {
+                "question": "Is `source` a safe setter or accessor that can leave the value outside the written invariant?",
+                "yes": "`source` is that mutation or accessor.",
+                "no": "`source` is not that mutation or accessor."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` or `types` state an invariant that every safe value of this type must satisfy?",
+            "yes": "Visible text states that invariant.",
+            "no": "No such invariant is written. A checked constructor alone is not a whole-type invariant."
+          },
+          {
+            "question": "Is a consumer that relies on that invariant visible in `source` or `types`?",
+            "yes": "A consumer of the invariant is visible.",
+            "no": "No consumer of the invariant is visible."
+          }
+        ]
+      }
     },
     {
       "id": "rust-partial-state-on-error",
       "description": "Apply when a visible operation promises atomicity or another explicit state invariant on error/panic and later safe observation/reuse is possible. Fail when mutation preceding a reachable fallible operation leaves observable state contradicting that promise. Show the mutation, failure and observer path; do not assume every function is transactional.",
       "severity": "warning",
-      "include": ["**/*.rs"],
-      "kinds": [
-        "function"
+      "include": [
+        "**/*.rs"
       ],
-      "allowAbstain": true,
       "sourceMatch": [
         "\\?",
         "\\b(?:Err|unwrap|expect|catch_unwind|read_to_end|abort)\\s*\\(",
         "\\bpanic\\s*!"
       ],
-      "context": {"types": true},
-      "exceptions": [
-        "Documented partial progress, valid rollback/commit, or termination preventing reuse are legitimate.",
-        "std::io::Read::read_to_end can append bytes before Err; std::io::Read::read guarantees no bytes were read on Err. Do not transfer one method contract to the other.",
-        "Safe-code business inconsistency is not automatically UB; poisoning alone is not a general rollback guarantee."
-      ]
+      "kinds": [
+        "function"
+      ],
+      "context": {
+        "types": true
+      },
+      "score": {
+        "question": "How clearly does `source` leave observable state contradicting a visible atomicity or error-state promise after failure?",
+        "levels": [
+          "No atomicity or error-state promise is written, the state is restored, or reuse is impossible.",
+          "State changes before a fallible step, and it is unclear whether the promise covers that state or reuse is possible.",
+          "The promise is written, mutation precedes a reachable failure, and a later observer can see the broken state."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clear is it that failure in `source` leaves state a written atomicity or error-state promise forbids?",
+            "levels": [
+              "No such promise is written, the state is put back, or nobody can reuse it.",
+              "State changes before a fallible step, and whether the promise covers it or reuse is possible is uncertain.",
+              "The promise is written, the mutation comes first, and a later observer can see the broken state."
+            ]
+          },
+          {
+            "question": "To what degree does a reachable failure in `source` expose state that contradicts the written error invariant?",
+            "levels": [
+              "The invariant is absent, restoration happens, or the state cannot be observed again.",
+              "An earlier write exists, and it is uncertain whether the promise includes that write or a later observer can see it.",
+              "Visible text states the invariant, mutation precedes the failure, and the broken state stays observable."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does `source` mutate the promised state before a reachable fallible operation, without restoring it on failure?",
+            "yes": "The mutation precedes the failure and the broken state remains.",
+            "no": "Mutation happens only after success, or the state is restored.",
+            "paraphrases": [
+              {
+                "question": "Is the promised state changed in `source` before a reachable fallible step, and left that way when the step fails?",
+                "yes": "The earlier change survives the failure.",
+                "no": "The change waits for success, or failure puts the state back."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` promise an atomic append and then use read_to_end, which can append bytes before Err?",
+            "yes": "`source` promises unchanged output on Err and calls read_to_end.",
+            "no": "`source` uses read, which adds bytes only after Ok, or it does not promise an atomic append.",
+            "paraphrases": [
+              {
+                "question": "Does `source` promise that Err leaves the output unchanged, then call read_to_end, which may append before returning Err?",
+                "yes": "That atomic-append promise and the read_to_end call are both in `source`.",
+                "no": "`source` uses read and appends only after Ok, or it never promises an unchanged buffer on Err."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` promise atomicity or another explicit state invariant on error or panic?",
+            "yes": "Visible text states that promise.",
+            "no": "No such promise is written."
+          },
+          {
+            "question": "Can a later observer reuse the state after the failure?",
+            "yes": "Visible text or the signature shows the state remains available after failure.",
+            "no": "The state is consumed or the process ends, so reuse is impossible."
+          }
+        ]
+      }
     },
     {
       "id": "rust-buffered-output-completion",
       "description": "Apply to a concrete buffered writer stack and explicit required output/error-completion promise. Fail when success is reported although pending output or completion errors are lost by Drop, unchecked completion, or discarded ownership. Establish that bytes can remain buffered and trace every relevant success path. std::io::BufWriter Drop attempts writing its buffer but ignores errors; write_all into it alone does not ensure downstream completion.",
       "severity": "warning",
-      "include": ["**/*.rs"],
-      "kinds": [
-        "function"
+      "include": [
+        "**/*.rs"
       ],
-      "allowAbstain": true,
       "sourceMatch": [
         "\\bBufWriter\\b",
         "\\b(?:flush|into_inner|into_parts)\\s*\\(",
         "\\b(?:write|write_all|write_fmt)\\s*\\("
       ],
-      "exceptions": [
-        "Checked flush or into_inner and appropriate ownership transfer for later completion are valid.",
-        "Explicitly disposable/best-effort output, empty/already-completed buffers and abandonment on failure are legitimate.",
-        "Flush/completion is not crash durability, fsync, atomic replacement or directory durability; never require sync_all without a separate durability contract.",
-        "Do not infer std/Tokio/foreign writer semantics from flush or finish spelling."
-      ]
+      "kinds": [
+        "function"
+      ],
+      "score": {
+        "question": "How clearly does `source` report success while a concrete buffered writer can still lose pending output or a completion error?",
+        "levels": [
+          "No concrete buffered writer, no completion promise, or every success path checks flush or into_inner.",
+          "A buffered writer is used, and it is unclear whether success claims delivery or only a local write.",
+          "A completion promise is written, and a success path drops the buffer, ignores flush or into_inner, or discards pending bytes."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clear is it that `source` claims success while a concrete buffered writer can still drop pending bytes or a completion error?",
+            "levels": [
+              "No concrete buffered writer, no completion promise, or every success path checks flush or into_inner.",
+              "A buffered writer appears, and whether success means delivery or only a local write is uncertain.",
+              "The completion promise is written, and a success path drops the buffer, ignores flush or into_inner, or throws away pending bytes."
+            ]
+          },
+          {
+            "question": "To what degree does a success path in `source` leave a buffered writer's pending output or completion error unchecked?",
+            "levels": [
+              "The writer is not concrete, completion is not promised, or flush or into_inner is checked on every success path.",
+              "Buffering is present, and the text does not make clear whether success includes delivery.",
+              "Success is promised as completion, and a success path still drops the writer, discards a flush or into_inner error, or abandons pending bytes."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does a success path drop the buffered writer without a checked flush?",
+            "yes": "Success is reached by dropping the writer, and flush is not checked. BufWriter Drop writes the buffer and ignores errors.",
+            "no": "Every success path checks flush, or the writer is not dropped on success.",
+            "paraphrases": [
+              {
+                "question": "Can success in `source` be reached by dropping the buffered writer with flush unchecked?",
+                "yes": "The writer is dropped on the way to success, and flush is not checked. BufWriter Drop writes its buffer and ignores the error.",
+                "no": "Success checks flush, or the writer is not dropped on a success path."
+              }
+            ]
+          },
+          {
+            "question": "Does a success path ignore the result of flush or into_inner?",
+            "yes": "Flush or into_inner is called and its error is discarded on a success path.",
+            "no": "Those results are returned, or they are not called.",
+            "paraphrases": [
+              {
+                "question": "Does a success path call flush or into_inner and throw away the error?",
+                "yes": "That call's error is discarded while success is still reported.",
+                "no": "The error is returned to the caller, or those calls are absent."
+              }
+            ]
+          },
+          {
+            "question": "Does a success path discard pending bytes or the inner writer from into_parts or into_inner?",
+            "yes": "Pending output or the inner writer is dropped while success is reported.",
+            "no": "Pending output is checked or transferred, or that split is not in `source`.",
+            "paraphrases": [
+              {
+                "question": "Does a success path drop the pending buffer or inner writer obtained from into_parts or into_inner?",
+                "yes": "Those bytes or that writer are discarded while `source` still reports success.",
+                "no": "They are checked or handed off, or `source` does not split the writer that way."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` name a concrete buffered writer such as std::io::BufWriter?",
+            "yes": "A concrete buffered writer type is named in `source`.",
+            "no": "No concrete buffered writer type is named in `source`."
+          },
+          {
+            "question": "Does `source` promise that success means pending output was completed or completion errors were returned?",
+            "yes": "Visible text states that completion promise.",
+            "no": "No completion promise is written."
+          }
+        ]
+      }
     },
     {
       "id": "rust-fallible-drop",
       "description": "Apply to an actual Drop implementation and visible ordinary cleanup failure or unwind path. Fail when cleanup panics on that reachable failure contrary to the promised cleanup/error policy, including a possible second panic while unwinding. Show the real operation/failure and ownership path; panic in Drop is not automatically forbidden.",
       "severity": "warning",
-      "include": ["**/*.rs"],
-      "kinds": [
-        "function"
+      "include": [
+        "**/*.rs"
       ],
-      "allowAbstain": true,
       "sourceMatch": [
         "\\bfn\\s+drop\\s*\\(",
         "\\b(?:std|core)::mem::drop\\s*\\("
       ],
-      "context": {"types": true},
-      "exceptions": [
-        "Explicit fallible finish/close with a nonpanicking best-effort destructor fallback is valid.",
-        "Explicit best-effort cleanup may ignore/log errors; ordinary owned fields need no redundant Drop.",
-        "Proved infallible operations and deliberate invariant/fail-fast policies are legitimate.",
-        "No assumed panic profile or manual field double-drop; diagnose only supplied evidence."
-      ]
-    },
-    {
-      "id": "rust-unbounded-input-buffering",
-      "description": "Apply to a visible untrusted input boundary with an explicit protocol/resource limit and a storage-growth path. Fail if external length/framing expands storage beyond the required effective bound, checking occurs only after unbounded growth, or a cap silently accepts an incomplete/truncated frame as complete. Identify the actual byte/resource limit and missing/rejected framing validation.",
-      "severity": "warning",
-      "include": ["**/*.rs"],
       "kinds": [
         "function"
       ],
-      "allowAbstain": true,
+      "context": {
+        "types": true
+      },
+      "score": {
+        "question": "How clearly does a Drop body in `source` panic on ordinary cleanup that visible text says must not panic?",
+        "levels": [
+          "`source` is not a Drop body, no non-panicking policy is written, or cleanup does not panic.",
+          "Drop calls a fallible operation, and it is unclear whether a panic is reachable or the policy forbids it.",
+          "The policy is written, and the Drop body panics, unwraps, or expects on a reachable ordinary cleanup failure."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clear is it that this Drop body panics on routine cleanup the text says must stay non-panicking?",
+            "levels": [
+              "`source` is not Drop, the text never forbids a cleanup panic, or cleanup does not unwind.",
+              "Drop performs a fallible cleanup, and whether panic is reachable or forbidden is uncertain.",
+              "The forbid is written, and the Drop body still panics, unwraps, or expects on ordinary cleanup or unwind."
+            ]
+          },
+          {
+            "question": "To what degree does ordinary cleanup failure inside Drop in `source` unwind, against a written non-panicking policy?",
+            "levels": [
+              "This is not a Drop body, no non-panicking policy is written, or the failure path stays calm.",
+              "A fallible cleanup sits in Drop, and the text or the path leaves the panic question open.",
+              "Visible text forbids the panic, and a reachable cleanup or unwind failure in Drop still hits panic, unwrap, or expect."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does the Drop body panic, unwrap, or expect on a reachable ordinary cleanup or unwind failure?",
+            "yes": "That failure path panics, including a possible second panic while unwinding.",
+            "no": "Cleanup does not panic on that failure.",
+            "paraphrases": [
+              {
+                "question": "Can a reachable ordinary cleanup failure, including one during unwind, hit panic, unwrap, or expect in this Drop body?",
+                "yes": "That failure unwinds, including a second panic while already unwinding.",
+                "no": "That failure does not unwind in the Drop body."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Is `source` a Drop body?",
+            "yes": "`source` is the drop method, or `parentSource` shows impl Drop around it.",
+            "no": "`source` is not a Drop body."
+          },
+          {
+            "question": "Does `source` or `types` state that ordinary cleanup failure must not panic?",
+            "yes": "Visible text states that policy.",
+            "no": "No such policy is written."
+          }
+        ]
+      }
+    },
+    {
+      "id": "rust-unbounded-input-buffering",
+      "description": "`source` grows storage from an untrusted external length or frame before a visible limit rejects it, or accepts a truncated frame as a complete one.",
+      "severity": "warning",
+      "include": [
+        "**/*.rs"
+      ],
       "sourceMatch": [
         "\\b(?:read(?:_to_end|_exact|_until|_line)?|with_capacity|reserve(?:_exact)?|resize|extend(?:_from_slice)?|push|to_vec|collect)\\s*\\(",
         "\\bvec\\s*!\\s*\\["
       ],
-      "context": {"types": true},
-      "exceptions": [
-        "Trusted fixed input, a demonstrated upstream envelope/codec bound and streaming bounded state are valid.",
-        "No invented universal cap, always-with-capacity/try-reserve mandate, or blanket OOM recovery promise.",
-        "A timeout alone does not cap rapid byte growth; take(limit) alone does not prove a complete valid frame.",
-        "Arithmetic/units and upstream API defaults need supplied evidence; read_line/read_until names alone do not establish untrusted unlimited input."
-      ]
-    },
-    {
-      "id": "rust-exclusive-create-race",
-      "description": "Apply when a visible filesystem operation promises never to overwrite an existing target and competing creation is possible. Fail when a separate absence check followed by std File::create or ordinary create is relied upon for exclusivity: another creator between the operations can be overwritten. Require the actual create API and contract.",
-      "severity": "warning",
-      "include": ["**/*.rs"],
       "kinds": [
         "function"
       ],
-      "allowAbstain": true,
+      "context": {
+        "types": true
+      },
+      "score": {
+        "question": "How clearly does `source` let untrusted input grow storage past a written limit, or accept a truncated frame as complete?",
+        "levels": [
+          "The input is not untrusted, no limit is written, or the limit is applied before growth and oversize is rejected.",
+          "A cap is present, and it is unclear whether growth can pass it or a short read is treated as a full frame.",
+          "The limit is written, and `source` allocates from the external length before rejecting it, or accepts a capped prefix as complete."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clear is it that untrusted input in `source` grows storage before a written limit rejects it, or is accepted as a short complete frame?",
+            "levels": [
+              "The input is not untrusted, no limit is written, or the limit rejects oversize before storage grows.",
+              "A cap is written, and whether growth can pass it or a short read counts as a full frame is uncertain.",
+              "The limit is written, and `source` allocates from the external length before the rejection, or treats a capped prefix as complete."
+            ]
+          },
+          {
+            "question": "To what degree does `source` let an external length expand storage ahead of its stated bound, or treat a truncated frame as finished?",
+            "levels": [
+              "Trust is not external, the bound is unstated, or rejection happens before growth and oversize is refused.",
+              "Some cap appears, and it is uncertain whether storage can exceed it or a prefix is taken as whole.",
+              "The bound is stated, and allocation from the external length comes first, or a capped prefix is accepted as a full frame."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does `source` allocate or append from an external length or unbounded read before the written limit rejects that length?",
+            "yes": "Growth from the external length happens before the rejection.",
+            "no": "The limit is applied before growth. A read already limited to the bound, plus at most one detection byte, that rejects oversize is not this growth.",
+            "paraphrases": [
+              {
+                "question": "Does storage in `source` grow from an external length or an unbounded read before the written limit turns that length away?",
+                "yes": "The allocation or append happens first, and the rejection comes after.",
+                "no": "Rejection comes first. A read already limited to the bound, plus at most one detection byte, that refuses oversize is not this growth."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` accept a truncated or incomplete frame as a complete frame under the written limit?",
+            "yes": "A capped or short prefix is treated as a full valid frame.",
+            "no": "Incomplete input is rejected, or no completeness promise is written.",
+            "paraphrases": [
+              {
+                "question": "Does `source` treat a short or cut-off frame as a finished frame under the written limit?",
+                "yes": "A capped or incomplete prefix is accepted as a whole valid frame.",
+                "no": "Incomplete input is refused, or `source` never promises a complete frame."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` read untrusted external input?",
+            "yes": "Visible text says the input is untrusted or comes from an external peer.",
+            "no": "The input is not described as untrusted."
+          },
+          {
+            "question": "Does `source` state a protocol or resource limit on how much storage that input may use?",
+            "yes": "A size or framing limit is written in `source`.",
+            "no": "No such limit is written."
+          }
+        ]
+      }
+    },
+    {
+      "id": "rust-exclusive-create-race",
+      "description": "`source` uses a separate absence check plus ordinary create or write to keep a promise that an existing file is never overwritten while another creator can race.",
+      "severity": "warning",
+      "include": [
+        "**/*.rs"
+      ],
       "sourceMatch": [
         "\\bcreate(?:_new)?\\s*\\(",
         "\\bOpenOptions\\b",
         "\\bwrite\\s*\\("
       ],
-      "exceptions": [
-        "Intended overwrite/truncation is valid.",
-        "Advisory existence checks followed by atomic create_new, established external exclusivity or another real atomic primitive are valid.",
-        "create_new provides atomic final-component exclusivity, not complete parent-directory/symlink confinement, durability or atomic replacement.",
-        "Do not duplicate suspicious_open_options or ban exists mechanically."
-      ]
-    },
-    {
-      "id": "rust-shared-clone-isolation",
-      "description": "Apply to an explicit independent mutable snapshot/workspace promise with visible clone semantics and subsequent mutation/observation. Fail when cloning std Arc/Rc or a visibly shared wrapper preserves mutable aliasing so the mutation changes the original contrary to the promise. Show shared allocation identity and the observable isolation violation, not merely clone syntax.",
-      "severity": "warning",
-      "include": ["**/*.rs"],
       "kinds": [
         "function"
       ],
-      "allowAbstain": true,
+      "score": {
+        "question": "How clearly does `source` use a check-then-create sequence where visible text forbids overwrite and another creator can race?",
+        "levels": [
+          "Overwrite is intended, competing creation is not stated, or creation is create_new or another atomic exclusive create.",
+          "An absence check precedes create, and it is unclear whether the text forbids a racing overwrite.",
+          "The no-overwrite promise and competing creation are written, and exclusivity depends on an absence check plus File::create, ordinary OpenOptions create, or fs::write."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clear is it that `source` checks absence and then creates or writes, where the text forbids overwrite and another creator can race?",
+            "levels": [
+              "Overwrite is the goal, no competing creator is stated, or the create is create_new or another atomic exclusive create.",
+              "Absence is checked before create, and whether the text forbids a racing overwrite is uncertain.",
+              "The no-overwrite promise and the competing creator are written, and exclusivity rests on an absence check plus File::create, ordinary OpenOptions create, or fs::write."
+            ]
+          },
+          {
+            "question": "To what degree does exclusivity in `source` depend on check-then-create while visible text says a racing creator must not overwrite the target?",
+            "levels": [
+              "Replacement is intended, a race is not described, or atomic exclusive creation is what `source` uses.",
+              "A presence test precedes create, and the overwrite promise is only partly stated.",
+              "Both the forbid and the competing creator are written, and the non-atomic create or write is what the promise relies on."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does exclusivity in `source` depend on a separate absence check followed by File::create, ordinary OpenOptions create, or fs::write?",
+            "yes": "That check and a non-atomic create or write are both in `source`, and the promise relies on them.",
+            "no": "That sequence is not what exclusivity relies on.",
+            "paraphrases": [
+              {
+                "question": "Does the no-overwrite promise in `source` rest on an absence check and then File::create, ordinary OpenOptions create, or fs::write?",
+                "yes": "Both the check and that non-atomic create or write are in `source`, and the promise depends on their order.",
+                "no": "Exclusivity does not depend on that check-then-create sequence."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` promise not to overwrite an existing filesystem target?",
+            "yes": "Visible text states that no-overwrite promise.",
+            "no": "Overwrite is intended, or no such promise is written."
+          },
+          {
+            "question": "Does `source` state that another creator can create that target during the call?",
+            "yes": "Visible text says competing creation is possible.",
+            "no": "Competing creation is not stated."
+          }
+        ]
+      }
+    },
+    {
+      "id": "rust-shared-clone-isolation",
+      "description": "`source` clones Arc, Rc, or a shared wrapper and mutates through the clone, changing the original contrary to a visible independent-snapshot promise.",
+      "severity": "warning",
+      "include": [
+        "**/*.rs"
+      ],
       "sourceMatch": [
         "\\bclone\\s*\\(",
         "\\bmake_mut\\s*\\("
       ],
-      "context": {"types": true},
-      "exceptions": [
-        "Intended shared handles/observers, immutable sharing and deduplication are valid.",
-        "Independent inner-value copying into a fresh owner and appropriate copy-on-write are valid.",
-        "Clone is not universally deep; derive clones fields. Require actual fields/impl semantics rather than invented macro expansion.",
-        "No blanket Arc-to-Rc advice or clone/performance recommendation."
-      ]
+      "kinds": [
+        "function"
+      ],
+      "context": {
+        "types": true
+      },
+      "score": {
+        "question": "How clearly does cloning in `source` leave a shared allocation whose mutation breaks a visible independence promise?",
+        "levels": [
+          "No independence promise is written, sharing is the stated intent, or the clone copies the inner value into a fresh owner.",
+          "A clone is mutated, and it is unclear whether the original shares that allocation or the text requires independence.",
+          "The independence promise is written, and mutating the Arc, Rc, or shared-wrapper clone changes the original."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clear is it that a clone in `source` still shares storage, so a later mutation breaks a written independence promise?",
+            "levels": [
+              "Independence is not promised, sharing is the stated goal, or the inner value is copied into a fresh owner.",
+              "A clone is mutated, and whether the original shares that storage or the text requires independence is uncertain.",
+              "Independence is promised, and mutating the Arc, Rc, or shared-wrapper clone changes what the original observes."
+            ]
+          },
+          {
+            "question": "To what degree does mutating a cloned Arc, Rc, or shared wrapper in `source` change the original against a visible independence promise?",
+            "levels": [
+              "No independence promise is written, shared observation is intended, or the clone owns a separate copy.",
+              "Mutation follows a clone, and the text or the allocation leaves the aliasing question open.",
+              "The text requires an independent snapshot, and the mutation through the shared clone is visible on the original."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does `source` mutate through a cloned Arc, Rc, or shared wrapper so the original observable value changes?",
+            "yes": "The clone preserves the same allocation and the mutation is visible on the original.",
+            "no": "The clone copies the inner value into a fresh owner, or no such mutation is in `source`.",
+            "paraphrases": [
+              {
+                "question": "After `source` clones Arc, Rc, or a shared wrapper, does a write through that clone change the original's observable value?",
+                "yes": "The clone still names the same allocation, and the original sees the write.",
+                "no": "The inner value was copied into a new owner, or `source` has no such write."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` promise that a clone or snapshot remains independent of the original when later mutated?",
+            "yes": "Visible text states that independence promise.",
+            "no": "No such promise is written in `source`."
+          },
+          {
+            "question": "Does `source` clone Arc, Rc, or another shared owner?",
+            "yes": "`source` calls clone on Arc, Rc, or a shared wrapper.",
+            "no": "No such clone is in `source`."
+          }
+        ]
+      }
     }
   ]
 }

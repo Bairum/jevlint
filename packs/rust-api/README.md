@@ -1,6 +1,6 @@
 # Bairum/rust-api
 
-Opt-in API-contract warnings, not blanket public-API policy, soundness certification or performance guarantees. Common evidence/abstention guidance lives in `guidance.md` and is loaded through the pack manifest; descriptions contain only rule-specific policy.
+Opt-in API-contract warnings, not blanket public-API policy, soundness certification or performance guarantees. Shared evidence guidance lives in `guidance.md` and is loaded through the pack manifest; descriptions contain only rule-specific policy.
 
 ## Rules and sourceMatch rationale
 
@@ -12,7 +12,9 @@ Opt-in API-contract warnings, not blanket public-API policy, soundness certifica
 
 Constructor and trait consistency belong to the owning type, not each helper method. The primary declaration plus its supplied matching impls establishes that type's behavior. Their filters intentionally do not require `Default`, `Hash` or `new` text in the declaration: those spellings normally appear only in impl context, which sourceMatch does not inspect. This conservative gate handles qualified traits and imported aliases without falsely excluding legitimate types; unrelated declarations pass. Deref stays function-primary because the effect is in one dereference body, so findings stay on that operation rather than on a struct or an otherwise-correct coercion caller. The stable method name does not depend on how `Deref` was imported.
 
-`context.types` supplies bounded same-file/cross-file declarations and matching impls, subject to exclusions. This is source context, not compiler type checking or macro expansion. Missing or ambiguous necessary evidence calls for abstention, never an invented contradiction. Context belonging only to another type is not a finding against the primary subject.
+`context.types` supplies bounded same-file/cross-file declarations and matching impls, subject to exclusions. This is source context, not compiler type checking or macro expansion. Missing evidence is not a violation. Context belonging only to another type is not a finding against the primary subject.
+
+Each rule asks a 3-level score plus subject-gated violation checks. Fail probability is the minimum of those signals. `rust-api-default-consistency` scores a `new`/`Default` disagreement on a type declaration. `rust-api-trait-law-consistency` scores an Eq/Hash law break on a type declaration. `rust-api-deref-contract` scores a broken transparent-deref contract on `deref`. Questions are in `rules.json`.
 
 ## Research references
 
@@ -59,14 +61,4 @@ jevlint plugin remove Bairum/rust-api
 
 ## Verification status
 
-`python3 scripts/check-rust-packs.py --pack rust-api` compiled all 35 isolated Rust 2021 fixture targets without errors or warnings. Faulty fixtures were never executed. Three real provider runs (`python3 scripts/check-rust-packs.py --eval --repeat 3`) measured fixture recall and specificity; the per-run results below treat below-floor failures as not reported. The table is choice confidence; the floors were not refit.
-
-| Rule | Recall @0.8 | Specificity @0.8 | Recommended override | Recall @override | Specificity @override |
-| --- | --- | --- | --- | --- | --- |
-| `rust-api-default-consistency` | 0.00 | 1.00 | 0.30 | 0.67 | 1.00 |
-| `rust-api-trait-law-consistency` | 0.07 | 1.00 | 0.60 | 0.40 | 1.00 |
-| `rust-api-deref-contract` | 0.60 | 0.83 | — | 0.60 | 0.83 |
-
-`rust-api-deref-contract` is false-positive-prone at `0.8` (specificity `0.83`). Constructor and trait-law recall remain limited even at their recommended overrides. These measurements are on fixtures, not real-project precision, which remains unmeasured.
-
-Global `minFailProbability` stays `0.8`; the pack has no rule-level `minFailProbability`. Only consuming projects may opt into recommended rule overlays, such as `{"id": "rust-api-default-consistency", "minFailProbability": 0.30}`. An overlay replaces the rule floor, which overrides the global floor; `—` means keep `0.8`. Those recorded floors were fitted on the old choice-confidence metric and pack calibration will refit them; the field name is `minFailProbability`. Recommendations were fitted on the same fixtures and are starting points, not guarantees. See [calibration method, caveats and override configuration](../../docs/rust/CALIBRATION.md).
+`python3 scripts/check-rust-packs.py --pack rust-api` compiled the isolated Rust 2021 fixtures. Faulty fixtures were never executed. Fixture rates at 0.80 are in [CALIBRATION.md](../../docs/rust/CALIBRATION.md). This pack sets no rule-level floor. The shipped default is 0.80.

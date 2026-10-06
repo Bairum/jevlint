@@ -26,7 +26,7 @@ For real-provider calibration after installing the pack:
 jevlint eval --config jevlint.json --evals packs/rust-core-advisory/jevlint-evals.json --rule rust-advisory-input-panics --verbose
 ```
 
-Repeat for each rule and inspect false positives and abstentions before using this tier as a CI gate. Measured fixture calibration and optional consuming-project overrides are documented below.
+Repeat for each rule and inspect false positives before using this tier as a CI gate. Fixture rates are in [CALIBRATION.md](../../docs/rust/CALIBRATION.md).
 
 ## Rules and source filters
 
@@ -39,7 +39,9 @@ Repeat for each rule and inspect false positives and abstentions before using th
 | `rust-advisory-check-then-create` | Checking absence does not provide exclusive creation. | Existence/metadata checks identify qualified and aliased creation APIs; `create_new` retains atomic-creation pass cases. |
 | `rust-advisory-unflushed-bufwriter` | Success from buffered File/TcpStream I/O should check completion errors. | `BufWriter` plus common write/completion methods also retain imported writer aliases. |
 
-The filters deliberately over-include near-neighbors rather than pretending to type-check Rust. Function units omit standalone imports; opaque aliases, foreign methods and unavailable helpers may require abstention. Shared guidance is in `guidance.md`; rule-specific legitimate policies are in `rules.json`. No rule demands a library, ubiquitous transactions, a universal memory cap or fsync. A byte cap alone satisfies the unbounded-read advisory; protocol completeness requires a separate established contract. Source/callee/type context is not a separate finding target.
+The filters deliberately over-include near-neighbors rather than pretending to type-check Rust. Function units omit standalone imports. Shared guidance is in `guidance.md`; rule-specific legitimate policies are in `rules.json`. No rule demands a library, ubiquitous transactions, a universal memory cap or fsync. A byte cap alone satisfies the unbounded-read advisory; protocol completeness requires a separate established contract. Source/callee/type context is not a separate finding target. Missing evidence is not a violation.
+
+Each listed rule asks a 3-level score plus subject-gated violation checks. Fail probability is the minimum of those signals. Subjects are a `Result` signature, `map_err`, a mutable receiver, an unbounded read, an existence check, or `BufWriter`. Violations are the panic, kind erasure, surviving clear/replace, unbounded store, truncating create, or unchecked completion in `source`.
 
 ## Research references
 
@@ -84,63 +86,6 @@ Each pair below is `fixtures/<rule>/real-<slug>-{bug,fixed}.rs`. Both files cont
 
 All **68 isolated Rust 2021 fixture targets** were compiled without warnings in the final six-pack fixture compilation (432 targets total), including four retained/disposable-state regressions added below. Faulty fixtures were never executed. Compilation establishes syntax, not judgment correctness. Derived public-bug reproductions are minimized examples, not claims that every upstream incident had this exact public API.
 
-The initial three real provider-backed runs (`python3 scripts/check-rust-packs.py --eval --repeat 3`) measured fixture recall and specificity at global choice-confidence floor 0.8; the floors were not refit. Opaque fixture names were used. This historical table reports per-run decision metrics: below-floor failures are not reported, matching `check` behavior. The partial-mutation row predates the narrowing below; its fitted 0.70 override is withdrawn.
+Fixture rates at 0.80 are in [CALIBRATION.md](../../docs/rust/CALIBRATION.md). This pack sets no rule-level floor. The shipped default is 0.80.
 
-| Rule | Recall @0.8 | Specificity @0.8 | Original fitted override | Recall @override | Specificity @override |
-| --- | --- | --- | --- | --- | --- |
-| `rust-advisory-input-panics` | 0.80 | 1.00 | — | 0.80 | 1.00 |
-| `rust-advisory-error-kind-erasure` | 0.50 | 1.00 | 0.65 | 1.00 | 1.00 |
-| `rust-advisory-partial-mutation-before-error` (before narrowing) | 0.73 | 1.00 | 0.70 (withdrawn) | 0.80 | 1.00 |
-| `rust-advisory-unbounded-read` | 0.83 | 1.00 | 0.75 | 1.00 | 1.00 |
-| `rust-advisory-check-then-create` | 0.67 | 1.00 | 0.30 | 0.87 | 1.00 |
-| `rust-advisory-unflushed-bufwriter` | 0.80 | 1.00 | 0.65 | 1.00 | 1.00 |
-
-All six Rust packs retain the global floor of **0.8** and contain no rule-level `minFailProbability`; no pack-level floor changes were made. Only consuming projects may opt into the recommended overrides through project rule overlays such as `{"id": "rust-advisory-error-kind-erasure", "minFailProbability": 0.65}`. An overlay replaces the rule floor, which overrides the global floor; `—` means keep 0.8. Those recorded floors were fitted on the old choice-confidence metric and pack calibration will refit them; the field name is `minFailProbability`. Overrides were fitted on these same fixtures and are starting points, not guarantees. The measured fixture specificity of 1.00 does not establish real-project precision, which remains unmeasured. See [calibration method, caveats and override configuration](../../docs/rust/CALIBRATION.md).
-
-### Partial-mutation decision and provider refresh (2026-10-05)
-
-**Retain and narrow, rather than remove.** A mutable reference and an earlier append do not imply a transaction. The rule now distinguishes pre-existing caller application state from scratch/output buffers or temporary leases whose failed contents are discarded, reset or never published. A finding must identify retained-state observation; it must not invent a caller consuming failed output. Explicit atomicity documentation is still unnecessary for clearing or replacing pre-existing application state.
-
-Before editing, three uncached provider runs compared the old advisory and strict `rust-partial-state-on-error` on the same 11 advisory fixtures, with each pack's shared guidance, opaque paths and global floor 0.8. Both rules used the advisory defect labels to measure added recall, not to assert that the strict rule should diagnose undocumented contracts.
-
-| Rule on original advisory partial-mutation fixtures | Reported defects / fail decisions | Recall @0.8 | Reported false positives / pass decisions | Specificity @0.8 |
-| --- | --- | --- | --- | --- |
-| Old advisory | 11/15 | 0.7333 | 0/18 | 1.00 |
-| Strict core | 0/15 | 0.00 | 0/18 | 1.00 |
-
-The undocumented `no-contract.rs` was reported in 2/3 advisory runs and 0/3 strict runs. Endpoint replacement, payload replacement and the retained-store reproduction were each reported in 3/3 advisory runs and 0/3 strict runs. Thus removing the advisory would lose measured additional signal. The price-map case was missed by both rules in all three runs. Old advisory had one below-floor unit; strict had 12. No provider errors or abstentions occurred.
-
-The final full-pack refresh ran all **68 cases three times**, uncached, using the same guidance and global floor. Per-run `check` reporting metrics are aggregated over all three runs:
-
-| Rule | Reported defects / fail decisions | Recall @0.8 | Reported false positives / pass decisions | Specificity @0.8 |
-| --- | --- | --- | --- | --- |
-| `rust-advisory-input-panics` | 12/15 | 0.80 | 0/18 | 1.00 |
-| `rust-advisory-error-kind-erasure` | 6/12 | 0.50 | 0/18 | 1.00 |
-| `rust-advisory-partial-mutation-before-error` | 15/18 | 0.8333 | 0/27 | 1.00 |
-| `rust-advisory-unbounded-read` | 12/12 | 1.00 | 0/15 | 1.00 |
-| `rust-advisory-check-then-create` | 12/15 | 0.80 | 0/15 | 1.00 |
-| `rust-advisory-unflushed-bufwriter` | 14/15 | 0.9333 | 0/24 | 1.00 |
-
-The three new clean scratch/output/lease cases passed every run, with **zero failing units, including below-floor units**. The new caller-visible reuse case failed every run at 0.96; `no-contract.rs` also failed every run at 0.87/0.88/0.81. Partial-mutation majority recall/specificity was **5/6 and 9/9**, with no flips or abstentions; the price-map case remained below floor in all three runs. Its six below-floor units comprise those three misses and three additional decisions on the genuine reuse caller.
-
-For the full pack, runs returned matched/mismatched/inconclusive counts of **60/1/7**, **61/1/6** and **61/2/5**. Across 204 case decisions there were four mismatches, 18 inconclusive cases, zero abstentions, 22 below-floor units and zero provider errors; two of 68 cases flipped (2.94%). All commands exited 1 because the corpus still has mismatches/inconclusive results, not because provider execution failed. Reporting specificity above means no reported clean-case findings; unlike majority-pass specificity, it does not require a conclusive pass from every unit.
-
-Reproduction uses an external config containing `languages.rust`, floor 0.8 and the pack's rules with `guidance.md` injected, plus external copies of fixtures named `case-NNN.rs`. Repeat each command three times; the comparison config freezes the old advisory and strict rule and the comparison evals pair each original fixture under both IDs:
-
-```sh
-jevlint eval --config <config> --evals <evals> --refresh-cache --format json --verbose
-```
-
-Keep the partial-mutation floor at 0.8; the old 0.70 recommendation is not recalibrated for this narrower rule. Those recorded floors were fitted on the old choice-confidence metric and pack calibration will refit them; the field name is `minFailProbability`.
-
-On a held-out private Rust workspace (43 files, 958 units), three uncached combined core/advisory scans reported
-**zero findings in every run**. Partial-mutation advisory noise fell from the
-recorded **1 reported + 28 below-floor** findings to **0 reported + 7/7/6
-below-floor** findings. Total core/advisory below-floor counts fell from 41 to
-22/22/23. This reduces, but does not eliminate, real-project noise.
-
-On the seeded atomicity violation, full-workspace scans show core still reports the atomicity violation 3/3.
-The narrowed advisory co-fails below floor at 0.71/0.73/0.72, so it adds no seed
-recall. Its retention is supported by the additional undocumented-state fixture
-signal above, not that seed. Full commands and scan/cost evidence are recorded
-in [CALIBRATION.md](../../docs/rust/CALIBRATION.md#core-and-advisory-refresh-2026-10-05).
+A mutable reference and an earlier append do not imply a transaction. Partial-mutation distinguishes pre-existing caller application state from scratch, output, or a temporary lease whose failed contents are discarded, reset, or never published.

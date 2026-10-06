@@ -18,6 +18,7 @@ Research IDs refer to [the master inventory](../../RUST-PACK-RESEARCH.md) and pr
 | `rust-unbounded-input-buffering` | M09/C06 | Apply to a visible untrusted input boundary with an explicit protocol/resource limit and a storage-growth path. Fail if external length/framing expands storage beyond the required effective bound, checking occurs only after unbounded growth, or a cap silently accepts an incomplete/truncated frame as complete. Identify the actual byte/resource limit and missing/rejected framing validation. [BufRead growth](https://doc.rust-lang.org/std/io/trait.BufRead.html#method.read_until), [Read::take](https://doc.rust-lang.org/std/io/trait.Read.html#method.take) |
 | `rust-exclusive-create-race` | C09 | Apply when a visible filesystem operation promises never to overwrite an existing target and competing creation is possible. Fail when a separate absence check followed by std File::create or ordinary create is relied upon for exclusivity: another creator between the operations can be overwritten. Require the actual create API and contract. [OpenOptions::create_new](https://doc.rust-lang.org/std/fs/struct.OpenOptions.html#method.create_new) |
 | `rust-shared-clone-isolation` | M02 | Apply to an explicit independent mutable snapshot/workspace promise with visible clone semantics and subsequent mutation/observation. Fail when cloning std Arc/Rc or a visibly shared wrapper preserves mutable aliasing so the mutation changes the original contrary to the promise. Show shared allocation identity and the observable isolation violation, not merely clone syntax. [Clone](https://doc.rust-lang.org/std/clone/trait.Clone.html#derivable), [Arc cloning](https://doc.rust-lang.org/std/sync/struct.Arc.html#cloning-references) |
+Each listed rule asks a 3-level score plus subject-gated violation checks. Fail probability is the minimum of those signals. The subject check is the visible contract (recovery promise, required error identity, From domain, validated invariant, atomicity promise, completion promise, Drop policy, input bound, exclusive-create promise, or isolation promise). The violation check is the contradicting operation in `source`. Questions are in `rules.json`.
 
 ## Source applicability and context
 
@@ -87,50 +88,4 @@ jevlint eval --config jevlint.json --evals packs/rust-core/jevlint-evals.json --
 
 All **140 isolated Rust 2021 fixture targets** were compiled with zero errors or warnings in the final six-pack fixture compilation (432 targets total). The earlier `go test ./internal/packs -run 'RustPack'` covered the original cases' non-test primary-kind/sourceMatch applicability; it was not rerun for this refresh. Faulty fixtures were never executed. Compilation and applicability establish syntax and subject selection, not judgment correctness; compiler/Clippy checks remain the first layer.
 
-The original three real provider-backed runs (`python3 scripts/check-rust-packs.py --eval --repeat 3`) measured fixture recall and specificity at global choice-confidence floor 0.8; the floors were not refit. Opaque fixture names were used. This historical table reports per-run decision metrics: below-floor failures are not reported, matching `check` behavior. Current core/advisory refresh rows and held-out measurements are in [CALIBRATION.md](../../docs/rust/CALIBRATION.md#core-and-advisory-refresh-2026-10-05).
-
-| Rule | Recall @0.8 | Specificity @0.8 | Recommended override | Recall @override | Specificity @override |
-| --- | --- | --- | --- | --- | --- |
-| `rust-expected-failure-panics` | 0.80 | 0.89 | — | 0.80 | 0.89 |
-| `rust-error-cause-loss` | 0.53 | 0.89 | — | 0.53 | 0.89 |
-| `rust-conversion-contract` | 0.80 | 0.83 | — | 0.80 | 0.83 |
-| `rust-validation-bypass` | 0.00 | 1.00 | 0.40 | 0.87 | 0.95 |
-| `rust-partial-state-on-error` | 0.60 | 1.00 | 0.45 | 1.00 | 1.00 |
-| `rust-buffered-output-completion` | 0.83 | 0.91 | — | 0.83 | 0.91 |
-| `rust-fallible-drop` | 1.00 | 1.00 | — | 1.00 | 1.00 |
-| `rust-unbounded-input-buffering` | 0.80 | 0.88 | — | 0.80 | 0.88 |
-| `rust-exclusive-create-race` | 1.00 | 0.71 | — | 1.00 | 0.71 |
-| `rust-shared-clone-isolation` | 0.27 | 0.88 | — | 0.27 | 0.88 |
-
-In the baseline, `rust-shared-clone-isolation` recall was only 0.27. At 0.8, `rust-expected-failure-panics`, `rust-error-cause-loss`, `rust-conversion-contract`, `rust-unbounded-input-buffering`, `rust-exclusive-create-race` and `rust-shared-clone-isolation` were false-positive-prone (specificity below 0.90). These rules are not blanket bans on unwrap, From, public fields, buffering, Drop, clone or overwrite.
-
-All six Rust packs retain the global floor of **0.8** and contain no rule-level `minFailProbability`; no pack-level floor changes were made. Only consuming projects may opt into the recommended overrides through project rule overlays such as `{"id": "rust-validation-bypass", "minFailProbability": 0.40}`. An overlay replaces the rule floor, which overrides the global floor; `—` means keep 0.8. Those recorded floors were fitted on the old choice-confidence metric and pack calibration will refit them; the field name is `minFailProbability`. Overrides were fitted on these same fixtures and are starting points, not guarantees. Real-project precision remains unmeasured. See [calibration method, caveats and override configuration](../../docs/rust/CALIBRATION.md).
-
-### Error-mapping refresh (2026-10-05)
-
-Direct error-to-error mappers no longer require a Result/?/map_err/Err() token
-to be evaluated. Error/Err type references and From method units are selected;
-an explicit distinction promised by the boundary still supplies the contract.
-On a held-out private Rust workspace (43 files, 958 units), error-cause candidates increased **357 → 381**
-(+24, 6.72%); single-rule uncached requests increased by the same amount
-(14.002 → 15.010 seconds). Token/dollar costs are not exposed by the CLI.
-
-After three full-core fixture runs and a three-run targeted refresh of the final
-error-cause wording, its reporting recall/specificity is **9/18 (0.50)** and
-**27/30 (0.90)** versus baseline 0.53/0.89. The new collapsed-category fixture
-reports 3/3 at 0.86/0.89/0.89; its faithful counterpart passes 3/3.
-This is not an overall no-regression calibration: the original cause-loss
-failures report 6/15 (0.40), and unchanged fallible-drop/shared-clone recall
-measured 0.93/0.20 versus 1.00/0.27. No choice-confidence floor was lowered; those floors were not refit.
-
-The seeded error-category mapper is now selected, but three full-workspace scans
-produce **pass/pass/fail at 0.34** (0/3 reports); confidence for passes is not
-emitted by `check`. Earlier targeted-file scans judged it fail 3/3 at
-0.60/0.62/0.64, but their discovered declaration/context set differs from the
-full workspace. Jevlint's provider protocol returns choice/confidence, not a
-textual confidence explanation. On the clean
-workspace, combined core/advisory runs report **0/0/0**, with **22/22/23**
-below-floor findings versus the original recorded 1 reported and 41 below floor.
-See the linked calibration section for exact commands, cost, and mutation-rule
-overlap; these measurements do not certify production
-precision.
+Fixture rates at 0.80 are in [CALIBRATION.md](../../docs/rust/CALIBRATION.md). This pack sets no rule-level floor. The shipped default is 0.80. These rules are not blanket bans on unwrap, From, public fields, buffering, Drop, clone, or overwrite.

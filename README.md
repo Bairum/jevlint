@@ -393,6 +393,18 @@ units alone do not change the exit code.
 }
 ```
 
+## How Jevlint uses Jev
+
+One fan-out request per code unit: every applicable rule that shares context is a set of questions in that request. Budget splits are the exception, not a second question style.
+
+Each rule asks a 3-level score (compliant or out of scope, borderline, clear violation) plus up to two paraphrases, and optional subject-gated violation checks. Subject checks are a hard gate: every yes-probability must be at least 0.5. Violation paraphrases are averaged; violations combine with max. The score signal is the mean of `score / 2` across wordings. `failProbability` is the minimum of the two signals, so a unit is reported only when both agree. With no checks, the score is used for both.
+
+The default reporting threshold is `0.80` (rule `minFailProbability`, else the global value, else `0.80`). Audits show the below-floor band `0.40`–`0.80` with `--show-below-floor`. Those results do not change the exit code.
+
+The default model is the pinned release `jev-1.13.0`, not `jev-latest`. Check and eval reports list answering models and the token usage of provider calls in that run. Cache hits contribute their stored model and add no tokens.
+
+For `jev-1.13*` and `typesafe/jev-1.13*`, an offline counter ported from [oh-my-pi](https://github.com/can1357/oh-my-pi) preflights each request. Live measurement put the hard caps at 32,743 tokens for state plus the longest question and 65,533 tokens total. Jevlint stays 743 and 1,533 tokens under those caps (32,000 and 64,000). The estimator reproduces `usage.input_tokens` exactly, so no further margin is applied. Other models are not preflighted.
+
 ## How it works
 
 - Rules can check functions, types, comments, fields, or statements.
@@ -647,12 +659,10 @@ Rust-specific maintainability review; generic cross-language style rules are
 not part of the primary semantic workflow.
 
 No pack is automatically enabled. Strict describes the core's evidence
-requirements, not automatic blocking enforcement. Measured fixture recall and
-specificity per rule, with suggested per-rule `minFailProbability` overrides, are in
-[CALIBRATION.md](docs/rust/CALIBRATION.md). Readability also records a
-tuning-set/in-sample project audit comparison, not held-out accuracy; that
-evidence does not establish precision for the other packs. Unsafe fixtures are
-compile-only, and passing a rule is not a soundness proof.
+requirements, not automatic blocking enforcement. The 2026-10-06 fixture,
+real-code, and held-out measurements are in
+[CALIBRATION.md](docs/rust/CALIBRATION.md). Packs ship no per-rule floor.
+Unsafe fixtures are compile-only, and passing a rule is not a soundness proof.
 
 Commit pack changes, documentation and tests together before pinning a local
 Git pack: installation reads committed content, not working files. From the
@@ -664,13 +674,14 @@ Select advisory and specialist packs deliberately.
 The native script accepts a project directory or `Cargo.toml`, selects the
 workspace by default, accepts repeated `-p` package selections instead, and
 supports `--skip-fmt`; other native checks retain `--locked`. The fixture
-runner requires Python 3.9+. For uncached, repeated core calibration, use
-`python3 scripts/check-rust-packs.py --eval --repeat 3 --pack rust-core`
+runner requires Python 3.9+. To reproduce the recorded core table, pass the
+shipped threshold (the runner default is 0.5):
+`python3 scripts/check-rust-packs.py --eval --repeat 2 --min-fail-probability 0.8 --pack rust-core`
 with `--jevlint /path/to/jevlint` if needed and optional `--summary /path/to/summary.json`.
 Default timestamped JSON summaries go to the system temporary directory
 and record per-run cases, strict-majority outcomes (otherwise inconclusive),
 flip rate, per-run mismatch/inconclusive counts, majority-based fixture
-recall/specificity, and abstain/below-floor counts.
+recall/specificity, and below-floor counts.
 See [Rust suite usage](docs/rust/README.md) for commands and summary definitions,
 and the [research-to-implementation coverage ledger](docs/rust/COVERAGE.md).
 
@@ -699,8 +710,10 @@ and the [research-to-implementation coverage ledger](docs/rust/COVERAGE.md).
 - Jevlint can optionally include bounded depth-1 project-local callee context,
   but it does not perform recursive call-graph or cross-function data-flow
   analysis. Imports are not followed.
-- Type context is limited to the same file.
-- Jev returns a constrained choice, not a free-form explanation.
+- Same-file related types come with the unit. `context.types` adds a bounded
+  set of declarations and impls, including a cross-file type only when its name
+  has one project-wide definition.
+- Jev returns a 3-level score and yes/no checks, not a free-form explanation.
 
 ## Exit codes
 

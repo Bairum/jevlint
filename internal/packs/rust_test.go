@@ -36,9 +36,6 @@ func TestRustPacksDeclareGuidanceAndApplyOnlyToRustPaths(t *testing.T) {
 	for _, pack := range rustPacks {
 		t.Run(pack, func(t *testing.T) {
 			loaded, err := LoadDir(filepath.Join("..", "..", "packs", pack))
-			if err != nil && strings.Contains(err.Error(), "Rule format") {
-				t.Skipf("pack %q still uses the pre-dual schema: %v", pack, err)
-			}
 			if err != nil {
 				t.Fatalf("pack %q: LoadDir() error = %v", pack, err)
 			}
@@ -80,9 +77,6 @@ func TestRustPackEvalCasesHaveApplicableUnits(t *testing.T) {
 		t.Run(pack, func(t *testing.T) {
 			dir := filepath.Join("..", "..", "packs", pack)
 			loaded, err := LoadDir(dir)
-			if err != nil && strings.Contains(err.Error(), "Rule format") {
-				t.Skipf("pack still uses the pre-dual schema: %v", err)
-			}
 			if err != nil {
 				t.Fatalf("LoadDir() error = %v", err)
 			}

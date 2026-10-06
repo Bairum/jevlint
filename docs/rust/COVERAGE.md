@@ -15,7 +15,7 @@ pack is automatically enabled or promoted to blocking enforcement.
 | Layer/status | Meaning and implementation contract |
 | --- | --- |
 | **L1 / native guidance** | Native compiler/formatter/lint/test/doc baseline: [`scripts/check-rust.sh`](../../scripts/check-rust.sh) and [`TOOLING.md`](TOOLING.md). The script's approved scope is fmt/check/test/doc/default Clippy; project-specific matrices, separate builds, optional lints/tools, and publishing checks are guidance unless explicitly exercised. |
-| **L2 / P** | Strict core **pack implemented; fixture calibration measured**: [rust-core manifest](../../packs/rust-core/pack.json). P means a delivered pack artifact, not automatic activation or default-enforcement readiness. Real-project precision is unmeasured. |
+| **L2 / P** | Strict core **pack implemented; fixture calibration measured**: [rust-core manifest](../../packs/rust-core/pack.json). P means a delivered pack artifact, not automatic activation or default-enforcement readiness. Real-code precision at 0.80 is 0.57; see [CALIBRATION.md](CALIBRATION.md). |
 | **L3 / P** | Opt-in advisory and specialist **packs implemented; fixture calibration measured**: [rust-core-advisory](../../packs/rust-core-advisory/pack.json), [rust-tokio](../../packs/rust-tokio/pack.json), [rust-api](../../packs/rust-api/pack.json), [rust-unsafe](../../packs/rust-unsafe/pack.json), [rust-performance](../../packs/rust-performance/pack.json), [rust-readability](../../packs/rust-readability/pack.json). |
 | **Generic / U** | Existing rule definition in [`jevlint.json`](../../jevlint.json), but **uncalibrated for this Rust finding**. A generic rule's presence is not evidence of equivalent Rust coverage. |
 | **Deferred / D** | No approved dedicated rule for the identified semantic residual; linked F item states the missing evidence and promotion trigger. |
@@ -25,7 +25,7 @@ pack is automatically enabled or promoted to blocking enforcement.
 
 Rust rule selection uses `include: ["**/*.rs"]`, not a nonexistent `rule.languages` field. `sourceMatch` is an OR of RE2 patterns over the primary unit's source: a cheap subject prefilter, not semantic evidence or a search of attached context. Test units are structurally skipped by default; a project may explicitly set `includeTests: true`. Pack manifests load shared `guidance.md` once rather than repeating common evidence requirements in each rule.
 
-`context.types` now opts into bounded type/impl context for **type units, Self-only methods and concrete type references**. Same-file declarations and matching impls are available; cross-file impls are candidates when a type name has one project-wide definition among discovered sources. Ambiguous names stay same-file. Rule-excluded declaration paths are filtered before the additional-context caps of 12 declarations and 16 KiB. API15/API16 use type-primary judgments with these matching impls. This is syntactic source context, not Rust module/name resolution, compiler typing or macro expansion; incomplete required comparisons still call for abstention.
+`context.types` now opts into bounded type/impl context for **type units, Self-only methods and concrete type references**. Same-file declarations and matching impls are available; cross-file impls are candidates when a type name has one project-wide definition among discovered sources. Ambiguous names stay same-file. Rule-excluded declaration paths are filtered before the additional-context caps of 12 declarations and 16 KiB. API15/API16 use type-primary judgments with these matching impls. This is syntactic source context, not Rust module/name resolution, compiler typing or macro expansion; missing evidence is not a violation.
 
 The advisory tier infers review-worthy recovery, error-preservation, retained application-state mutation, input-bound, exclusive-create and buffered-completion conventions without the strict tier's explicit application-contract requirement. Its six informational rules are human-review prompts, not proof of a documented promise being broken. The mutation advisory requires concrete retained-state observation; mutable scratch/output buffers and temporary leases do not imply transactions. Unsafe coverage additionally includes `rust-unsafe-ffi-pointer-contract` (visible foreign pointer, extent, lifetime and release obligations) and `rust-unsafe-pyo3-reference-ownership` (CPython/PyO3 new, borrowed and stolen references, owner release and unchecked casts). Missing foreign contracts are not invented violations.
 
@@ -46,16 +46,16 @@ Semantic findings require the applicable contract, reachable counterexample and 
 | [M09](research/memory.md) — Untrusted allocation pressure exceeds contract | L2 / P, partial; D recovery residual | Core: `rust-unbounded-input-buffering` for input-size/buffering bound violations | Upstream cap and resource contract required; broader allocation recovery/arithmetic/allocator behavior [F06](#f06). No invented capacity or universal `try_reserve`. |
 | [M10](research/memory.md) — Avoidable hot-path copying/allocation | L1 native; L3 / P, partial | `unnecessary_to_owned`, clone/collection lints; Perf: `rust-perf-repeated-materialization` | Approved semantic scope is workload-proven invariant repeated work; broader allocation/copy tradeoffs [F31](#f31), context [F02](#f02). |
 | [M11](research/memory.md) — Shared ownership mismatches threading contract | L1 native; D advisory/unsafe residual | rustc Send/Sync; `arc_with_non_send_sync`; no blanket Arc-to-Rc rule | Whole threading/caller contract and measured overhead [F03](#f03); unsafe overrides [F13](#f13). |
-| [M12](research/memory.md) — Safe interface fails unsafe preconditions | L1 native; L3 / P artifact, recall limitation | `not_unsafe_ptr_arg_deref`, `missing_safety_doc`; Unsafe: `rust-unsafe-precondition-contract` | Do not rely on the pack to catch visible operation-specific extent violations: original calibration recall is 0.00 at 0.8; generalized wording was rejected, not a delivered improvement. See [calibration limits](CALIBRATION.md) and [class-only blind evidence](../../packs/rust-unsafe/README.md#rejected-generalized-wording-blind-defects-2026-10-05). Use targeted supported Miri tests and debug-assertion extent/lifetime paths per [TOOLING](TOOLING.md#separate-optional-layers) / [research limits](research/tooling.md#5-optional-established-tool-layers); recommendations are not executed checks or soundness proof. Complete API/invariant review [F07](#f07), extraction [F02](#f02). |
+| [M12](research/memory.md) — Safe interface fails unsafe preconditions | L1 native; L3 / P artifact, recall limitation | `not_unsafe_ptr_arg_deref`, `missing_safety_doc`; Unsafe: `rust-unsafe-precondition-contract` | Do not rely on the pack for unsafe-defect recall: 8 blind defects in a held-out private Rust workspace (43 files) were 0/8 at 0.80. See [calibration](CALIBRATION.md#held-out). Use targeted supported Miri tests and debug-assertion extent/lifetime paths per [TOOLING](TOOLING.md#separate-optional-layers) / [research limits](research/tooling.md#5-optional-established-tool-layers). |
 | [M13](research/memory.md) — Unsafe state invalid during panic/error path | L3 / P, narrow | Unsafe: `rust-unsafe-unwind-state` | Local panic invalidation with concrete initialized/owned state trace; hidden callback/cleanup paths [F02](#f02), complete API review [F07](#f07). |
 | [M14](research/memory.md) — Soundness trusts safe trait law or guaranteed Drop | L3 / P, partial; D general trust residual | Unsafe: `rust-unsafe-unwind-state` for locally visible callback/unwind or forgotten-restoration-guard invalidation | Complete leak safety and arbitrary safe-trait counterexamples remain [F08](#f08). Do not claim the local state rule covers every M14 case. |
-| [M15](research/memory.md) — Raw pointer/slice lifetime, extent, provenance or alignment fails | L1 native; L3 / P artifact, recall limitation | Pointer-shape lints where available; Unsafe: `rust-unsafe-precondition-contract`, `rust-unsafe-ffi-pointer-contract` | Multi-unit extent/lifetime defect/pass twins document misses, not implemented recall improvements: the [six-case original-rule measurement](../../packs/rust-unsafe/README.md#original-rule-measurements-six-limitation-cases) passed every defect and pass twin in three runs (recall 0/3, specificity 3/3). Both original and rejected generalized wording reported 0/8 blind defects; generalized FFI fixture recall regressed from 0.24 to 0.13 at 0.8. See [calibration](CALIBRATION.md). Do not rely on pack recall; use targeted supported Miri tests, supported ASan/LSan with coordinated native instrumentation, and debug-assertion raw-pointer paths per [TOOLING](TOOLING.md#separate-optional-layers) / [research limits](research/tooling.md#5-optional-established-tool-layers), not as soundness proof. Whole ownership/alias paths remain [F07](#f07), [F02](#f02). |
+| [M15](research/memory.md) — Raw pointer/slice lifetime, extent, provenance or alignment fails | L1 native; L3 / P artifact, recall limitation | Pointer-shape lints where available; Unsafe: `rust-unsafe-precondition-contract`, `rust-unsafe-ffi-pointer-contract` | Do not rely on pack recall for extent or lifetime defects. Held-out blind unsafe defects were 0/8 at 0.80. See [calibration](CALIBRATION.md#held-out). |
 | [M16](research/memory.md) — Shared mutation violates uniqueness/synchronization | L1 native; D specialist residual | `mut_from_ref`, rustc safe borrow checks | No dedicated approved aliasing rule; disjoint ranges, safe access API, guards and threads [F07](#f07), atomic overlap [F16](#f16). |
 | [M17](research/memory.md) — Incompletely initialized/invalid value published | L1 native; L3 / P, partial | `uninit_vec`; Unsafe: `rust-unsafe-precondition-contract` | Local initialization/status/count contradiction only; actual T validity and every write/failure path [F07](#f07), [F02](#f02). Panic root belongs to M13. |
 | [M18](research/memory.md) — Allocation ownership/deallocation layout mismatch | L3 / P, partial | Unsafe: `rust-unsafe-precondition-contract`, `rust-unsafe-ffi-pointer-contract` for documented foreign release ownership | Locally visible incompatible ownership reconstruction only; complete allocator/layout/foreign transfer evidence [F07](#f07), [F10](#f10), [F11](#f11). |
 | [M19](research/memory.md) — Manual destruction exposes dropped fields | D specialist | Native tools may flag shapes, not complete lifecycle safety; no dedicated rule | Complete derived/custom access and once-only destruction state; supported-version ManuallyDrop contract [F09](#f09). |
 | [M20](research/memory.md) — Layout/ABI/transmute assumptions exceed guarantees | L1 native; D specialist residual | Compiler FFI/layout diagnostics for recognized shapes | Nested representations, target/header ABI, validity/padding and encoding contract [F10](#f10). Matching size is not sufficient. |
-| [M21](research/memory.md) — FFI retained pointer/callback outlives or races owner | L3 / P artifact, recall limitation; D whole foreign lifecycle | Unsafe: `rust-unsafe-ffi-pointer-contract`, `rust-unsafe-pyo3-reference-ownership` for their scoped runtime contracts | Do not rely on these rules for foreign lifetime/reference recall: a blind retained-storage wrapper failed the FFI source filter under both original and rejected generalized wording; the larger Python-reference defect passed all three runs of each wording. See [separate original-rule measurements](../../packs/rust-unsafe/README.md#original-rule-measurements-six-limitation-cases), [calibration limits](CALIBRATION.md), and [class-only blind evidence](../../packs/rust-unsafe/README.md#rejected-generalized-wording-blind-defects-2026-10-05). Recommend supported ASan/LSan with coordinated native instrumentation and explicit Python reference-count assertions for leaks/double decrefs; targeted Miri is exercised-path-only and most FFI is unsupported. Reuse [TOOLING](TOOLING.md#separate-optional-layers) / [research limits](research/tooling.md#5-optional-established-tool-layers); not executed here or soundness proof. Unknown foreign contracts are not violations; full retention/threading/unregister/quiescence review remains [F11](#f11). |
+| [M21](research/memory.md) — FFI retained pointer/callback outlives or races owner | L3 / P artifact, recall limitation; D whole foreign lifecycle | Unsafe: `rust-unsafe-ffi-pointer-contract`, `rust-unsafe-pyo3-reference-ownership` for their scoped runtime contracts | Do not rely on these rules for foreign lifetime or reference recall. Held-out blind unsafe defects were 0/8 at 0.80. See [calibration](CALIBRATION.md#held-out). Whole foreign lifecycle remains [F07](#f07). |
 | [M22](research/memory.md) — FFI unwind policy mismatches runtimes | D specialist | Compiler ABI checks are not cross-runtime unwind review | Both runtimes/frames, ABI direction, exception support and panic strategy [F12](#f12). Intentional safe abort is not UB. |
 | [M23](research/memory.md) — Manual Send/Sync exceeds guarantees | L1 native; D specialist residual | rustc enforces declared bounds, not correctness of unsafe impl | Complete access/ownership/destructor/thread-affinity and necessary generic bounds [F13](#f13). |
 | [M24](research/memory.md) — Pin abstraction permits invalidation/movement | D specialist | Compiler enforces safe Pin API use, not unchecked projection soundness | Actual Unpin, structural projections, pointer/Drop/storage lifecycle [F14](#f14). Moving pointer handle alone is legitimate. |
@@ -191,7 +191,7 @@ These are exact residuals, not a single “future work” bucket. Shared F items
 
 | Stable item | Exact gap | Reason / evidence needed | Concrete promotion trigger |
 | --- | --- | --- | --- |
-| <a id="f01"></a>F01 | Real-project precision, per-unit diagnostic precision and default/blocking promotion remain outstanding | All 35 rule artifacts and 463 compiling fixtures exist; three real provider runs measured fixture recall/specificity (the original 426-case baseline had a 5.4% flip rate). Overrides are fitted on the same fixtures, not a held-out set; several rules still have low recall or false-positive risk | Use [CALIBRATION.md](CALIBRATION.md) as the measured baseline, then inspect primary-unit locations and validate false positives/negatives on representative held-out project code before blocking/default promotion. Record model/configuration and repeat outcomes; fixtures alone do not establish production accuracy. |
+| <a id="f01"></a>F01 | Real-project precision is measured and still too low for default or blocking promotion | 35 rules, 7 packs, 461 eval cases, 463 fixtures. At 0.80, labelled real-code precision/recall is 0.57/0.22. Held-out unsafe recall is 0/8. Fixture specificity is not production precision | Use [CALIBRATION.md](CALIBRATION.md) before any blocking or default promotion. Record model and repeat outcomes. Do not retune rules on the held-out scan. |
 | <a id="f02"></a>F02 | Semantic breadth requiring resolved types/APIs, generic impls, macros, cross-file callees/owners, intact docs/attributes or full exported graph | `context.types` supplies bounded declarations/impls to type units, Self-only methods and concrete references, including unique-definition cross-file candidates. It remains syntactic: ambiguous names, caps/exclusions and unresolved generated/generic paths can omit necessary facts. Unknown methods/callees cannot be treated as absent enforcement | Supply complete comparison/context evidence for the scoped primary-unit review; demonstrate every premise reaches the actual request before widening a rule. Broader compiler/name/module/macro/ownership resolution requires corresponding missing-context and ambiguity controls. |
 | <a id="f03"></a>F03 | Caller-controlled ownership/input flexibility and Rc/Arc tradeoffs beyond local repeated work | Need retain/consume/borrow semantics, Clone implementation, real callers, threading/API lifetime and compatibility; performance claims need workload | Real project callers demonstrate unnecessary materialization or measured overhead under the promised ownership/thread contract; validate nearest ownership-required/semver/trait exceptions before adding advisory coverage. |
 | <a id="f04"></a>F04 | General resource retention, strong cycles and global lock/alias/order dependencies | Need actual destruction/teardown graph, identity, expected release/budget or concrete waiting schedule; visible Tokio same-lock cases are narrower | Provide full owner/edge/release or lock/wait trace plus a reachable consequential counterexample and a legitimate retained-resource/acyclic/different-lock control. Promote only that supported residual. |
@@ -262,44 +262,17 @@ These are durable decisions, not F backlog. The complete exclusions remain in [m
 - API14's invariant-bypassing DerefMut belongs to Core validation-bypass. The API Deref rule owns surprising/nontransparent behavior; API15's approved semantic residual is manual Eq/Hash, not all common-trait availability/laws.
 - C03/C04/C07/C08/C10/C17 can describe one lifecycle failure; select the operative progress/owner/completion/shutdown/blocking root. C12/C13/C14/C15/C16/C17 do not silently become fully covered by adjacent Tokio IDs.
 - Existing `swallowed-errors`, `accurate-doc-comments`, domain-state and function-structure rules can overlap approved/residual topics. Definitions are observed, Rust equivalence/calibration is not. Avoid duplicate enabled reports and honor configuration/pack overlay behavior.
-- Macro-heavy Tokio evidence, generic/type resolution, attributed docs and cross-file supervisors/invariants may be missing from extracted requests. Qualified call spelling is not callee resolution; confidence cannot repair missing facts. Unsafe fixtures must never be executed as ordinary UB-producing tests. Cargo/tool/runtime versions and compilable versus intentionally illustrative fixture environments require explicit reconciliation.
+- Macro-heavy Tokio evidence, generic/type resolution, attributed docs and cross-file supervisors/invariants may be missing from extracted requests. Qualified call spelling is not callee resolution; fail probability cannot invent missing facts. Unsafe fixtures must never be executed as ordinary UB-producing tests. Cargo/tool/runtime versions and compilable versus intentionally illustrative fixture environments require explicit reconciliation.
 
 ## Verification and status
 
-All **426** isolated Rust 2021 fixture targets across the six packs compiled
-successfully. Faulty/unsafe/deadlocking fixtures were **not executed**.
-Per-pack inventory: Core **138**, Advisory **64**, Tokio **98**, API **35**,
-Unsafe **62**, Performance **29**.
+The suite is **35 rules, 7 packs, 461 evaluation cases, 463 fixtures**
+(461 cases plus two compile-only readability repairs). Faulty, unsafe, and
+deadlocking fixtures are not executed. The 2026-10-06 measurements, including
+fixture rates at 0.80 and held-out scans, are in [CALIBRATION.md](CALIBRATION.md).
+Packs ship no rule-level `minFailProbability`. The shipped default is 0.80.
+No pack is automatically enabled. Finish [F01](#f01) before blocking enforcement.
 
-The leak-free baseline ran
-`python3 scripts/check-rust-packs.py --eval --repeat 3` with a real provider at
-the global **0.8** floor: **426 cases**, **1278 case-runs**, with opaque fixture
-names reaching the evaluator. Case-level majority under eval semantics
-(below-floor fail = inconclusive) measured **recall 71/162** and
-**specificity 229/264**. The flip rate was **0.054 / 5.4% (23 cases)**;
-there were **4 abstain decisions** and **264 below-floor fail decisions**.
-These majority aggregates differ from the per-run reporting metrics in the
-[complete rule table and method](CALIBRATION.md).
-
-The global floor stays **0.8**, and no pack rule sets `minFailProbability`.
-Recommended consuming-project overrides improve fixture recall for some
-rules; a rule floor replaces and overrides the global floor, not a maximum
-with it. Those recorded floors were fitted on the old choice-confidence metric and pack calibration will refit them; the field name is `minFailProbability`. The overrides were fitted on these same fixtures, which double as
-the calibration set. Only three runs were measured; **real-project precision
-is still unmeasured**. The earlier **42/42** result was inflated by fixture
-comments and verdict-bearing file names reaching the model, so it is not
-leak-free accuracy evidence. See [CALIBRATION.md](CALIBRATION.md) for
-reproduction, override configuration and all caveats.
-
-Even at recommended overrides, Tokio cancellation-progress (**0.17**),
-required-task-ownership (**0.07**) and lock-dependency (**0.33**), Unsafe
-precondition-contract (**0.20**) and unwind-state (**0.07**), and Core
-shared-clone-isolation (**0.27**) remain **not yet useful** because recall
-is low. At 0.8, Core exclusive-create-race (**0.71**), conversion-contract
-(**0.83**), unbounded-input-buffering (**0.88**), expected-failure-panics
-(**0.89**), error-cause-loss (**0.89**) and shared-clone-isolation (**0.88**),
-plus API deref-contract (**0.83**), are **false-positive-prone**: their
-specificity is below 0.90.
 
 ### Preserved observations and limits
 
@@ -327,11 +300,13 @@ blocking enforcement. [Usage and repeatable commands](README.md#run-the-checks).
 of the strict semantic tier. The upstream inventory below is
 `upstream/master:jevlint.json` (26 rules). Rust ports use
 `rust-readability-` IDs; native ownership is not an instruction to enable all
-optional Clippy groups. See [calibration and project audit](CALIBRATION.md#rust-readability).
+optional Clippy groups. See [calibration](CALIBRATION.md#held-out).
 
-Project measurements below use a held-out private Rust workspace (43 files,
-958 units). Its triage shaped candidate selection and rule exceptions, so
-these are **tuning-set/in-sample measurements**, not held-out accuracy.
+The rule-selection audit used a held-out private Rust workspace (43 files).
+Its triage shaped which ports shipped, so that audit is not the current
+accuracy measurement. The 2026-10-06 held-out scan and the serde_json
+`afdf6fc` check (0 reports, 38 production files) are in
+[calibration](CALIBRATION.md#held-out).
 
 The shipped prefilters retain cost-control without turning token matches into
 findings. Literal policy selects numeric-literal candidates; two literal-free
@@ -339,9 +314,8 @@ enum/constant repair twins are compile-only. Rustdoc selects attached line,
 block and attribute documentation; **undocumented units are skipped**, not
 explicit model pass judgments. Abstraction review conservatively selects
 local construction/control flow, scalar/bit/array work and byte/character
-codec signals, not only one manual-codec idiom. The frozen-rule public
-`serde_json` check and measured before/after evaluation counts are recorded in
-[calibration](CALIBRATION.md#rust-readability).
+codec signals, not only one manual-codec idiom.
+
 
 | Upstream rule | Disposition | Rust scope / reason |
 | --- | --- | --- |

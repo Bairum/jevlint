@@ -664,7 +664,7 @@ func TestCheckSkipsFailsBelowMinConfidence(t *testing.T) {
 		t.Fatalf("Check() error = %v", err)
 	}
 	if len(report.Findings) != 0 {
-		t.Fatalf("findings = %#v, want none below minConfidence", report.Findings)
+		t.Fatalf("findings = %#v, want none below minFailProbability", report.Findings)
 	}
 	if len(report.BelowFloor) != 0 {
 		t.Fatalf("belowFloor = %#v, want hidden without option", report.BelowFloor)
@@ -809,7 +809,7 @@ func TestCheckLocalizeIgnoresRegionFailsBelowMinConfidence(t *testing.T) {
 		t.Fatalf("findings = %#v, want the parent fail", report.Findings)
 	}
 	if len(report.Findings[0].Locations) != 0 {
-		t.Fatalf("locations = %#v, want none below minConfidence", report.Findings[0].Locations)
+		t.Fatalf("locations = %#v, want none below minFailProbability", report.Findings[0].Locations)
 	}
 }
 
