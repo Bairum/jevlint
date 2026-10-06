@@ -2,89 +2,525 @@
   "rules": [
     {
       "id": "rust-advisory-input-panics",
-      "description": "Advisory: infer recoverable input handling from a public Rust function returning Result. Fail when reachable parsing or validation of externally supplied arguments, network data, stdin or other untrusted input panics, unwraps, expects or asserts instead of returning an error. Give an ordinary malformed input reaching that path. Explicit recovery documentation is not required; a Result signature and visible external parsing boundary are sufficient. Do not diagnose unwraps of proved invariants or demand Result from every function.",
+      "description": "Advisory: a public Result function panics, asserts, unwraps, or expects on a function argument, stdin, environment value, or network bytes, including a digit-only slice of that input.",
       "severity": "info",
-      "include": ["**/*.rs"],
-      "kinds": ["function"],
-      "sourceMatch": ["\\bpub\\b"],
-      "allowAbstain": true,
-      "exceptions": [
-        "Proved invariants, fixed valid literals and documented programmer-error preconditions may panic; an unvalidated external argument is not itself proof of a programmer error.",
-        "An explicit application-owned fatal startup policy may panic, including in a Result-returning startup function."
-      ]
+      "include": [
+        "**/*.rs"
+      ],
+      "sourceMatch": [
+        "\\bpub\\b"
+      ],
+      "kinds": [
+        "function"
+      ],
+      "score": {
+        "question": "How clearly does `source` panic on unvalidated caller input instead of returning an error?",
+        "levels": [
+          "Compliant or out of scope: `source` does not panic on caller input, or the panic is a fixed literal, a conversion already proved in `source`, a documented programmer-error precondition, or a stated fatal startup policy.",
+          "Borderline: a panic on caller input might be one of those four allowances, and `source` does not make that status obvious.",
+          "Clear violation: panic, assert, unwrap, or expect runs on an unvalidated argument, stdin, environment value, or network bytes, including a digit-only slice, and `source` shows none of those allowances."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clearly is an abort in `source` an unvalidated-input failure rather than an allowed panic?",
+            "levels": [
+              "Compliant or out of scope: no abort on caller input, or the abort is a hardcoded literal, a conversion `source` already proved, a documented programmer precondition, or an explicit fatal startup policy.",
+              "Borderline: the abort may fall under one of those allowances, but `source` leaves that unclear.",
+              "Clear violation: caller text or bytes, including a digit-only slice, reach panic, assert, unwrap, or expect, and none of those allowances is present."
+            ]
+          },
+          {
+            "question": "Where does `source` sit between returning a parse error and aborting on caller input?",
+            "levels": [
+              "Compliant or out of scope: the function returns the error, has no caller-input abort, or the abort is allowed as a fixed literal, a proved conversion, a documented programmer-error precondition, or fatal startup.",
+              "Borderline: an abort on caller input is present and it is unclear whether one of those allowances covers it.",
+              "Clear violation: an unvalidated argument, stdin, environment value, or network bytes, including a digit-only slice, is what unwinds, and `source` states none of those allowances."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does `source` call `unwrap`, `expect`, or `panic` on a parse or validation of a function argument, stdin, an environment value, or network bytes, including a digit-only slice of that input?",
+            "yes": "That call aborts on caller-supplied input, including a digit-only slice.",
+            "no": "No such call aborts on caller-supplied input.",
+            "paraphrases": [
+              {
+                "question": "Does parsing or validating a function argument, stdin, an environment value, or network bytes, including a digit-only slice, reach `unwrap`, `expect`, or `panic` in `source`?",
+                "yes": "That parse or validation aborts, including when only the digit bytes of the input are parsed.",
+                "no": "No parse or validation of that caller input aborts."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` assert on the length or contents of a function argument, stdin, or network bytes?",
+            "yes": "An assert rejects the shape of that external value.",
+            "no": "`source` does not assert on the shape of an external value.",
+            "paraphrases": [
+              {
+                "question": "Does `source` use `assert` or `assert_eq` to reject the length or contents of an argument, stdin, or network bytes?",
+                "yes": "The assert is on the shape of that external value.",
+                "no": "No assert rejects the shape of an external value."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` return a Result?",
+            "yes": "The function signature returns a Result.",
+            "no": "The function signature does not return a Result."
+          },
+          {
+            "question": "Does `source` contain a `panic`, `assert`, `unwrap`, or `expect` call?",
+            "yes": "`source` contains one of those calls.",
+            "no": "`source` contains none of those calls."
+          }
+        ]
+      }
     },
     {
       "id": "rust-advisory-error-kind-erasure",
       "description": "Advisory: infer useful I/O failure reporting at a public Result boundary. Fail when map_err discards a concrete std::io::Error or its source into an unrelated ErrorKind or opaque replacement, concealing ordinary permission, missing-resource, interrupted or peer failures. Show the original failure class and the misleading or uninformative exposed error. No explicit cause-preservation contract is required. A useful original kind, source chain or appropriate contextual wrapper suffices; do not mandate a crate or Error representation.",
       "severity": "info",
-      "include": ["**/*.rs"],
-      "kinds": ["function"],
-      "sourceMatch": ["\\bmap_err\\s*\\("],
-      "allowAbstain": true,
-      "exceptions": [
-        "Intentional sanitized public errors with appropriate internal diagnostics may conceal sensitive I/O details.",
-        "A visibly deliberate domain rejection or Boolean availability result need not expose an irrelevant lower cause.",
-        "Preserving useful original ErrorKind, source or structured context is sufficient; mapping a genuinely matching failure into a domain category is legitimate."
-      ]
+      "include": [
+        "**/*.rs"
+      ],
+      "sourceMatch": [
+        "\\bmap_err\\s*\\("
+      ],
+      "kinds": [
+        "function"
+      ],
+      "score": {
+        "question": "How clearly does `source` hide an ordinary I/O failure class behind `map_err`?",
+        "levels": [
+          "Compliant or out of scope: `source` does not map an I/O error, keeps the original kind or source, stores it in an internal diagnostic for a stated sanitization, returns a deliberate domain rejection or boolean availability result, or maps only the matching failure class.",
+          "Borderline: a replacement might be one of those allowances, and `source` does not make that policy obvious.",
+          "Clear violation: `map_err` replaces an I/O error with an unrelated `ErrorKind` or an opaque error, permission, not-found, interrupted, or connection failure is no longer visible, and `source` shows none of those allowances."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clearly is an I/O `map_err` in `source` loss of the failure class rather than an allowed remap?",
+            "levels": [
+              "Compliant or out of scope: no I/O error is replaced, or the kind or source is kept, recorded for a stated sanitization, turned into a deliberate domain or availability result, or only the matching class is recategorized.",
+              "Borderline: the replacement may be one of those allowed policies, but `source` leaves the policy unclear.",
+              "Clear violation: an unrelated kind or opaque error hides permission, not-found, interrupted, or connection failure, and none of those allowances is stated."
+            ]
+          },
+          {
+            "question": "Where does `source` sit between preserving an I/O failure class and erasing it?",
+            "levels": [
+              "Compliant or out of scope: the class remains available, the function is not an I/O remap, or the remap is a stated sanitization, domain rejection, boolean availability result, or matching-class-only mapping.",
+              "Borderline: the class looks dropped and it is unclear whether one of those allowances covers the replacement.",
+              "Clear violation: the returned error no longer identifies permission, not-found, interrupted, or connection failure, and `source` shows none of those allowances."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does `map_err` replace a `std::io::Error` with a different `ErrorKind` that is not the same failure class?",
+            "yes": "The new `ErrorKind` is a different failure class from the original I/O error.",
+            "no": "`map_err` does not replace an I/O error with a different failure class.",
+            "paraphrases": [
+              {
+                "question": "Does `map_err` turn a `std::io::Error` into an `ErrorKind` of a different failure class?",
+                "yes": "The exposed kind is not the original I/O failure class.",
+                "no": "`map_err` does not expose a different failure class for an I/O error."
+              }
+            ]
+          },
+          {
+            "question": "Does `map_err` replace a `std::io::Error` or its source with an opaque error that carries neither the kind nor the source?",
+            "yes": "The replacement is an opaque error with no kind and no source.",
+            "no": "The replacement is not an opaque error that drops kind and source.",
+            "paraphrases": [
+              {
+                "question": "Does `map_err` swap a `std::io::Error` or its source for an opaque replacement that holds neither kind nor source?",
+                "yes": "The replacement is opaque and carries neither the kind nor the source.",
+                "no": "The replacement is not an opaque drop of kind and source."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` call `map_err`?",
+            "yes": "`source` calls `map_err`.",
+            "no": "`source` does not call `map_err`."
+          },
+          {
+            "question": "Does `source` return a Result?",
+            "yes": "The function signature returns a Result.",
+            "no": "The function signature does not return a Result."
+          }
+        ]
+      }
     },
     {
       "id": "rust-advisory-partial-mutation-before-error",
-      "description": "Advisory: infer a preservation preference for pre-existing application state that remains observable or reusable after a Result-returning operation fails. Fail when a mutation before a later reachable fallible operation leaves caller-visible state partly replaced, cleared or persisted on Err without rollback, staging or explicit partial-progress semantics. Identify the mutation, failure and concrete retained-state observation, using supplied fields, methods or callers; explicit transaction documentation is not required. A mutable reference alone does not establish retained application state. Scratch/output buffers and temporary working leases are not transactional by default: require evidence that failed contents are retained and consumed as valid application state, not merely that a helper appends before ?. This is a review heuristic, not a requirement that every Result function be atomic or a claim of undefined behavior.",
+      "description": "Advisory: `source` changes caller-visible application state before a later fallible operation, and that change is still visible if the operation returns Err.",
       "severity": "info",
-      "include": ["**/*.rs"],
-      "kinds": ["function"],
-      "sourceMatch": ["&\\s*(?:'[A-Za-z_][A-Za-z0-9_]*\\s+)?mut\\b"],
-      "context": {"types": true},
-      "allowAbstain": true,
-      "exceptions": [
-        "Documented partial progress, including a visible API with an explicit partial-append contract, is legitimate.",
-        "Rollback or invariant-restoration that actually runs on every relevant error path is legitimate; poisoning alone is not rollback.",
-        "Fallible work staged in local state before committing to caller state, or termination that prevents caller reuse, is legitimate.",
-        "Caller-discarded scratch or output buffers, outputs published only on success, and temporary leases whose failed contents are dropped or reset are legitimate even when a helper receives them by mutable reference.",
-        "Do not invent a caller that consumes failed scratch/output contents. Pass when only temporary-buffer mutation is shown without evidence of retained-state misuse; this does not excuse clearing or replacing pre-existing caller application state."
-      ]
+      "include": [
+        "**/*.rs"
+      ],
+      "sourceMatch": [
+        "&\\s*(?:'[A-Za-z_][A-Za-z0-9_]*\\s+)?mut\\b"
+      ],
+      "kinds": [
+        "function"
+      ],
+      "context": {
+        "types": true
+      },
+      "score": {
+        "question": "How clearly does `source` leave caller-visible application state half-updated on Err?",
+        "levels": [
+          "Compliant or out of scope: `source` does not mutate caller-visible application state before a fallible operation, commits only after success, states partial progress, restores every error path, drops or withholds a scratch, unpublished output, or temporary lease, or exits the process on failure.",
+          "Borderline: the mutated value might be scratch, unpublished output, or a temporary lease, or `source` might restore it or exit, and the evidence in `source` is incomplete. Do not invent a caller that consumes failed scratch.",
+          "Clear violation: caller-visible application state is cleared, replaced, taken, or persisted before a later fallible operation, that change is still visible on Err, and `source` shows none of those allowances."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clearly is a failed operation in `source` a retained half-update of application state?",
+            "levels": [
+              "Compliant or out of scope: no caller-visible mutation precedes failure, or the change is documented partial progress, rolled back, committed only after success, confined to a dropped scratch, output, or lease, or followed by process exit.",
+              "Borderline: a mutation before Err might be one of those allowances, but `source` does not show enough to tell. Do not invent a caller for a scratch buffer.",
+              "Clear violation: pre-existing caller-visible state is partly replaced, cleared, or persisted on Err, and none of those allowances is shown."
+            ]
+          },
+          {
+            "question": "Where does `source` sit between preserving caller-visible state on Err and exposing a half-update?",
+            "levels": [
+              "Compliant or out of scope: the caller cannot observe a half-update, because there is none, it is restored, it is published only after success, it is stated partial progress, it is a discarded scratch or lease, or the process exits.",
+              "Borderline: a half-update may be visible and it is unclear whether an allowance in `source` covers it.",
+              "Clear violation: Err leaves caller-visible application state partly replaced, cleared, or persisted, and `source` states none of those allowances."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does `source` clear or replace caller-visible application state and then reach a fallible operation that can return Err before that state is restored?",
+            "yes": "A clear or replace of caller-visible application state survives Err.",
+            "no": "`source` does not clear or replace caller-visible application state before a fallible operation.",
+            "paraphrases": [
+              {
+                "question": "Does `source` wipe or overwrite caller-visible application state and then hit a fallible operation that can return Err with that wipe or overwrite still in place?",
+                "yes": "The wipe or overwrite of caller-visible application state is still there on Err.",
+                "no": "`source` does not wipe or overwrite caller-visible application state before a fallible operation."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` take or move existing caller-visible values out and then reach a fallible operation that can return Err before those values are put back?",
+            "yes": "Taken caller-visible values are missing if the later operation returns Err.",
+            "no": "`source` does not take caller-visible values out before a fallible operation.",
+            "paraphrases": [
+              {
+                "question": "Does `source` remove existing caller-visible values and then hit a fallible operation that can return Err before those values are restored?",
+                "yes": "Those removed caller-visible values are still gone on Err.",
+                "no": "`source` does not remove caller-visible values before a fallible operation."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` insert or persist into caller-visible storage and then reach a fallible operation that can return Err while that insert remains?",
+            "yes": "The insert or persist remains in caller-visible storage on Err.",
+            "no": "`source` does not persist into caller-visible storage before a fallible operation.",
+            "paraphrases": [
+              {
+                "question": "Does `source` write into caller-visible storage and then hit a fallible operation that can return Err while that write remains?",
+                "yes": "The write into caller-visible storage remains on Err.",
+                "no": "`source` does not write into caller-visible storage before a fallible operation."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` take a mutable reference or a mutable receiver?",
+            "yes": "`source` has `&mut` or a mutable `self`.",
+            "no": "`source` has no mutable reference and no mutable receiver."
+          },
+          {
+            "question": "Does `source` return a Result?",
+            "yes": "The function signature returns a Result.",
+            "no": "The function signature does not return a Result."
+          }
+        ]
+      }
     },
     {
       "id": "rust-advisory-unbounded-read",
-      "description": "Advisory: infer a need for bounded memory at a visible network, stdin or other untrusted stream boundary. Fail when read_to_end, read_to_string or lines can grow a buffer or collection without take, an effective limit or bounded incremental processing. lines can allocate one unlimited line even without collecting the iterator. Identify the external stream and actual growth path. An explicit protocol cap is not required and no universal byte cap is prescribed. A timeout alone does not bound rapid growth; applying a limit after allocation does not bound that allocation.",
+      "description": "Advisory: `read_to_end`, `read_to_string`, or `lines` reads a network stream, stdin, or other untrusted reader with no `take` or other byte limit on that read. A timeout, or a length check after the read returns, is not a byte limit. `lines` can store one unlimited line.",
       "severity": "info",
-      "include": ["**/*.rs"],
-      "kinds": ["function"],
-      "sourceMatch": ["\\b(?:read_to_end|read_to_string|lines)\\s*\\("],
-      "allowAbstain": true,
-      "exceptions": [
-        "Trusted fixed-size input or a demonstrated upstream envelope/codec bound is legitimate.",
-        "Bounded incremental processing without unlimited per-item allocation is legitimate.",
-        "An effective take or byte/resource limit is legitimate for this advisory; truncation/framing correctness requires a separately established protocol contract."
-      ]
+      "include": [
+        "**/*.rs"
+      ],
+      "sourceMatch": [
+        "\\b(?:read_to_end|read_to_string|lines)\\s*\\("
+      ],
+      "kinds": [
+        "function"
+      ],
+      "score": {
+        "question": "How clearly does `source` let an untrusted read grow memory without a prior byte limit?",
+        "levels": [
+          "Compliant or out of scope: the read is absent, the reader is a fixed literal, a cursor over a fixed in-memory buffer, or a datagram already copied into a bounded array, or `take` or another byte limit applies before storage, including a per-chunk `take`.",
+          "Borderline: the reader might already be bounded, or a `take` might already limit the read, and `source` does not make that bound obvious. A timeout alone does not settle it.",
+          "Clear violation: `read_to_end`, `read_to_string`, or `lines` consumes a network stream, stdin, or other untrusted reader that is not an already-bounded buffer, and neither `take` nor another byte limit applies before the bytes are stored."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clearly is a stream read in `source` an unbounded allocation from an untrusted reader?",
+            "levels": [
+              "Compliant or out of scope: no such read, or the reader is already a fixed or bounded in-memory buffer, or a byte limit applies before the bytes are stored.",
+              "Borderline: a bound or an already-limited buffer may be present, but `source` does not make it obvious. A timeout is not enough to decide.",
+              "Clear violation: an untrusted network, stdin, or other stream is read with `read_to_end`, `read_to_string`, or `lines` before any byte limit, and the reader is not an already-bounded buffer."
+            ]
+          },
+          {
+            "question": "Where does `source` sit between a bounded read and an untrusted slurp?",
+            "levels": [
+              "Compliant or out of scope: the function does not slurp an untrusted reader, or the slurp is of a fixed or already-bounded buffer, or `take` or an equivalent byte limit runs first.",
+              "Borderline: it is unclear whether the reader is already bounded or whether a prior byte limit applies.",
+              "Clear violation: the untrusted read stores bytes, including one `lines` line, with no prior byte limit and no already-bounded buffer."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does `source` call `read_to_end` or `read_to_string` on a network stream, stdin, or other untrusted reader with no `take` or other byte limit on that read before the bytes are stored?",
+            "yes": "That read stores unbounded bytes from an untrusted reader. A timeout is not a byte limit.",
+            "no": "`source` does not unbounded-read an untrusted reader with `read_to_end` or `read_to_string`.",
+            "paraphrases": [
+              {
+                "question": "Does `read_to_end` or `read_to_string` in `source` pull a network stream, stdin, or other untrusted reader into memory before any `take` or other byte limit?",
+                "yes": "Those bytes are stored from an untrusted reader with no prior byte limit. A timeout is not a byte limit.",
+                "no": "`source` does not store an untrusted `read_to_end` or `read_to_string` before a byte limit."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` call `lines` on stdin or a network reader, so one line can grow without a byte limit?",
+            "yes": "`lines` can store one unlimited line from that reader.",
+            "no": "`source` does not call `lines` on stdin or a network reader.",
+            "paraphrases": [
+              {
+                "question": "Does `lines` in `source` read stdin or a network reader so that a single line can grow with no byte limit?",
+                "yes": "One line from that reader can be unlimited.",
+                "no": "`source` does not read stdin or a network reader with `lines`."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` check length or size only after `read_to_end` or `read_to_string` has already stored the bytes?",
+            "yes": "The size check runs after the unbounded read has allocated.",
+            "no": "`source` does not check size only after an unbounded read.",
+            "paraphrases": [
+              {
+                "question": "Does `source` look at length or size only once `read_to_end` or `read_to_string` has already stored the bytes?",
+                "yes": "The size look happens after that read has allocated.",
+                "no": "`source` does not defer the size look until after an unbounded read."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` call `read_to_end`, `read_to_string`, or `lines`?",
+            "yes": "`source` calls one of those methods.",
+            "no": "`source` calls none of those methods."
+          }
+        ]
+      }
     },
     {
       "id": "rust-advisory-check-then-create",
       "description": "Advisory: infer an exclusivity intention from an absence check using exists or metadata followed by std::fs::File::create, fs::write or ordinary create on the same path. Fail when the check is relied upon to avoid overwriting and the subsequent write can truncate a file created between the two operations. Show the same path and the competing-creator window. No explicit never-overwrite contract is required. Do not report exists mechanically or treat atomic create_new as a race.",
       "severity": "info",
-      "include": ["**/*.rs"],
-      "kinds": ["function"],
-      "sourceMatch": ["\\b(?:exists|try_exists|metadata|symlink_metadata|create_new)\\s*\\("],
-      "allowAbstain": true,
-      "exceptions": [
-        "Explicit intended overwrite or advisory-only existence checks not relied upon for exclusivity are legitimate.",
-        "Atomic create_new or another demonstrated atomic creation primitive is legitimate.",
-        "Established external exclusive ownership preventing competing creators is legitimate; a process-local lock does not exclude unrelated processes without further evidence."
-      ]
+      "include": [
+        "**/*.rs"
+      ],
+      "sourceMatch": [
+        "\\b(?:exists|try_exists|metadata|symlink_metadata|create_new)\\s*\\("
+      ],
+      "kinds": [
+        "function"
+      ],
+      "score": {
+        "question": "How clearly does `source` rely on an absence check and then truncating-create the same path?",
+        "levels": [
+          "Compliant or out of scope: `source` does not check a path and then create it, the check and the write name different paths, every creation is `create_new` or another atomic exclusive-create, every write is an intended replacement, or `source` states an external exclusive lease. A process-local lock is not that lease.",
+          "Borderline: creation might be atomic exclusive create, every write might be an intended replacement, or an external exclusive lease might be stated, and `source` does not make that status obvious.",
+          "Clear violation: a reachable branch uses `exists`, `try_exists`, `metadata`, or `symlink_metadata` to avoid overwriting a path, then creates that same path with `File::create`, truncating `OpenOptions`, or `fs::write`, and `source` shows none of those allowances."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clearly is a check-then-write in `source` a race on the same path rather than an allowed create?",
+            "levels": [
+              "Compliant or out of scope: no same-path check-then-create, or the paths differ, creation is atomic exclusive create, every write is an intended replacement, or an external exclusive lease is stated. A process-local lock does not count as that lease.",
+              "Borderline: one of those allowances may apply, but `source` does not make it obvious.",
+              "Clear violation: a branch skips or rejects an existing path and then truncating-creates that same path, and none of those allowances is shown."
+            ]
+          },
+          {
+            "question": "Where does `source` sit between exclusive creation and a separate absence check plus write?",
+            "levels": [
+              "Compliant or out of scope: creation is atomic, the write is an intended replacement on every path, the paths differ, an external exclusive lease is stated, or there is no check-then-create.",
+              "Borderline: the check and write look separate and it is unclear whether atomic create, intended replacement, or an external lease covers them.",
+              "Clear violation: the same path is absence-checked and then truncating-created, with no atomic exclusive create, no intended replacement on every path, and no stated external exclusive lease."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does a reachable branch call `exists` or `try_exists` to skip or reject a path and then create that same path with `File::create` or truncating `OpenOptions`?",
+            "yes": "That branch checks existence and then truncating-creates the same path.",
+            "no": "No branch checks existence and then truncating-creates the same path.",
+            "paraphrases": [
+              {
+                "question": "Does a reachable branch reject or skip a path with `exists` or `try_exists` and later open that same path with `File::create` or truncating `OpenOptions`?",
+                "yes": "Existence is checked and that same path is then truncating-created.",
+                "no": "No branch does an existence check and then a truncating create of the same path."
+              }
+            ]
+          },
+          {
+            "question": "Does a reachable branch use `metadata` or `symlink_metadata` to detect absence and then `fs::write` or ordinary create on that same path?",
+            "yes": "Absence from metadata is followed by a truncating write of the same path.",
+            "no": "Metadata absence is not followed by a truncating write of the same path.",
+            "paraphrases": [
+              {
+                "question": "Does a reachable branch treat `metadata` or `symlink_metadata` absence as permission to `fs::write` or ordinary-create that same path?",
+                "yes": "Metadata absence is followed by a truncating write of the same path.",
+                "no": "Metadata absence is not followed by a truncating write of the same path."
+              }
+            ]
+          },
+          {
+            "question": "Does a reachable branch return an error when the path exists and a force flag is false, and then `fs::write` that same path?",
+            "yes": "The non-force branch rejects an existing file and a later write creates that path.",
+            "no": "`source` has no non-force reject-then-write of the same path.",
+            "paraphrases": [
+              {
+                "question": "Does a reachable branch error when the path exists unless a force flag is set, and still `fs::write` that same path when the flag is false and the path is absent?",
+                "yes": "The non-force branch rejects an existing file and a later write creates that path.",
+                "no": "`source` has no non-force reject followed by a write of the same path."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` call `exists`, `try_exists`, `metadata`, `symlink_metadata`, or `create_new`?",
+            "yes": "`source` calls one of those functions.",
+            "no": "`source` calls none of those functions."
+          }
+        ]
+      }
     },
     {
       "id": "rust-advisory-unflushed-bufwriter",
-      "description": "Advisory: infer checked I/O completion from a function returning io::Result that owns a std::io::BufWriter over File or TcpStream. Fail when bytes can remain buffered on a success path and the writer is dropped without checked flush or into_inner, silently losing any completion error. Trace relevant success branches; write_all into BufWriter alone does not complete downstream output, and Drop ignores errors. No explicit output-completion contract is required. Completion is not crash durability, fsync or atomic replacement.",
+      "description": "Advisory: a function returning `io::Result` creates or owns a `BufWriter` over `File` or `TcpStream`, writes bytes to it, and returns Ok without propagating `flush` or `into_inner`. Discarding the flush result and returning Ok does not propagate `flush`. A helper that only writes a caller-supplied `&mut BufWriter` does not own that writer.",
       "severity": "info",
-      "include": ["**/*.rs"],
-      "kinds": ["function"],
-      "sourceMatch": ["\\bBufWriter\\b", "\\b(?:write|write_all|write_fmt|flush|into_inner)\\s*\\("],
-      "allowAbstain": true,
-      "exceptions": [
-        "Checked flush or into_inner, or appropriate ownership transfer for caller-managed completion, is legitimate.",
-        "Explicitly disposable or best-effort output and abandonment on an error path are legitimate.",
-        "Empty or demonstrably already-completed buffers are legitimate; arbitrary buffer capacity alone does not prove all output was completed."
-      ]
+      "include": [
+        "**/*.rs"
+      ],
+      "sourceMatch": [
+        "\\bBufWriter\\b",
+        "\\b(?:write|write_all|write_fmt|flush|into_inner)\\s*\\("
+      ],
+      "kinds": [
+        "function"
+      ],
+      "score": {
+        "question": "How clearly does `source` return Ok while an owned `BufWriter` over `File` or `TcpStream` may still hold bytes?",
+        "levels": [
+          "Compliant or out of scope: `source` does not own a `BufWriter` over `File` or `TcpStream`, writes no bytes, only writes a caller-supplied `&mut BufWriter`, propagates `flush` or `into_inner`, returns the writer, states that output is disposable or best-effort, or returns Err on the path that abandons the buffer.",
+          "Borderline: completion, transfer, a best-effort policy, or an empty or already-flushed buffer may apply, and `source` does not make that status obvious.",
+          "Clear violation: `source` creates or owns a `BufWriter` over `File` or `TcpStream`, writes bytes, and returns Ok without propagating `flush` or `into_inner`, including a discarded `flush` result, and `source` shows none of those allowances."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clearly is a successful return in `source` an unchecked owned file or TCP buffer?",
+            "levels": [
+              "Compliant or out of scope: no owned `BufWriter` over `File` or `TcpStream` holds bytes on Ok, because there is none, it is a caller-supplied writer, completion is propagated, the writer is returned, output is stated best-effort, the buffer is empty or already flushed, or abandon returns Err.",
+              "Borderline: an owned buffer may still hold bytes and it is unclear whether one of those allowances covers the Ok path.",
+              "Clear violation: owned file or TCP bytes are written and Ok neither propagates `flush` or `into_inner` nor meets one of those allowances."
+            ]
+          },
+          {
+            "question": "Where does `source` sit between checked buffer completion and a silent successful drop?",
+            "levels": [
+              "Compliant or out of scope: completion is checked or transferred, the writer is not owned, no bytes were written, output is stated disposable or best-effort, or the abandon path returns Err.",
+              "Borderline: Ok may leave an owned buffer unfinished, and `source` does not make the allowance obvious.",
+              "Clear violation: an owned `BufWriter` over `File` or `TcpStream` is written and Ok ignores or skips `flush` and `into_inner`, with no best-effort policy, no transfer, and no empty or already-completed buffer."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does `source` create or own a `BufWriter` over `File` or `TcpStream`, write bytes to it, and return Ok on a path that neither propagates `flush` nor propagates `into_inner`?",
+            "yes": "That owned writer can still hold bytes on the Ok path.",
+            "no": "`source` does not return Ok with an owned writer still holding unchecked bytes.",
+            "paraphrases": [
+              {
+                "question": "Does `source` build or own a `BufWriter` over `File` or `TcpStream`, put bytes in it, and return Ok without sending `flush` or `into_inner` errors to the caller?",
+                "yes": "That owned writer can still hold bytes on the Ok path.",
+                "no": "`source` does not return Ok while an owned writer still holds unchecked bytes."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` discard the result of `flush` on an owned `BufWriter` over `File` or `TcpStream` and then return Ok?",
+            "yes": "The flush result is discarded and Ok is returned.",
+            "no": "`source` does not discard a flush result and then return Ok.",
+            "paraphrases": [
+              {
+                "question": "Does `source` call `flush` on an owned `BufWriter` over `File` or `TcpStream`, ignore that result, and then return Ok?",
+                "yes": "The flush result is ignored and Ok is returned.",
+                "no": "`source` does not ignore a flush result and then return Ok."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` drop an owned `BufWriter` over `File` or `TcpStream` after writing bytes, and then return Ok?",
+            "yes": "The owned writer is dropped after writes and the function returns Ok.",
+            "no": "`source` does not drop a written owned writer and then return Ok.",
+            "paraphrases": [
+              {
+                "question": "Does `source` let an owned `BufWriter` over `File` or `TcpStream` fall out of scope after writing bytes, and then return Ok?",
+                "yes": "The owned writer goes out of scope after writes and the function returns Ok.",
+                "no": "`source` does not drop a written owned writer and then return Ok."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` mention `BufWriter`?",
+            "yes": "`source` mentions `BufWriter`.",
+            "no": "`source` does not mention `BufWriter`."
+          },
+          {
+            "question": "Does `source` return an `io::Result`?",
+            "yes": "The function signature returns an `io::Result`.",
+            "no": "The function signature does not return an `io::Result`."
+          }
+        ]
+      }
     }
   ]
 }

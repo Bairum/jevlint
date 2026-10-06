@@ -2,9 +2,84 @@
   "rules": [
     {
       "id": "database-joins",
-      "description": "Fail when related database records are joined, matched, or merged in application code instead of in the query.",
-      "severity": "warning",
-      "kinds": ["function"]
+      "description": "Fail only when the code clearly retrieves related records from the same database and joins, matches, merges, or enriches them in application code instead of in the query. If database-backed records cannot be established from the supplied code, pass. AST processing, parsing, and general in-memory collection operations pass.",
+      "severity": "error",
+      "include": [
+        "**/*"
+      ],
+      "exclude": [
+        "**/examples/**"
+      ],
+      "kinds": [
+        "function"
+      ],
+      "localize": [
+        "statement"
+      ],
+      "context": {
+        "callees": true
+      },
+      "score": {
+        "question": "How clearly does `source` join same-database records in application code?",
+        "levels": [
+          "No database read, a single query that already joins the rows, or an in-memory, parse, or AST operation.",
+          "Borderline: related reads whose shared database is unclear, or an in-code match that may be a filter rather than a join.",
+          "Clear violation: separate queries to the same database, then a key comparison or field copy that merges those rows."
+        ],
+        "paraphrases": [
+          {
+            "question": "To what degree does `source` assemble related database rows itself instead of asking the database to do it?",
+            "levels": [
+              "Compliant or out of scope: `source` never reads a database, the query already combines the rows, or the work is parsing, an AST walk, or an ordinary in-memory collection.",
+              "Ambiguous: the reads look related, but it is unclear they hit one database, or the in-code comparison may only be filtering rather than joining.",
+              "Clear violation: `source` issues separate queries against one database and then merges those results by comparing keys or copying fields."
+            ]
+          },
+          {
+            "question": "How strong is the evidence that `source` performs the join of same-database rows outside the query?",
+            "levels": [
+              "Out of scope or fine: there is no database fetch, one query already relates the rows, or the code is not talking to a database at all.",
+              "Unclear: related fetches are present, yet the shared database is not established, or the application match might not be combining those rows.",
+              "Clear violation: application code combines rows that arrived from separate queries to the same database."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does `source` match those queried records by comparing keys in application code?",
+            "yes": "Application code matches the queried records by comparing keys.",
+            "no": "Application code does not match the queried records by comparing keys.",
+            "paraphrases": [
+              {
+                "question": "Does application code in `source` pair those query results by testing their keys against each other?",
+                "yes": "The queried records are paired in application code by a key test.",
+                "no": "The queried records are not paired in application code by a key test."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` merge or enrich those queried records by copying fields between them in application code?",
+            "yes": "Application code copies fields between the queried records.",
+            "no": "Application code does not copy fields between the queried records.",
+            "paraphrases": [
+              {
+                "question": "Does `source` build a combined record by taking fields from one query result and attaching fields from another?",
+                "yes": "Fields from one query result are attached to fields from another in application code.",
+                "no": "Fields are not copied across those query results in application code."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` read records through a database query?",
+            "yes": "`source` issues a database query.",
+            "no": "`source` does not issue a database query."
+          }
+        ]
+      }
     }
   ]
 }
