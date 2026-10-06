@@ -38,6 +38,16 @@ Blind-labelled set: 9 public repos (ripgrep 3fce3b5, mini-redis 3d93b42, hashbro
 
 unnecessary-abstraction was removed because it had 0 correct reports at any threshold on the blind-labelled real-code set (0 correct / 4 false at 0.80, 0 / 3 at 0.90). comment-quality now reports at 0.90 because precision rose from 15 correct / 10 false at 0.80 to 5 / 1 at 0.90, trading recall for precision.
 
+### Rust correctness threshold round
+
+Question: should the correctness packs (`rust-core`, `rust-core-advisory`, `rust-tokio`, `rust-api`, `rust-unsafe`) report at 0.70 instead of 0.80? The shipped CLI scanned 8 more public repos (walkdir 6fd031c, fd 14dcd92, rusqlite 91f876c, pydantic-core 383eb95, h2 5b17a0e, reqwest 2230ed3, axum 9f1226d, insta 5df39ce; production code only, 7,486 functions, 98M input tokens). Every result at or above 0.50 was labelled blind (129 items; 26 double-labelled, 23 agreed).
+
+- Only `rust-core-advisory` produced material: 126 of 129 items. `rust-tokio`, `rust-api` and `rust-unsafe` had no result at or above 0.50, so this round says nothing about their thresholds.
+- `rust-advisory-error-kind-erasure` looked strong below 0.80 (16 correct / 1 false in 0.60–0.80), but every correct item was the same `map_err(|e| ... e.to_string())` pattern in one pydantic-core file. That is one defect repeated, not independent evidence.
+- Setting that cluster aside, precision by band was 0.26 (0.50–0.60), 0.35 (0.60–0.70), 0.33 (0.70–0.80, 3 correct / 6 false) and 0.83 at 0.80 or above (5 / 1). `rust-advisory-partial-mutation-before-error` was 3 / 3 in 0.70–0.80, and `rust-advisory-input-panics` was 0 / 1.
+
+Decision: keep 0.80 for every Rust correctness rule. Lowering to 0.70 would add about two false reports for each real one.
+
 ## Held-out
 
 Two runs each, reporting threshold 0.80. A held-out private Rust workspace (43 files): 12 seeded defects, 3/12 reported (6 more between 0.40 and 0.71, visible with `--show-below-floor`); 8 blind unsafe defects, 0/8. Do not rely on `rust-unsafe` for unsafe-defect recall. Clean workspace: 7 reports in each run, 8 distinct across the two runs, all `rust-readability`. Independent review: 2 actionable (`rust-readability-magic-domain-values` 1/1, an unnamed solver tolerance and parameter limits; `rust-readability-mixed-levels-of-abstraction` 1/7, an inline hex-digest decoder inside orchestration) and 6 false positives, all `mixed-levels-of-abstraction` on FFI adapter functions whose primary job is marshalling or publication. That rule is the current noise source on adapter-heavy Rust (precision 1/7 on this set). Projects with large FFI or adapter layers should exclude those paths or disable the rule. This scan was not used to change the rule. [serde_json `afdf6fc`](https://github.com/serde-rs/json/tree/afdf6fc67247dd7fa4fcde1381e6ecc6bcc7a30e) (38 production files): 0 reports.
