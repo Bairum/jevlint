@@ -50,18 +50,18 @@ Decision: keep 0.80 for every Rust correctness rule. Lowering to 0.70 would add 
 
 ### Partial-mutation scope
 
-A narrower wording of `rust-advisory-partial-mutation-before-error` was measured and not shipped. The candidate treated a violation as pre-existing caller-visible application state (a collection, setting, protocol window, persisted file, history list, mode, or buffer of data not yet delivered) changed before a later fallible step and left changed on Err. Writer, formatter, serializer, and event-sink output, bookkeeping the function's own Result already reports, an already-closed handle, and a restored `mem::take` or `mem::replace` were out of scope.
+`rust-advisory-partial-mutation-before-error` now uses a narrower definition. A violation is pre-existing caller-visible application state (a collection, setting, protocol window, persisted file, history list, mode, or buffer of data not yet delivered) changed before a later fallible step and left changed on Err, with no rollback and no stated partial-progress contract. Writer, formatter, serializer, and event-sink output, bookkeeping the function's own Result already reports, an already-closed handle, and a restored `mem::take` or `mem::replace` are out of scope.
 
 128 previously labelled units were relabelled blind. A second labeller marked a 32-unit random subset; 31 agreed (96.9%). Unclear labels are excluded below. Tune is round-2 pydantic-core, insta, fd, and axum, plus earlier labelled units from mini-redis, ripgrep, hashbrown, rust-numpy, and libloading. Holdout is round-2 h2, rusqlite, and reqwest, scored once after the wording was frozen.
 
 | Set | Wording | n | Violations | 0.80 TP/FP | 0.80 recall | 0.70 TP/FP | 0.70 recall |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Tune | current | 105 | 18 | 2/0 | 0.11 | 8/2 | 0.44 |
-| Tune | rejected | 105 | 18 | 6/0 | 0.33 | 8/0 | 0.44 |
-| Holdout | current | 19 | 13 | 3/1 | 0.23 | 3/1 | 0.23 |
-| Holdout | rejected | 19 | 13 | 3/0 | 0.23 | 5/0 | 0.38 |
+| Tune | previous | 105 | 18 | 2/0 | 0.11 | 8/2 | 0.44 |
+| Tune | shipped | 105 | 18 | 6/0 | 0.33 | 8/0 | 0.44 |
+| Holdout | previous | 19 | 13 | 3/1 | 0.23 | 3/1 | 0.23 |
+| Holdout | shipped | 19 | 13 | 3/0 | 0.23 | 5/0 | 0.38 |
 
-Holdout precision at 0.80 rose from 0.75 to 1.00 with the same recall. The wording was not shipped: two pass fixtures moved into the below-floor band (`documented-partial-append` 0.17 to 0.43, `caller-discarded-output-buffer` 0.17 to 0.50), and `take-before-validation` stayed inconclusive (0.76 to 0.46). The current wording remains.
+Holdout precision at 0.80 rose from 0.75 to 1.00 with the same recall. Two pass fixtures now sit below the report floor and are not reported: `documented-partial-append` at 0.43 and `caller-discarded-output-buffer` at 0.50. `take-before-validation` scores 0.46 and stays inconclusive. The report floor stays 0.80.
 
 
 ## Held-out

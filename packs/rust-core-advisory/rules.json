@@ -162,7 +162,7 @@
     },
     {
       "id": "rust-advisory-partial-mutation-before-error",
-      "description": "Advisory: `source` changes caller-visible application state before a later fallible operation, and that change is still visible if the operation returns Err.",
+      "description": "Advisory: `source` changes pre-existing caller-visible application state before a later fallible step, and leaves that change in place if the step returns Err. Application state is a collection, setting, protocol window, persisted file, history list, mode field, or buffer of data not yet delivered. A write into a writer, formatter, serializer, or event sink is not itself application state. Another change in the same function still counts.",
       "severity": "info",
       "include": [
         "**/*.rs"
@@ -176,71 +176,34 @@
       "context": {
         "types": true
       },
+      "guidance": "Missing documentation neither creates nor excuses a violation. An explicit policy written in `source` overrides the convention named by `rule`. A write into io::Write, fmt::Write, a serde Serializer, or a callback or visitor receiver is not application state, even if that write stays partial on Err. A separate change to a collection, setting, protocol window, persisted file, history list, mode field, or not-yet-delivered buffer still counts. A validation-mode flag or a counter the function's own Result already reports is not application state. Closing a handle whose close already happened is not this rule. mem::take or mem::replace restored on every shown path is not this rule.",
       "score": {
-        "question": "How clearly does `source` leave caller-visible application state half-updated on Err?",
+        "question": "How clearly does `source` leave pre-existing caller-visible application state changed on Err?",
         "levels": [
-          "Compliant or out of scope: `source` does not mutate caller-visible application state before a fallible operation, commits only after success, states partial progress, restores every error path, drops or withholds a scratch, unpublished output, or temporary lease, or exits the process on failure.",
-          "Borderline: the mutated value might be scratch, unpublished output, or a temporary lease, or `source` might restore it or exit, and the evidence in `source` is incomplete. Do not invent a caller that consumes failed scratch.",
-          "Clear violation: caller-visible application state is cleared, replaced, taken, or persisted before a later fallible operation, that change is still visible on Err, and `source` shows none of those allowances."
+          "Compliant or out of scope: no application-state change precedes a fallible step; the change is committed only after success; every error path restores it; a comment states partial progress or that the update is required even on failure; the process exits; the only change is a write into a writer, formatter, serializer, or event sink; the only change is a flag or counter the Result already reports; the only change is closing a handle whose close already happened; or the only change is scratch, unpublished output, or a temporary lease that is dropped or withheld.",
+          "Borderline: a change before Err might be application state or one of those allowances, and `source` does not show which.",
+          "Clear violation: a collection, setting, protocol window, persisted file, history list, mode field, or not-yet-delivered buffer that the caller already had is changed before a later fallible step and left changed on Err. A write to a sink in the same function does not remove this. `source` shows no restore and no partial-progress comment. A later `?` or `return Err` counts even if an earlier step succeeded."
         ],
         "paraphrases": [
           {
-            "question": "How clearly is a failed operation in `source` a retained half-update of application state?",
+            "question": "How clearly is a failed step in `source` a retained change to pre-existing application state?",
             "levels": [
-              "Compliant or out of scope: no caller-visible mutation precedes failure, or the change is documented partial progress, rolled back, committed only after success, confined to a dropped scratch, output, or lease, or followed by process exit.",
-              "Borderline: a mutation before Err might be one of those allowances, but `source` does not show enough to tell. Do not invent a caller for a scratch buffer.",
-              "Clear violation: pre-existing caller-visible state is partly replaced, cleared, or persisted on Err, and none of those allowances is shown."
+              "Compliant or out of scope: no application-state change precedes failure, or that change is restored, committed only after success, stated as partial progress or required on failure, or followed by process exit. A sink write, a reported flag, or dropped scratch is not that change.",
+              "Borderline: a change before Err might be retained application state, and `source` does not show whether an allowance covers it.",
+              "Clear violation: pre-existing application state is partly replaced, cleared, taken, or persisted on Err, and `source` does not restore it or state partial progress. A sink write beside that change does not make it compliant. A later `?` or `return Err` counts even if an earlier step succeeded."
             ]
           },
           {
-            "question": "Where does `source` sit between preserving caller-visible state on Err and exposing a half-update?",
+            "question": "Where does `source` sit between preserving caller-visible application state on Err and exposing a half-update?",
             "levels": [
-              "Compliant or out of scope: the caller cannot observe a half-update, because there is none, it is restored, it is published only after success, it is stated partial progress, it is a discarded scratch or lease, or the process exits.",
-              "Borderline: a half-update may be visible and it is unclear whether an allowance in `source` covers it.",
-              "Clear violation: Err leaves caller-visible application state partly replaced, cleared, or persisted, and `source` states none of those allowances."
+              "Compliant or out of scope: the caller cannot observe a half-update of application state. A sink write, reported flag, scratch, or lease is not that half-update.",
+              "Borderline: a half-update may be visible and `source` does not show whether it is application state.",
+              "Clear violation: Err leaves a collection, setting, protocol window, persisted file, history list, mode field, or not-yet-delivered buffer partly changed, and `source` does not restore it. A later `?` or `return Err` counts even if an earlier step succeeded."
             ]
           }
         ]
       },
       "checks": {
-        "violation": [
-          {
-            "question": "Does `source` clear or replace caller-visible application state and then reach a fallible operation that can return Err before that state is restored?",
-            "yes": "A clear or replace of caller-visible application state survives Err.",
-            "no": "`source` does not clear or replace caller-visible application state before a fallible operation.",
-            "paraphrases": [
-              {
-                "question": "Does `source` wipe or overwrite caller-visible application state and then hit a fallible operation that can return Err with that wipe or overwrite still in place?",
-                "yes": "The wipe or overwrite of caller-visible application state is still there on Err.",
-                "no": "`source` does not wipe or overwrite caller-visible application state before a fallible operation."
-              }
-            ]
-          },
-          {
-            "question": "Does `source` take or move existing caller-visible values out and then reach a fallible operation that can return Err before those values are put back?",
-            "yes": "Taken caller-visible values are missing if the later operation returns Err.",
-            "no": "`source` does not take caller-visible values out before a fallible operation.",
-            "paraphrases": [
-              {
-                "question": "Does `source` remove existing caller-visible values and then hit a fallible operation that can return Err before those values are restored?",
-                "yes": "Those removed caller-visible values are still gone on Err.",
-                "no": "`source` does not remove caller-visible values before a fallible operation."
-              }
-            ]
-          },
-          {
-            "question": "Does `source` insert or persist into caller-visible storage and then reach a fallible operation that can return Err while that insert remains?",
-            "yes": "The insert or persist remains in caller-visible storage on Err.",
-            "no": "`source` does not persist into caller-visible storage before a fallible operation.",
-            "paraphrases": [
-              {
-                "question": "Does `source` write into caller-visible storage and then hit a fallible operation that can return Err while that write remains?",
-                "yes": "The write into caller-visible storage remains on Err.",
-                "no": "`source` does not write into caller-visible storage before a fallible operation."
-              }
-            ]
-          }
-        ],
         "subject": [
           {
             "question": "Does `source` take a mutable reference or a mutable receiver?",
@@ -251,6 +214,54 @@
             "question": "Does `source` return a Result?",
             "yes": "The function signature returns a Result.",
             "no": "The function signature does not return a Result."
+          },
+          {
+            "question": "Does `source` change a collection, setting, protocol window, persisted file, history list, mode field, or buffer of data not yet delivered?",
+            "yes": "One of those caller-owned application values is changed. A sink write in the same function does not change this answer.",
+            "no": "No such value is changed. A write into io::Write, fmt::Write, a Serializer, a callback, or a visitor is not such a value. A validation flag or a counter the Result already reports is not such a value."
+          }
+        ],
+        "violation": [
+          {
+            "question": "Does `source` clear or replace that application state and then reach a fallible step that can return Err before the previous value is restored?",
+            "yes": "The clear or replace of that application state is still in place on Err.",
+            "no": "`source` does not clear or replace that application state before a fallible step, or it restores the previous value.",
+            "paraphrases": [
+              {
+                "question": "Does `source` wipe or overwrite that application state and then hit a fallible step that can return Err with the wipe or overwrite still in place?",
+                "yes": "The wipe or overwrite is still there on Err.",
+                "no": "`source` does not leave a wipe or overwrite of that application state in place on Err."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` take or remove values from that application state and then reach a fallible step that can return Err before those values are put back?",
+            "yes": "Those taken values are still missing on Err.",
+            "no": "`source` does not leave taken application values missing on Err.",
+            "paraphrases": [
+              {
+                "question": "Does `source` delete, retain-away, or drop entries from that application state and then hit a fallible step that can return Err before those entries are restored?",
+                "yes": "Those deleted or dropped entries are still gone on Err.",
+                "no": "`source` does not leave deleted or dropped application entries unrestored on Err."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` insert into that application state or persist a file, and then reach a fallible step that can return Err while that insert or file change remains?",
+            "yes": "The insert or persisted file change remains on Err.",
+            "no": "`source` does not leave an insert or persisted file change in place on Err.",
+            "paraphrases": [
+              {
+                "question": "Does `source` add to that application state or write a persisted file, and then hit a fallible step that can return Err while the add or write remains?",
+                "yes": "The add or persisted write remains on Err.",
+                "no": "`source` does not leave an add or persisted write in place on Err."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` change a caller-owned collection, file, setting, or mode and then reach `?` or `return Err` before that change is restored?",
+            "yes": "That change is still in place at the later `?` or `return Err`.",
+            "no": "`source` does not leave such a change unrestored at a later `?` or `return Err`."
           }
         ]
       }
