@@ -59,7 +59,7 @@ jevlint plugin remove Bairum/rust-api
 
 ## Verification status
 
-`python3 scripts/check-rust-packs.py --pack rust-api` compiled all 35 isolated Rust 2021 fixture targets without errors or warnings. Faulty fixtures were never executed. Three real provider runs (`python3 scripts/check-rust-packs.py --eval --repeat 3`) measured fixture recall and specificity; the per-run results below treat below-floor failures as not reported.
+`python3 scripts/check-rust-packs.py --pack rust-api` compiled all 35 isolated Rust 2021 fixture targets without errors or warnings. Faulty fixtures were never executed. Three real provider runs (`python3 scripts/check-rust-packs.py --eval --repeat 3`) measured fixture recall and specificity; the per-run results below treat below-floor failures as not reported. The table is choice confidence; the floors were not refit.
 
 | Rule | Recall @0.8 | Specificity @0.8 | Recommended override | Recall @override | Specificity @override |
 | --- | --- | --- | --- | --- | --- |
@@ -69,4 +69,4 @@ jevlint plugin remove Bairum/rust-api
 
 `rust-api-deref-contract` is false-positive-prone at `0.8` (specificity `0.83`). Constructor and trait-law recall remain limited even at their recommended overrides. These measurements are on fixtures, not real-project precision, which remains unmeasured.
 
-Global `minConfidence` stays `0.8`; the pack has no rule-level `minConfidence`. Only consuming projects may opt into recommended rule overlays, such as `{"id": "rust-api-default-consistency", "minConfidence": 0.30}`. An overlay replaces the rule floor, which overrides the global floor; `—` means keep `0.8`. Recommendations were fitted on the same fixtures and are starting points, not guarantees. See [calibration method, caveats and override configuration](../../docs/rust/CALIBRATION.md).
+Global `minFailProbability` stays `0.8`; the pack has no rule-level `minFailProbability`. Only consuming projects may opt into recommended rule overlays, such as `{"id": "rust-api-default-consistency", "minFailProbability": 0.30}`. An overlay replaces the rule floor, which overrides the global floor; `—` means keep `0.8`. Those recorded floors were fitted on the old choice-confidence metric and pack calibration will refit them; the field name is `minFailProbability`. Recommendations were fitted on the same fixtures and are starting points, not guarantees. See [calibration method, caveats and override configuration](../../docs/rust/CALIBRATION.md).

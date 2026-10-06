@@ -58,17 +58,18 @@ func TestDecodeResultsReadsTopLevelAnswers(t *testing.T) {
 	t.Parallel()
 
 	rules := []config.Rule{{ID: "database-joins"}}
-	body := []byte(`{"answers":{"database-joins":{"type":"choice","choice":"pass","confidence":1}}}`)
+	body := []byte(`{"model":"jev-test","answers":{"database-joins":{"type":"choice","choice":"pass","probabilities":{"pass":1,"fail":0}}}}`)
 	answers, err := (TypeSafeProvider{}).Answers(body)
 	if err != nil {
 		t.Fatalf("Answers() error = %v", err)
 	}
-	results, err := decodeResults(answers, rules)
+	results, err := decodeAnswers(answers.Answers, Batch{Rules: rules}, answers.Model)
 	if err != nil {
-		t.Fatalf("decodeResults() error = %v", err)
+		t.Fatalf("decodeAnswers() error = %v", err)
 	}
-	if results["database-joins"].Status != StatusPass {
-		t.Fatalf("decodeResults() = %#v", results)
+	result := results["database-joins"]
+	if result.Status != StatusPass || result.FailProbability != 0 || result.Model != "jev-test" {
+		t.Fatalf("decodeAnswers() = %#v", results)
 	}
 }
 

@@ -84,7 +84,7 @@ Each pair below is `fixtures/<rule>/real-<slug>-{bug,fixed}.rs`. Both files cont
 
 All **68 isolated Rust 2021 fixture targets** were compiled without warnings in the final six-pack fixture compilation (432 targets total), including four retained/disposable-state regressions added below. Faulty fixtures were never executed. Compilation establishes syntax, not judgment correctness. Derived public-bug reproductions are minimized examples, not claims that every upstream incident had this exact public API.
 
-The initial three real provider-backed runs (`python3 scripts/check-rust-packs.py --eval --repeat 3`) measured fixture recall and specificity at global `minConfidence: 0.8`, with opaque fixture names. This historical table reports per-run decision metrics: below-floor failures are not reported, matching `check` behavior. The partial-mutation row predates the narrowing below; its fitted 0.70 override is withdrawn.
+The initial three real provider-backed runs (`python3 scripts/check-rust-packs.py --eval --repeat 3`) measured fixture recall and specificity at global choice-confidence floor 0.8; the floors were not refit. Opaque fixture names were used. This historical table reports per-run decision metrics: below-floor failures are not reported, matching `check` behavior. The partial-mutation row predates the narrowing below; its fitted 0.70 override is withdrawn.
 
 | Rule | Recall @0.8 | Specificity @0.8 | Original fitted override | Recall @override | Specificity @override |
 | --- | --- | --- | --- | --- | --- |
@@ -95,7 +95,7 @@ The initial three real provider-backed runs (`python3 scripts/check-rust-packs.p
 | `rust-advisory-check-then-create` | 0.67 | 1.00 | 0.30 | 0.87 | 1.00 |
 | `rust-advisory-unflushed-bufwriter` | 0.80 | 1.00 | 0.65 | 1.00 | 1.00 |
 
-All six Rust packs retain the global floor of **0.8** and contain no rule-level `minConfidence`; no pack-level floor changes were made. Only consuming projects may opt into the recommended overrides through project rule overlays such as `{"id": "rust-advisory-error-kind-erasure", "minConfidence": 0.65}`. An overlay replaces the rule floor, which overrides the global floor; `—` means keep 0.8. Overrides were fitted on these same fixtures and are starting points, not guarantees. The measured fixture specificity of 1.00 does not establish real-project precision, which remains unmeasured. See [calibration method, caveats and override configuration](../../docs/rust/CALIBRATION.md).
+All six Rust packs retain the global floor of **0.8** and contain no rule-level `minFailProbability`; no pack-level floor changes were made. Only consuming projects may opt into the recommended overrides through project rule overlays such as `{"id": "rust-advisory-error-kind-erasure", "minFailProbability": 0.65}`. An overlay replaces the rule floor, which overrides the global floor; `—` means keep 0.8. Those recorded floors were fitted on the old choice-confidence metric and pack calibration will refit them; the field name is `minFailProbability`. Overrides were fitted on these same fixtures and are starting points, not guarantees. The measured fixture specificity of 1.00 does not establish real-project precision, which remains unmeasured. See [calibration method, caveats and override configuration](../../docs/rust/CALIBRATION.md).
 
 ### Partial-mutation decision and provider refresh (2026-10-05)
 
@@ -131,7 +131,7 @@ Reproduction uses an external config containing `languages.rust`, floor 0.8 and 
 jevlint eval --config <config> --evals <evals> --refresh-cache --format json --verbose
 ```
 
-Keep the partial-mutation floor at 0.8; the old 0.70 recommendation is not recalibrated for this narrower rule.
+Keep the partial-mutation floor at 0.8; the old 0.70 recommendation is not recalibrated for this narrower rule. Those recorded floors were fitted on the old choice-confidence metric and pack calibration will refit them; the field name is `minFailProbability`.
 
 On a held-out private Rust workspace (43 files, 958 units), three uncached combined core/advisory scans reported
 **zero findings in every run**. Partial-mutation advisory noise fell from the

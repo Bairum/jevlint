@@ -1,10 +1,10 @@
 # Rust pack calibration (baseline, leak-free)
 
 Source: a local `--summary` JSON from the run below (1.4 MB, not committed; regenerate with the reproduction command).
-Method: `python3 scripts/check-rust-packs.py --eval --repeat 3` at global minConfidence 0.8; evaluator saw opaque fixture names; 426 cases, 1278 case-runs.
+Method: `python3 scripts/check-rust-packs.py --eval --repeat 3` at global choice-confidence floor 0.8; the floors were not refit. Evaluator saw opaque fixture names; 426 cases, 1278 case-runs.
 Case-level majority (eval semantics, below-floor fail = inconclusive): recall 71/162, specificity 229/264; flip rate 0.054 (23 cases); abstain decisions 4; below-floor fail decisions 264.
 Per-run decision metrics below treat below-floor failures as not reported (what `check` users see).
-Recommended override = floor in 0.30..0.80 (step 0.05) maximizing per-run recall while keeping per-run specificity >= 0.90 (ties keep the higher floor; "—" = keep 0.8). Fitted on the same fixtures: a starting point, not a guarantee.
+Recommended override = choice-confidence floor in 0.30..0.80 (step 0.05) maximizing per-run recall while keeping per-run specificity >= 0.90 (ties keep the higher floor; "—" = keep 0.8). Fitted on the same fixtures and not refit: a starting point, not a guarantee.
 
 | Pack | Rule | Recall @0.8 | Specificity @0.8 | Recommended override | Recall @override | Specificity @override |
 |---|---|---|---|---|---|---|
@@ -56,8 +56,8 @@ For eight independent blind defects in a held-out Rust workspace (43 files), thr
 ## Core and advisory refresh (2026-10-05)
 
 The table above is the original six-pack baseline. The current core/advisory
-refresh used three uncached real-provider runs at the unchanged global floor
-0.8, with shared pack guidance and opaque fixture names. Core has 140 cases;
+refresh used three uncached real-provider runs at the unchanged global
+choice-confidence floor 0.8 (floors were not refit), with shared pack guidance and opaque fixture names. Core has 140 cases;
 Advisory has 68. Core's final error-cause row replaces its preliminary samples
 with three targeted runs after clarifying direct error-category mapping; the
 other core rows retain the full-pack runs. Advisory evaluated its entire final
@@ -95,7 +95,7 @@ four mismatches, 18 inconclusive cases, 22 below-floor units, no
 abstentions/provider errors and two flipped cases (2.94%). Calibration commands
 therefore did not pass the runner's zero-mismatch criterion.
 
-The baseline override recommendations above were not refitted. In particular,
+The baseline override recommendations above are choice-confidence floors and were not refitted. In particular,
 the old partial-mutation 0.70 override is withdrawn after narrowing: keep 0.8.
 Neither pack ships a rule-level floor.
 
@@ -131,7 +131,7 @@ the seeded error-category mapper fail 3/3 at **0.60/0.62/0.64**; filter-only wor
 so it is not the final held-out result. Jevlint's provider protocol supplies
 choice/confidence only; no textual confidence explanation is available.
 Recognition improved on the isolated boundary but remains context-sensitive
-and fails the majority reporting target. No confidence floor was lowered.
+and fails the majority reporting target. No choice-confidence floor was lowered; those floors were not refit.
 
 In the full seeded scans the seeded atomicity violation's core rule reports 3/3; the narrowed advisory only
 co-fails below floor at **0.71/0.73/0.72**, adding no held-out seed detection.
@@ -170,19 +170,19 @@ The runner compiles fixtures and performs three uncached real-provider evaluatio
 
 ## Apply a project override
 
-Keep the global floor at **0.8**. No rule-level `minConfidence` is shipped in the packs. To opt into a recommended override, merge an entry by rule ID into the **consuming project's** `jevlint.json`, preserving its installed `packs`, languages, provider settings and other rules:
+Keep the global floor at **0.8**. No rule-level `minFailProbability` is shipped in the packs. To opt into a recommended override, merge an entry by rule ID into the **consuming project's** `jevlint.json`, preserving its installed `packs`, languages, provider settings and other rules:
 
 ```json
 {
-  "minConfidence": 0.8,
+  "minFailProbability": 0.8,
   "rules": [
-    {"id": "rust-validation-bypass", "minConfidence": 0.40},
-    {"id": "rust-partial-state-on-error", "minConfidence": 0.45}
+    {"id": "rust-validation-bypass", "minFailProbability": 0.40},
+    {"id": "rust-partial-state-on-error", "minFailProbability": 0.45}
   ]
 }
 ```
 
-Project overlays replace the pack rule's `minConfidence`; a rule floor **overrides**, rather than being clamped by, the global floor. The snippet is an overlay example, not a complete standalone configuration. Recommendations are optional per-rule starting points for project review, not pack defaults. “—” means keep 0.8; it does not mean that the rule meets the 0.90 specificity target. Lowering floors can expose more findings and false positives; a confidence score is not a measured probability that a finding is correct.
+Project overlays replace the pack rule's `minFailProbability`; a rule floor **overrides**, rather than being clamped by, the global floor. The snippet is an overlay example, not a complete standalone configuration. Recommendations are optional per-rule starting points for project review, not pack defaults. “—” means keep 0.8; it does not mean that the rule meets the 0.90 specificity target. Lowering floors can expose more findings and false positives. Those recorded floors were fitted on the old choice-confidence metric and pack calibration will refit them; the field name is `minFailProbability`. The old field `minConfidence` is rejected.
 
 ## Caveats and adoption status
 
@@ -222,7 +222,7 @@ not a replacement for the original six-pack baseline above. Three rules
 ship: `rust-readability-magic-domain-values` (warning),
 `rust-readability-mixed-levels-of-abstraction` (info), and
 `rust-readability-accurate-doc-comments` (warning). All retain the global
-**0.8** floor, with no rule-level overrides. The
+choice-confidence floor of **0.8**; the floors were not refit. No rule-level overrides. The
 [coverage ledger](COVERAGE.md#rust-readability-upstream-generic-rule-accounting)
 accounts for all 26 upstream generic rules and the measured exclusions.
 
@@ -244,8 +244,8 @@ specificity **13/13**, with **1 flipped case**, **0 mismatches**,
 **2 inconclusive case-runs**, **0 abstain decisions**, **4 below-floor fail
 decisions**, and **0 evaluation errors**. The byte-budget and numerical-policy
 failures were reported at **0.99 in each run**. All four literal-policy failure
-classes failed in every run; ordering confidence was **0.96 / 0.98 / 0.97**
-and sentinel confidence **0.97 / 0.98 / 0.98**. The registry-persistence failure
+classes failed in every run; ordering choice confidence was **0.96 / 0.98 / 0.97**
+and sentinel choice confidence **0.97 / 0.98 / 0.98**. The registry-persistence failure
 remained majority inconclusive and flipped. The command exited **1** for these
 honestly recorded calibration limitations, not compilation or provider errors.
 No fixture ran.
@@ -278,9 +278,9 @@ Its triage shaped candidate selection and rule exceptions, so these are
 **tuning-set/in-sample measurements**, not an unbiased held-out evaluation.
 Each shipped run scanned **43 files**, extracted **958 units**, performed
 **1163 rule evaluations**, and had **0 cache hits / 947 misses**.
-The configuration enabled only Rust, set `minConfidence: 0.8`, copied the
-shipped three-rule array, and set each rule's `guidance` to the contents of
-this pack's `guidance.md`, matching pack-install inheritance.
+The configuration enabled only Rust, set a choice-confidence floor of 0.8
+(not refit), copied the shipped three-rule array, and set each rule's
+`guidance` to the contents of this pack's `guidance.md`, matching pack-install inheritance.
 
 ```sh
 # From the audited project's root, with the configuration described above:
@@ -410,7 +410,7 @@ with urlopen(upstream_url) as response:
     upstream = json.load(response)["rules"]
 assert len(upstream) == 26
 for name, selected in (("readability", rules), ("upstream", upstream)):
-    config = {"languages": {"rust": {}}, "minConfidence": 0.8, "rules": selected}
+    config = {"languages": {"rust": {}}, "minFailProbability": 0.8, "rules": selected}
     (corpus / (name + ".json")).write_text(json.dumps(config, indent=2) + "\n")
 PY
 cd serde-json-readability

@@ -21,15 +21,19 @@ const (
 )
 
 // Batch is one piece of code and the rules to check against it.
+// Regions, when set, asks one noul per region instead of rule questions.
 type Batch struct {
 	Rules    []config.Rule    `json:"rules"`
 	CodeUnit parsing.CodeUnit `json:"codeUnit"`
+	Regions  []parsing.Region `json:"regions,omitempty"`
 }
 
-// Result is the answer and confidence for one rule.
+// Result is the answer and fail probability for one rule.
 type Result struct {
-	Status     Status  `json:"status"`
-	Confidence float64 `json:"confidence"`
+	Status          Status             `json:"status"`
+	FailProbability float64            `json:"failProbability"`
+	Probabilities   map[string]float64 `json:"probabilities,omitempty"`
+	Model           string             `json:"model,omitempty"`
 }
 
 // Evaluator answers a batch of rules for a piece of code.
@@ -47,6 +51,11 @@ type CacheStats struct {
 // CacheStatsProvider exposes cache counts.
 type CacheStatsProvider interface {
 	CacheStats() CacheStats
+}
+
+// RunMetaProvider exposes models, usage, and budget fallout.
+type RunMetaProvider interface {
+	RunMeta() RunMeta
 }
 
 // String returns the status name.
@@ -106,15 +115,20 @@ func ParseStatus(value string) (Status, error) {
 	}
 }
 
-// Validate checks that a result has a known status and a valid confidence.
+// Validate checks that a result has a known status and a valid fail probability.
 func (result Result) Validate() error {
 	switch result.Status {
 	case StatusPass, StatusFail, StatusSkip, StatusAbstain:
 	default:
 		return fmt.Errorf("invalid evaluation status %q", result.Status.String())
 	}
-	if result.Confidence < 0 || result.Confidence > 1 {
-		return fmt.Errorf("confidence must be between 0 and 1")
+	if result.FailProbability < 0 || result.FailProbability > 1 {
+		return fmt.Errorf("failProbability must be between 0 and 1")
+	}
+	for key, value := range result.Probabilities {
+		if value < 0 || value > 1 {
+			return fmt.Errorf("probability %q must be between 0 and 1", key)
+		}
 	}
 	return nil
 }

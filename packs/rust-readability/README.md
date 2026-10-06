@@ -24,7 +24,7 @@ Installation reads committed content and records its resolved commit SHA, not un
 
 All three target Rust function units and retain cost-control `sourceMatch` filters. Literal policy selects digit-bearing literal candidates; literal-free enum/constant repairs are skipped, not model judgments. Rustdoc selects attached `///`, `//!`, block-doc and `#[doc]` forms; undocumented units are skipped. The abstraction filter conservatively selects control flow, local construction/mutation, scalar/bit/array operations and byte/character codec signals. It deliberately over-includes references and attributes rather than guessing that only one encoding idiom matters. A signal is not a violation. The parser attaches preceding Rustdoc to function source, keeping a multiline contract and body together. All rules use bounded callee context; literal policy and Rustdoc also request type context. Context is not another finding target. Tests are structurally skipped unless the project opts into `includeTests: true`.
 
-Newtypes, trait implementations, enums, `?`, exhaustive matches, focused parsers/state machines and intentional performance layouts remain normal Rust. A readability failure is not proof of a runtime defect; a passing judgment is not a soundness certificate. No rule-level `minConfidence` is shipped: retain the global floor of **0.8**.
+Newtypes, trait implementations, enums, `?`, exhaustive matches, focused parsers/state machines and intentional performance layouts remain normal Rust. A readability failure is not proof of a runtime defect; a passing judgment is not a soundness certificate. No rule-level `minFailProbability` is shipped: retain the global floor of **0.8**. Those recorded floors were fitted on the old choice-confidence metric and pack calibration will refit them; the field name is `minFailProbability`.
 
 ## Fixtures and calibration
 
@@ -37,7 +37,7 @@ python3 scripts/check-rust-packs.py --eval --repeat 3 --pack rust-readability \
   --jevlint jevlint --summary readability-summary.json
 ```
 
-Three uncached real-provider runs at 0.8 measured majority recall **9/10** and specificity **13/13**, with **one flipped case**, **zero mismatches**, **two inconclusive case-runs**, **zero abstain decisions** and **four below-floor fail decisions**. The unexplained byte-budget failure was reported at **0.99 in all three runs**, alongside the numerical policy, numeric ordering and sentinel failures. The command still exits 1 because the registry-persistence case is majority inconclusive and flips; compilation succeeded and there were no evaluation errors. Do not infer perfect recall from compilable fixtures.
+Three uncached real-provider runs at choice-confidence floor 0.8 (floors were not refit) measured majority recall **9/10** and specificity **13/13**, with **one flipped case**, **zero mismatches**, **two inconclusive case-runs**, **zero abstain decisions** and **four below-floor fail decisions**. The unexplained byte-budget failure was reported at **0.99 in all three runs**, alongside the numerical policy, numeric ordering and sentinel failures. The command still exits 1 because the registry-persistence case is majority inconclusive and flips; compilation succeeded and there were no evaluation errors. Do not infer perfect recall from compilable fixtures.
 
 | Rule | Majority fixture recall | Majority fixture specificity |
 | --- | --- | --- |

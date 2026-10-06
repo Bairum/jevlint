@@ -26,8 +26,8 @@ func TestDecodeValidConfig(t *testing.T) {
 	if len(cfg.Rules) != 1 || cfg.Rules[0].ID != "database-joins" {
 		t.Fatalf("Decode() rules = %#v", cfg.Rules)
 	}
-	if cfg.MinConfidence != nil {
-		t.Fatalf("Decode() minConfidence = %#v, want omitted", cfg.MinConfidence)
+	if cfg.MinFailProbability != nil {
+		t.Fatalf("Decode() minFailProbability = %#v, want omitted", cfg.MinFailProbability)
 	}
 	if cfg.Rules[0].AllowSkip || cfg.Rules[0].AllowAbstain {
 		t.Fatalf("allow flags = %#v", cfg.Rules[0])
@@ -151,29 +151,29 @@ func TestDecodeAllowSkipAndAbstain(t *testing.T) {
 	}
 }
 
-func TestDecodeMinConfidence(t *testing.T) {
+func TestDecodeMinFailProbability(t *testing.T) {
 	t.Parallel()
 
 	zero, err := Decode(strings.NewReader(withGoLanguage(`{
-		"minConfidence": 0,
+		"minFailProbability": 0,
 		"rules": [{"id": "one", "description": "A rule.", "severity": "info"}]
 	}`)))
 	if err != nil {
 		t.Fatalf("Decode() error = %v", err)
 	}
-	if zero.MinConfidence == nil || *zero.MinConfidence != 0 {
-		t.Fatalf("Decode() minConfidence = %#v, want 0", zero.MinConfidence)
+	if zero.MinFailProbability == nil || *zero.MinFailProbability != 0 {
+		t.Fatalf("Decode() minFailProbability = %#v, want 0", zero.MinFailProbability)
 	}
 
 	floor, err := Decode(strings.NewReader(withGoLanguage(`{
-		"minConfidence": 0.8,
+		"minFailProbability": 0.8,
 		"rules": [{"id": "one", "description": "A rule.", "severity": "info"}]
 	}`)))
 	if err != nil {
 		t.Fatalf("Decode() error = %v", err)
 	}
-	if floor.MinConfidence == nil || *floor.MinConfidence != 0.8 {
-		t.Fatalf("Decode() minConfidence = %#v, want 0.8", floor.MinConfidence)
+	if floor.MinFailProbability == nil || *floor.MinFailProbability != 0.8 {
+		t.Fatalf("Decode() minFailProbability = %#v, want 0.8", floor.MinFailProbability)
 	}
 
 	ruleZero, err := Decode(strings.NewReader(withGoLanguage(`{
@@ -181,29 +181,32 @@ func TestDecodeMinConfidence(t *testing.T) {
 			"id": "one",
 			"description": "A rule.",
 			"severity": "info",
-			"minConfidence": 0
+			"minFailProbability": 0
 		}]
 	}`)))
 	if err != nil {
-		t.Fatalf("Decode() rule minConfidence error = %v", err)
+		t.Fatalf("Decode() rule minFailProbability error = %v", err)
 	}
-	if ruleZero.Rules[0].MinConfidence == nil || *ruleZero.Rules[0].MinConfidence != 0 {
-		t.Fatalf("Decode() rule minConfidence = %#v, want 0", ruleZero.Rules[0].MinConfidence)
+	if ruleZero.Rules[0].MinFailProbability == nil || *ruleZero.Rules[0].MinFailProbability != 0 {
+		t.Fatalf("Decode() rule minFailProbability = %#v, want 0", ruleZero.Rules[0].MinFailProbability)
 	}
+}
 
-	ruleFloor, err := Decode(strings.NewReader(withGoLanguage(`{
-		"rules": [{
-			"id": "one",
-			"description": "A rule.",
-			"severity": "info",
-			"minConfidence": 0.8
-		}]
+func TestDecodeRejectsMinConfidence(t *testing.T) {
+	t.Parallel()
+
+	_, err := Decode(strings.NewReader(withGoLanguage(`{
+		"minConfidence": 0.8,
+		"rules": [{"id": "one", "description": "A rule.", "severity": "info"}]
 	}`)))
-	if err != nil {
-		t.Fatalf("Decode() rule minConfidence error = %v", err)
+	if err == nil || !strings.Contains(err.Error(), MinConfidenceReplaced) {
+		t.Fatalf("Decode() error = %v", err)
 	}
-	if ruleFloor.Rules[0].MinConfidence == nil || *ruleFloor.Rules[0].MinConfidence != 0.8 {
-		t.Fatalf("Decode() rule minConfidence = %#v, want 0.8", ruleFloor.Rules[0].MinConfidence)
+	_, err = Decode(strings.NewReader(withGoLanguage(`{
+		"rules": [{"id": "one", "description": "A rule.", "severity": "info", "minConfidence": 0.5}]
+	}`)))
+	if err == nil || !strings.Contains(err.Error(), MinConfidenceReplaced) {
+		t.Fatalf("Decode() rule error = %v", err)
 	}
 }
 
@@ -365,18 +368,21 @@ func TestWriteFailureRemovesTemporaryFile(t *testing.T) {
 		}
 	}
 }
-func TestConfidenceFloorPrefersRuleWhenSet(t *testing.T) {
+func TestFailProbabilityFloorPrefersRuleWhenSet(t *testing.T) {
 	t.Parallel()
 
 	global := 0.8
 	ruleZero := 0.0
-	cfg := Config{MinConfidence: &global}
+	cfg := Config{MinFailProbability: &global}
 
-	if got := cfg.ConfidenceFloor(Rule{}); got != 0.8 {
+	if got := cfg.FailProbabilityFloor(Rule{}); got != 0.8 {
 		t.Fatalf("omitted rule floor = %v, want global 0.8", got)
 	}
-	if got := cfg.ConfidenceFloor(Rule{MinConfidence: &ruleZero}); got != 0 {
+	if got := cfg.FailProbabilityFloor(Rule{MinFailProbability: &ruleZero}); got != 0 {
 		t.Fatalf("rule floor = %v, want 0", got)
+	}
+	if got := (Config{}).FailProbabilityFloor(Rule{}); got != DefaultMinFailProbability {
+		t.Fatalf("default floor = %v, want %v", got, DefaultMinFailProbability)
 	}
 }
 
@@ -445,41 +451,41 @@ func TestDecodeValidationErrors(t *testing.T) {
 		input string
 		want  string
 	}{
-		"minConfidence below zero": {
+		"minFailProbability below zero": {
 			input: `{
-				"minConfidence": -0.1,
+				"minFailProbability": -0.1,
 				"rules": [{"id": "one", "description": "A rule.", "severity": "info"}]
 			}`,
-			want: "minConfidence must be between 0 and 1",
+			want: "minFailProbability must be between 0 and 1",
 		},
-		"minConfidence above one": {
+		"minFailProbability above one": {
 			input: `{
-				"minConfidence": 1.1,
+				"minFailProbability": 1.1,
 				"rules": [{"id": "one", "description": "A rule.", "severity": "info"}]
 			}`,
-			want: "minConfidence must be between 0 and 1",
+			want: "minFailProbability must be between 0 and 1",
 		},
-		"rule minConfidence below zero": {
+		"rule minFailProbability below zero": {
 			input: `{
 				"rules": [{
 					"id": "one",
 					"description": "A rule.",
 					"severity": "info",
-					"minConfidence": -0.1
+					"minFailProbability": -0.1
 				}]
 			}`,
-			want: "rules[0].minConfidence must be between 0 and 1",
+			want: "rules[0].minFailProbability must be between 0 and 1",
 		},
-		"rule minConfidence above one": {
+		"rule minFailProbability above one": {
 			input: `{
 				"rules": [{
 					"id": "one",
 					"description": "A rule.",
 					"severity": "info",
-					"minConfidence": 1.1
+					"minFailProbability": 1.1
 				}]
 			}`,
-			want: "rules[0].minConfidence must be between 0 and 1",
+			want: "rules[0].minFailProbability must be between 0 and 1",
 		},
 		"missing id takes precedence": {
 			input: `{"rules": [{
@@ -698,20 +704,53 @@ func TestDecodePacksWithoutRules(t *testing.T) {
 	}
 }
 
-func TestConfidenceFloorPrefersRule(t *testing.T) {
+func TestFailProbabilityFloorPrefersRule(t *testing.T) {
 	t.Parallel()
 
 	global := 0.8
 	ruleFloor := 0.5
-	cfg := Config{MinConfidence: &global}
-	if cfg.ConfidenceFloor(Rule{MinConfidence: &ruleFloor}) != 0.5 {
-		t.Fatalf("rule override = %v", cfg.ConfidenceFloor(Rule{MinConfidence: &ruleFloor}))
+	cfg := Config{MinFailProbability: &global}
+	if cfg.FailProbabilityFloor(Rule{MinFailProbability: &ruleFloor}) != 0.5 {
+		t.Fatalf("rule override = %v", cfg.FailProbabilityFloor(Rule{MinFailProbability: &ruleFloor}))
 	}
-	if cfg.ConfidenceFloor(Rule{}) != 0.8 {
-		t.Fatalf("global floor = %v", cfg.ConfidenceFloor(Rule{}))
+	if cfg.FailProbabilityFloor(Rule{}) != 0.8 {
+		t.Fatalf("global floor = %v", cfg.FailProbabilityFloor(Rule{}))
 	}
 }
 
+func TestDecodeChecksValidation(t *testing.T) {
+	t.Parallel()
+
+	_, err := Decode(strings.NewReader(withGoLanguage(`{
+		"rules": [{
+			"id": "split",
+			"description": "A decomposed rule.",
+			"severity": "error",
+			"exceptions": ["nope"],
+			"checks": [{"id": "present", "question": "Is it present?", "failWhen": true}]
+		}]
+	}`)))
+	if err == nil || !strings.Contains(err.Error(), "must not set exceptions") {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	cfg, err := Decode(strings.NewReader(withGoLanguage(`{
+		"rules": [{
+			"id": "split",
+			"description": "A decomposed rule.",
+			"severity": "error",
+			"checks": [
+				{"id": "present", "question": "Is it present?", "failWhen": true},
+				{"id": "excused", "question": "Is it excused?", "yes": "yes", "no": "no", "failWhen": false}
+			]
+		}]
+	}`)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Rules[0].Checks) != 2 || !cfg.Rules[0].Checks[0].FailWhen {
+		t.Fatalf("checks = %#v", cfg.Rules[0].Checks)
+	}
+}
 func withGoLanguage(input string) string {
 	return strings.Replace(
 		input,

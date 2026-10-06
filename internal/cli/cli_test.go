@@ -85,15 +85,32 @@ func JoinInCode() {
 	println("join")
 }
 `)
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
+		var payload struct {
+			Questions map[string]struct {
+				Type string `json:"type"`
+			} `json:"questions"`
+		}
+		body, _ := io.ReadAll(request.Body)
+		_ = json.Unmarshal(body, &payload)
+		nouls := make([]string, 0)
+		for id, question := range payload.Questions {
+			if question.Type == "noul" {
+				nouls = append(nouls, fmt.Sprintf("%q:{\"type\":\"noul\",\"noul\":1}", id))
+			}
+		}
+		if len(nouls) > 0 {
+			fmt.Fprintf(writer, `{"model":"jev-test","answers":{%s}}`, strings.Join(nouls, ","))
+			return
+		}
 		fmt.Fprint(writer, `{
 			"model": "jev-test",
 			"answers": {
 				"database-joins": {
 					"type": "choice",
 					"choice": "fail",
-					"confidence": 0.92
+					"probabilities": {"fail": 0.92, "pass": 0.08}
 				}
 			}
 		}`)
@@ -297,7 +314,7 @@ func TestWriteSummaryAndTotals(t *testing.T) {
 				CodeUnits:    4,
 				Evaluations:  6,
 			})
-			if output.String() != test.want {
+			if !strings.Contains(output.String(), test.want) {
 				t.Fatalf("output = %q, want %q", output.String(), test.want)
 			}
 		})
@@ -347,11 +364,14 @@ func TestWriteReportTotalsIncludesCacheStats(t *testing.T) {
 			Writes: 1,
 		},
 	})
-	want := "  2 files · 4 code units · 6 evaluations\n" +
-		"  0 abstained · 0 below-floor\n" +
-		"  cache · 3 hits · 2 misses · 1 writes\n"
-	if output.String() != want {
-		t.Fatalf("output = %q, want %q", output.String(), want)
+	for _, line := range []string{
+		"  2 files · 4 code units · 6 evaluations\n",
+		"  0 abstained · 0 below-floor\n",
+		"  cache · 3 hits · 2 misses · 1 writes\n",
+	} {
+		if !strings.Contains(output.String(), line) {
+			t.Fatalf("output = %q, want %q", output.String(), line)
+		}
 	}
 }
 
@@ -492,8 +512,15 @@ func TestRunClearsProjectCacheBeforeAPIValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFileCache() error = %v", err)
 	}
-	if !cache.Put("entry", map[string]evaluation.Result{
-		"rule": {Status: evaluation.StatusPass, Confidence: 1},
+	if !cache.Put("entry", evaluation.CacheHit{
+		Model: "jev-test",
+		Answers: map[string]evaluation.QuestionAnswer{
+			"rule": {
+				Type:          "choice",
+				Choice:        "pass",
+				Probabilities: map[string]float64{"pass": 1, "fail": 0},
+			},
+		},
 	}) {
 		t.Fatal("Put() = false")
 	}
@@ -760,7 +787,7 @@ func passingJevServer(t *testing.T) *httptest.Server {
 					"database-joins": {
 						"type": "choice",
 						"choice": "pass",
-						"confidence": 1
+						"probabilities": {"pass": 1, "fail": 0}
 					}
 				}
 			}`)

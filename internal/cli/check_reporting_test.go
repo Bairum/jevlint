@@ -20,7 +20,7 @@ import (
 func TestRunFailOnSeverity(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(writer, `{"model":"jev-test","answers":{"database-joins":{"type":"choice","choice":"fail","confidence":1}}}`)
+		fmt.Fprint(writer, `{"model":"jev-test","answers":{"database-joins":{"type":"choice","choice":"fail","probabilities":{"fail":1,"pass":0}}}}`)
 	}))
 	defer server.Close()
 
@@ -85,7 +85,7 @@ func TestRunRejectsInvalidFailOn(t *testing.T) {
 func TestRunBelowFloorJSONVisibility(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(writer, `{"model":"jev-test","answers":{"database-joins":{"type":"choice","choice":"fail","confidence":0.42}}}`)
+		fmt.Fprint(writer, `{"model":"jev-test","answers":{"database-joins":{"type":"choice","choice":"fail","probabilities":{"fail":0.6,"pass":0.4}}}}`)
 	}))
 	defer server.Close()
 
@@ -95,7 +95,7 @@ func TestRunBelowFloorJSONVisibility(t *testing.T) {
 			writeProjectFile(t, root, "sample.go", "package sample\n\nfunc JoinInCode() {}\n")
 			writeProjectFile(t, root, "jevlint.json", `{
 				"languages":{"go":{}},
-				"rules":[{"id":"database-joins","description":"Join related records in the database.","severity":"error","minConfidence":0.8}]
+				"rules":[{"id":"database-joins","description":"Join related records in the database.","severity":"error","minFailProbability":0.8}]
 			}`)
 			setEvalEnv(t, server.URL)
 			t.Setenv("XDG_CACHE_HOME", t.TempDir())
@@ -123,9 +123,9 @@ func TestRunBelowFloorJSONVisibility(t *testing.T) {
 				t.Fatalf("belowFloor present = %t, want %t; output = %s", present, show, stdout.String())
 			}
 			if show {
-				if len(report.BelowFloor) != 1 || report.BelowFloor[0].Confidence != 0.42 ||
+				if len(report.BelowFloor) != 1 || report.BelowFloor[0].FailProbability != 0.6 ||
 					report.BelowFloor[0].RuleID != "database-joins" {
-					t.Fatalf("belowFloor = %#v, want database-joins at confidence 0.42", report.BelowFloor)
+					t.Fatalf("belowFloor = %#v, want database-joins at fail probability 0.6", report.BelowFloor)
 				}
 				if bytes.Count(stdout.Bytes(), []byte(`"description"`)) != 1 {
 					t.Fatalf("below-floor finding repeats the rule description: %s", stdout.String())
@@ -162,6 +162,7 @@ func TestWriteReportGroupsCodeUnitsAndRuleDescriptions(t *testing.T) {
 	belowFirst, belowOther := first, other
 	belowFirst.RuleID, belowOther.RuleID = "uncertain", "uncertain"
 	belowOther.Severity = config.SeverityError
+	belowFirst.FailProbability, belowOther.FailProbability = 0.42, 0.42
 	report := runner.Report{
 		ScannedFiles: 2,
 		CodeUnits:    3,
@@ -185,8 +186,8 @@ func TestWriteReportGroupsCodeUnitsAndRuleDescriptions(t *testing.T) {
 		},
 		Findings: []runner.Finding{first, next, secondRule, other},
 		BelowFloor: []runner.BelowFloorFinding{
-			{Finding: belowFirst, Confidence: 0.42},
-			{Finding: belowOther, Confidence: 0.42},
+			{Finding: belowFirst},
+			{Finding: belowOther},
 		},
 	}
 
@@ -204,7 +205,7 @@ func TestWriteReportGroupsCodeUnitsAndRuleDescriptions(t *testing.T) {
 			t.Fatalf("%q count = %d, want 1; output = %s", once, count, text)
 		}
 	}
-	for _, twice := range []string{"✗ ERROR  database-joins", "✗ WARNING  transactions", "✗ ERROR  uncertain", "confidence 0.42"} {
+	for _, twice := range []string{"✗ ERROR  database-joins", "✗ WARNING  transactions", "✗ ERROR  uncertain", "fail probability 0.42"} {
 		if count := strings.Count(text, twice); count != 2 {
 			t.Fatalf("%q count = %d, want 2; output = %s", twice, count, text)
 		}

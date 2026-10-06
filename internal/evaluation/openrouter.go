@@ -1,7 +1,6 @@
 package evaluation
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -62,23 +61,16 @@ func (provider *OpenRouterProvider) Configure(options *Options, getenv func(stri
 // ValidateQuestions applies no extra limits.
 func (*OpenRouterProvider) ValidateQuestions(map[string]question) error { return nil }
 
+// MaxQuestions applies no question cap.
+func (*OpenRouterProvider) MaxQuestions() int { return 0 }
+
 // MaxBodyBytes applies no explicit body cap.
 func (*OpenRouterProvider) MaxBodyBytes() int { return 0 }
 
-// Answers reads the answers, accepting either a bare SystemOne body or one
-// wrapped in a "result" envelope.
-func (*OpenRouterProvider) Answers(body []byte) (map[string]choiceAnswer, error) {
-	var response envelopeResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
-	}
-	if response.Answers != nil {
-		return response.Answers, nil
-	}
-	if response.Result != nil {
-		return response.Result.Answers, nil
-	}
-	return nil, nil
+// Answers reads the model, answers, and usage, accepting a bare body or a
+// "result" envelope.
+func (*OpenRouterProvider) Answers(body []byte) (serviceResponse, error) {
+	return parseServiceResponse(body)
 }
 
 // ResponseError reads OpenRouter's {"error": {"message", "code"}} shape.

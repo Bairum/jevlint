@@ -1,6 +1,7 @@
 package packs
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -169,12 +170,14 @@ func errorsIsEOF(err error) bool {
 }
 
 func loadRules(path string) ([]config.Rule, error) {
-	file, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("open pack rules: %w", err)
 	}
-	defer file.Close()
-	decoder := json.NewDecoder(file)
+	if err := config.RejectMinConfidence(data); err != nil {
+		return nil, fmt.Errorf("decode pack rules: %w", err)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var document struct {
 		Rules []config.Rule `json:"rules"`
@@ -184,6 +187,11 @@ func loadRules(path string) ([]config.Rule, error) {
 	}
 	if len(document.Rules) == 0 {
 		return nil, fmt.Errorf("pack rules file has no rules")
+	}
+	for index, rule := range document.Rules {
+		if err := config.ValidateChecks(rule, fmt.Sprintf("rules[%d]", index)); err != nil {
+			return nil, fmt.Errorf("decode pack rules: %w", err)
+		}
 	}
 	return document.Rules, nil
 }
@@ -283,8 +291,11 @@ func overlayRule(base config.Rule, overlay config.Rule) config.Rule {
 	if overlay.Localize != nil {
 		base.Localize = overlay.Localize
 	}
-	if overlay.MinConfidence != nil {
-		base.MinConfidence = overlay.MinConfidence
+	if overlay.MinFailProbability != nil {
+		base.MinFailProbability = overlay.MinFailProbability
+	}
+	if overlay.Checks != nil {
+		base.Checks = overlay.Checks
 	}
 	return base
 }

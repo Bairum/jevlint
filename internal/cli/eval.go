@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/codegirl-007/jevlint/internal/config"
@@ -155,6 +156,7 @@ func executeEval(
 		evaluation.Options{
 			Cache:   resultCache,
 			Refresh: options.eval.cache.shouldRefresh(),
+			Budget:  jevBudget,
 			Logf:    debugLogger(stderr),
 			Warnf:   warnLogger(stderr),
 		},
@@ -284,7 +286,7 @@ func (printer *streamPrinter) unit(evalCase evals.Case, unit evals.UnitDecision)
 		unit.StartLine,
 		unit.EndLine,
 		unit.Status,
-		unit.Confidence,
+		unit.FailProbability,
 	)
 }
 
@@ -309,7 +311,6 @@ func (printer *streamPrinter) caseResult(result evals.Result) {
 	)
 }
 
-// writeRunSummary prints the suite totals.
 func writeRunSummary(writer io.Writer, style outputStyle, report evals.Report, label string) {
 	fmt.Fprintln(writer)
 	fmt.Fprintf(
@@ -320,6 +321,21 @@ func writeRunSummary(writer io.Writer, style outputStyle, report evals.Report, l
 		label,
 		report.Inconclusive,
 	)
+	models := report.Models
+	if len(models) == 0 {
+		models = []string{"none"}
+	}
+	fmt.Fprintf(
+		writer,
+		"models %s · %d requests · %d input tokens · %d output tokens\n",
+		strings.Join(models, ", "),
+		report.Usage.Requests,
+		report.Usage.InputTokens,
+		report.Usage.OutputTokens,
+	)
+	if len(report.Oversized) > 0 {
+		fmt.Fprintf(writer, "warning: skipped %d oversized units\n", len(report.Oversized))
+	}
 }
 
 // stripUnits returns the report without the per-unit decisions.
@@ -337,7 +353,7 @@ func stripUnits(report evals.Report) evals.Report {
 func writeRunLegend(writer io.Writer, style outputStyle) {
 	fmt.Fprintln(writer, style.paint("1", "legend"))
 	fmt.Fprintln(writer, "  Each case runs one rule on every code unit in one fixture. Jev answers")
-	fmt.Fprintln(writer, "  pass, fail, skip, or abstain for each unit and scores its confidence.")
+	fmt.Fprintln(writer, "  pass, fail, skip, or abstain for each unit and scores its fail probability.")
 	fmt.Fprintln(writer, "    matched       the rule decided what the case expected")
 	fmt.Fprintln(writer, "    mismatched    the rule decided the opposite of what the case expected")
 	fmt.Fprintln(writer, "    inconclusive  the rule did not clearly pass or fail")

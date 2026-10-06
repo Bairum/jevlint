@@ -99,13 +99,13 @@ These commands invoke the configured model provider. The shared Rust pack fixtur
 
 ## Verification status
 
-The shipped `rules.json` and `guidance.md` are restored exactly to the original `f350461`/master versions. The generalized description, exception and guidance changes were **rejected**: FFI recall regressed and the blind eight-defect experiment showed no reporting-recall gain. The six larger fixture cases remain to document limitations; they do not change the original rules or confidence floor.
+The shipped `rules.json` and `guidance.md` are restored exactly to the original `f350461`/master versions. The generalized description, exception and guidance changes were **rejected**: FFI recall regressed and the blind eight-defect experiment showed no reporting-recall gain. The six larger fixture cases remain to document limitations; they do not change the original rules or choice-confidence floor. Recorded scores below are choice confidence; the floors were not refit.
 
 Recorded compile-only checks on 2026-10-05 covered all 68 isolated Rust 2021 targets in this pack (432 across the six-pack checkout); the three fixture-runner unit tests passed. Faulty fixtures were never executed. Compilation does not establish that the model detects their defects.
 
 ### Original-rule baseline: 62 cases
 
-The recorded original 62-case baseline at the global 0.8 floor is:
+The recorded original 62-case baseline at the global choice-confidence floor 0.8 (floors were not refit) is:
 
 | Rule | Recall @0.8 | Specificity @0.8 |
 | --- | --- | --- |
@@ -116,7 +116,7 @@ The recorded original 62-case baseline at the global 0.8 floor is:
 
 ### Rejected generalized-wording experiment: 68 cases
 
-Three uncached real-provider calibration runs measured the frozen generalized wording on 68 cases. These results belong to the rejected experiment, **not the shipped rules or their current calibration**. Below-floor failures count as not reported:
+Three uncached real-provider calibration runs measured the frozen generalized wording on 68 cases. These results belong to the rejected experiment, **not the shipped rules or their current calibration**. Below-floor failures count as not reported. Fitted floors are choice confidence and were not refit:
 
 | Rule | Recall @0.8 | Specificity @0.8 | In-sample fitted floor | Recall @fitted floor | Specificity @fitted floor |
 | --- | --- | --- | --- | --- | --- |
@@ -129,13 +129,13 @@ Compared with the original 62-case recall baseline of 0.00/0.00/0.24/0.17, these
 
 In the rejected experiment, case-majority eval outcomes (below-floor failures remain inconclusive) detect 1/6 precondition, 0/5 unwind, 1/8 FFI and 2/7 PyO3 failures; clean-case pass majorities are 13/13, 4/9, 7/8 and 11/12. There are six flipped cases (6/68), 28 mismatched case-runs, 60 inconclusive case-runs, seven abstain decisions, 53 below-floor fail decisions and zero evaluation errors. The calibration command exits 1 for the known imperfect corpus, not compilation/provider errors. The larger extent defect remains below floor (0.56, 0.56, 0.48), while the larger CString and Python defects are judged clean 3/3; all three pass twins pass 3/3. These scores measure rejected wording and do not demonstrate improved general large-function recall.
 
-Global `minConfidence` stays `0.8`; the restored pack ships no rule-level floor. The fitted lower floors above cannot substitute for demonstrated unsafe recall, and none of these metrics certifies soundness. See [calibration method and caveats](../../docs/rust/CALIBRATION.md).
+Global `minFailProbability` stays `0.8`; the restored pack ships no rule-level floor. Those recorded floors were fitted on the old choice-confidence metric and pack calibration will refit them; the field name is `minFailProbability`. The fitted lower floors above cannot substitute for demonstrated unsafe recall, and none of these metrics certifies soundness. See [calibration method and caveats](../../docs/rust/CALIBRATION.md).
 
 ### Original-rule measurements: six limitation cases
 
 The six added cases were evaluated separately in three uncached runs using the original master rules and their inherited guidance. This is **not a full 68-case recalibration** of the restored rules; the recorded 62-case baseline above remains unchanged. All six cases received raw **pass** decisions in all three runs, including all three violating primary units:
 
-| Defect class / twin | Original-rule status | Confidence, runs 1–3 |
+| Defect class / twin | Original-rule status | Choice confidence, runs 1–3 |
 | --- | --- | --- |
 | Byte/element extent, fail twin | pass, pass, pass | 0.48, 0.52, 0.38 |
 | Byte/element extent, pass twin | pass, pass, pass | 0.96, 0.95, 0.94 |
@@ -163,7 +163,7 @@ Three seeded defects in a held-out Rust workspace (43 files) were missed: byte c
 
 Three uncached original-pack scans limited to the two affected files each reported zero findings and zero below-floor findings. Isolating the original primary units while retaining their applicable rule batch exposed the following cached decisions:
 
-| Defect | Original status/confidence, runs 1–3 |
+| Defect | Original status/choice confidence, runs 1–3 |
 | --- | --- |
 | Byte count used as element count | pass 0.71, pass 0.74, pass 0.61 |
 | Copied CString owner dropped before borrow | pass 0.47, pass 0.40, pass 0.42 |
@@ -192,13 +192,13 @@ No individual exception removal, extra type context, explicit contract comment o
 
 Seed-focused draft in-sample scans covered all 43 Rust files in the audited workspace. Each run made 14 uncached provider requests (41 rule decisions; zero cache hits). All three seeded defects were reported in all three runs. These are in-sample draft results used while drafting wording; they are NOT blind held-out recall evidence and measure neither the rejected generalized wording nor a change shipped in the restored pack:
 
-| Seeded defect | In-sample draft fail confidence, runs 1–3 | Reported majority |
+| Seeded defect | In-sample draft fail choice confidence, runs 1–3 | Reported majority |
 | --- | --- | --- |
 | Byte count used as element count | 0.87, 0.88, 0.89 | 3/3 |
 | Copied CString owner dropped before borrow | 0.82, 0.84, 0.84 | 3/3 |
 | New Python reference wrapped as borrowed | 0.88, 0.86, 0.89 | 3/3 |
 
-The seed-focused draft's clean workspace scans reported **0, 0, 0 findings** and **0, 0, 0 below-floor findings**. There are no new clean-project below-floor items to list. These results cover this audited workspace, not whole-program soundness or production accuracy on other projects; they are NOT blind held-out recall evidence and do not measure generalized wording. Only descriptions, exception wording and guidance changed in that draft; applicability filters and confidence floors did not. Those wording changes are not shipped.
+The seed-focused draft's clean workspace scans reported **0, 0, 0 findings** and **0, 0, 0 below-floor findings**. There are no new clean-project below-floor items to list. These results cover this audited workspace, not whole-program soundness or production accuracy on other projects; they are NOT blind held-out recall evidence and do not measure generalized wording. Only descriptions, exception wording and guidance changed in that draft; applicability filters and choice-confidence floors did not. Those wording changes are not shipped. The floors were not refit.
 
 ## Rejected generalized-wording clean check (2026-10-05)
 

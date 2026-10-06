@@ -15,6 +15,7 @@ import (
 	"github.com/codegirl-007/jevlint/internal/changed"
 	"github.com/codegirl-007/jevlint/internal/config"
 	"github.com/codegirl-007/jevlint/internal/evaluation"
+	"github.com/codegirl-007/jevlint/internal/jevtok"
 	"github.com/codegirl-007/jevlint/internal/packs"
 	"github.com/codegirl-007/jevlint/internal/parsing"
 	"github.com/codegirl-007/jevlint/internal/runner"
@@ -37,7 +38,7 @@ Check flags:
   --fail-on severity    exit 1 for info, warning, or error and above (default "info")
   --format text|json    output format (default "text")
   --refresh-cache       reevaluate and replace current cached results
-  --show-below-floor    show failures below the confidence floor
+  --show-below-floor    show failures below the reporting threshold
 
 Eval flags:
   --clear-cache         clear this project's cached evaluations before evaluating
@@ -370,7 +371,7 @@ func parseRunOptions(
 	format := flags.String("format", "text", "output format")
 	failOn := flags.String("fail-on", "info", "minimum severity for failure exit")
 	refreshCache := flags.Bool("refresh-cache", false, "refresh cached evaluations")
-	showBelowFloor := flags.Bool("show-below-floor", false, "show failures below the confidence floor")
+	showBelowFloor := flags.Bool("show-below-floor", false, "show failures below the reporting threshold")
 	flagArgs, paths, err := splitFlagsAndPaths(flags, args)
 	if err != nil {
 		fmt.Fprintf(stderr, "jevlint: %v\n", err)
@@ -535,6 +536,7 @@ func loadRun(
 		evaluation.Options{
 			Cache:   resultCache,
 			Refresh: options.check.cache.shouldRefresh(),
+			Budget:  jevBudget,
 			Logf:    debugLogger(stderr),
 			Warnf:   warnLogger(stderr),
 		},
@@ -551,6 +553,16 @@ func loadRun(
 		extractor:      extractor,
 		evaluator:      evaluator,
 	}, exitSuccess
+}
+
+// jevBudget estimates a request with the offline Jev 1.13 token counter.
+// The client applies it only to models with known limits.
+func jevBudget(body []byte) (evaluation.Estimate, error) {
+	estimate, err := jevtok.EstimateRequest(body)
+	return evaluation.Estimate{
+		Total:                   estimate.Total,
+		StateAndLongestQuestion: estimate.StateAndLongestQuestion,
+	}, err
 }
 
 // debugLogger returns a request logger when JEVLINT_DEBUG is set. It writes to
@@ -721,9 +733,9 @@ func writeReport(
 
 // displayedFinding retains the distinction between reported and below-floor failures.
 type displayedFinding struct {
-	finding    *runner.Finding
-	belowFloor bool
-	confidence float64
+	finding         *runner.Finding
+	belowFloor      bool
+	failProbability float64
 }
 
 // codeUnitKey groups a unit independently of rule ordering and localized regions.
@@ -760,7 +772,7 @@ func writeFindingGroups(writer io.Writer, style outputStyle, report runner.Repor
 	for index := range report.BelowFloor {
 		finding := &report.BelowFloor[index]
 		add(displayedFinding{
-			finding: &finding.Finding, belowFloor: true, confidence: finding.Confidence,
+			finding: &finding.Finding, belowFloor: true, failProbability: finding.FailProbability,
 		})
 	}
 	described := make(map[string]bool)
@@ -789,7 +801,7 @@ func writeFindingGroups(writer io.Writer, style outputStyle, report runner.Repor
 			finding := item.finding
 			header := "✗ " + strings.ToUpper(finding.Severity.String()) + "  " + finding.RuleID
 			if item.belowFloor {
-				header += fmt.Sprintf(" (below-floor, confidence %.2f)", item.confidence)
+				header += fmt.Sprintf(" (below-floor, fail probability %.2f)", item.failProbability)
 			}
 			fmt.Fprintln(writer, style.severity(finding.Severity, header))
 			if !described[finding.RuleID] {
@@ -859,6 +871,24 @@ func writeReportTotals(writer io.Writer, report runner.Report) {
 		belowFloor += rule.Decisions.BelowFloor
 	}
 	fmt.Fprintf(writer, "  %d abstained · %d below-floor\n", abstained, belowFloor)
+	models := report.Models
+	if len(models) == 0 {
+		models = []string{"none"}
+	}
+	fmt.Fprintf(
+		writer,
+		"  models %s · %d requests · %d input tokens · %d output tokens\n",
+		strings.Join(models, ", "),
+		report.Usage.Requests,
+		report.Usage.InputTokens,
+		report.Usage.OutputTokens,
+	)
+	if len(report.ContextDropped) > 0 {
+		fmt.Fprintf(writer, "  dropped context for %d units\n", len(report.ContextDropped))
+	}
+	if len(report.Oversized) > 0 {
+		fmt.Fprintf(writer, "  warning: skipped %d oversized units\n", len(report.Oversized))
+	}
 	if report.Cache != nil {
 		fmt.Fprintf(
 			writer,

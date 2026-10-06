@@ -92,7 +92,7 @@ go run ./cmd/jevlint eval --rule database-joins --format json
 | `--fail-on info\|warning\|error` | Exit with `1` for reported findings at or above this severity. Defaults to `info`. |
 | `--format text\|json` | Select human-readable or machine-readable output. Defaults to `text`. |
 | `--refresh-cache` | Reevaluate code and replace matching cached results. |
-| `--show-below-floor` | Show failures below the confidence floor. These never affect the exit code. |
+| `--show-below-floor` | Show results below the reporting threshold. These never affect the exit code. |
 
 Source reads, including callee context, stay inside the project root. Explicit
 paths outside that root are rejected; `--changed` skips escaping symlinks.
@@ -126,22 +126,28 @@ on stderr only when stderr is a terminal and is cleared on completion.
 | --- | --- |
 | `scannedFiles` | Number of scanned files. |
 | `codeUnits` | Number of extracted code units. |
-| `evaluations` | Number of rule evaluations, including region localization. |
+| `evaluations` | Number of rule evaluations, including localization requests. |
 | `cache` | Cache statistics, when available. |
+| `models` | Sorted distinct answering model ids, including cached answers. |
+| `usage` | Provider calls in this run: `requests`, `inputTokens`, `outputTokens`. Cache hits add nothing. |
 | `rules` | Object keyed by rule ID, containing rules that received at least one evaluation. Each entry has `description`, `severity`, and `decisions`. |
-| `findings` | Reported failures meeting the confidence floor. |
-| `belowFloor` | Below-floor failures, included only with `--show-below-floor` and when nonempty. Never affect the exit code. |
+| `findings` | Reported results whose fail probability meets the reporting threshold. |
+| `belowFloor` | Notable results below the threshold, included only with `--show-below-floor` and when nonempty. Never affect the exit code. |
+| `oversized` | Units skipped because they still exceeded the model input budget. Does not affect the exit code. |
+| `contextDropped` | Units whose callee or type context was dropped so the request fit the budget. |
 
 Each rule's `decisions` contains integer counts named `pass`, `fail`, `skip`,
-`abstain`, `reported`, and `belowFloor`. These count primary evaluations, not
-region localization. `reported` and `belowFloor` split the `fail` count by the
-rule's confidence floor.
+`abstain`, `reported`, and `belowFloor`. `pass`/`fail`/`skip`/`abstain` count
+the status. `reported` counts units whose fail probability is at least the
+threshold. `belowFloor` counts units at least half the threshold and below it.
 
 Findings contain `ruleId`, `severity`, `status`, `path`, `language`, `kind`,
-`name`, `startLine`, `endLine`, `startColumn`, `endColumn`, `snippet`, and optional
-`locations`. They have no `description`; look it up in `rules[ruleId]`.
-`belowFloor` entries have the same fields plus `confidence`. Normal `findings`
-do not include `confidence`.
+`name`, `startLine`, `endLine`, `startColumn`, `endColumn`, `snippet`,
+`failProbability`, and optional `locations`. They have no `description`; look
+it up in `rules[ruleId]`.
+
+Text output prints one line with the answering models and token usage, and
+warns when units were skipped as oversized.
 
 ## Configuration
 
@@ -175,10 +181,14 @@ through OpenRouter (see below).
 | `JEVLINT_PROVIDER` | Provider: `typesafe`, `jev`, `cloudflare`, `clef`, or `openrouter` (default: `typesafe`). |
 | `TYPESAFE_API_KEY` | API key. |
 | `TYPESAFE_BASE_URL` | Service base URL. Defaults to `https://api.typesafe.ai`. |
-| `TYPESAFE_DEFAULT_MODEL` | Model name. Defaults to `jev-latest`. |
+| `TYPESAFE_DEFAULT_MODEL` | Model name. Defaults to the pinned release `jev-1.13.0`. |
 | `TYPESAFE_ENDPOINT` | Full request URL, bypassing `TYPESAFE_BASE_URL`. |
 
-Set `TYPESAFE_ENDPOINT` to target another SystemOne-compatible service.
+The default model is the pinned release `jev-1.13.0`, not the moving alias
+`jev-latest`. Each provider response records the answering model and token
+usage. Check and eval reports list the distinct models and the usage of
+provider calls made in that run. Cache hits contribute their stored model and
+add no tokens.
 
 Remote endpoints must use HTTPS. HTTP is allowed only for literal loopback IPs
 or exact `localhost` for local development; endpoint credentials and fragments
@@ -305,22 +315,38 @@ customize a preset, but it cannot load an arbitrary external grammar.
 - `sourceMatch`: optional RE2 regular expressions matched against the primary
   unit's source. At least one must match before Jevlint sends a request; omitted
   or `[]` means no source filter. Empty or invalid patterns are rejected.
-- `guidance`: shared instruction text, sent once per distinct text in a batch
-  and referenced by each rule that uses it.
+- `guidance`: shared instruction text, included in each question that uses it.
+  It is not sent as state.
 - `includeTests`: evaluate structurally identified Rust test units when `true`;
   they are skipped by default.
 - `kinds`: `comment`, `docComment`, `field`, `function`, `statement`, or `type`
-- `exceptions`: cases that should pass
+- `exceptions`: cases that should pass. Not allowed on a rule that sets `checks`.
 - `localize`: `comment`, `docComment`, `field`, or `statement`. Omit the key
-  or use `[]` to skip the second pass. Each matching region is another Jev
-  request on a fail, up to 24 regions per function or type.
-- `minConfidence`: optional `0`–`1`. Omit or `0` uses every Jev result. Failures
-  below the minimum are not reported. A rule `minConfidence` overrides the
-  global value when set.
+  or use `[]` to skip localization. On a reported failure, matching regions
+  (up to 24) are judged together in one request. A region is a location when
+  its yes-probability reaches the reporting threshold.
+- `checks`: optional decomposed yes/no questions. Each check has `id`
+  (`^[a-z0-9][a-z0-9-]{0,40}$`, unique in the rule), `question`, optional
+  `yes`/`no` criteria, and `failWhen`. At least one check must have
+  `failWhen: true`. The rule's fail probability is the product of each
+  check's yes-probability when `failWhen` is true, otherwise one minus that
+  probability. A checks rule must not set `exceptions`, `allowSkip`, or
+  `allowAbstain`.
+
+### Reporting threshold
+
+- `minFailProbability`: optional `0`–`1`. A unit is reported when its fail
+  probability is at least the threshold. The threshold is the rule value, or
+  the global value, or `0.5` when both are omitted. A rule value overrides the
+  global value. Results at least half the threshold and below it are
+  below-floor: notable, not reported, and shown only with `--show-below-floor`.
+  `minConfidence` is rejected. The root `jevlint.json` uses `0.5` until pack
+  calibration refits it; that is not the old `0.8` choice-confidence floor.
 - `allowSkip`: let Jev answer `skip` when the rule does not apply to the unit.
-  Skip is not a finding.
+  Skip is not a finding. Not allowed on a checks rule.
 - `allowAbstain`: let Jev answer `abstain` when the rule applies but there is
-  not enough context to decide. Abstain is not a finding.
+  not enough context to decide. Abstain is not a finding. Not allowed on a
+  checks rule.
 - `context.callees`: include confidently resolved direct project-local callees
   as extra state. Depth is 1 and bounded (12 callees, about 16 KiB of source).
   Ambiguous and external calls are ignored. Useful when the target function
@@ -337,6 +363,17 @@ customize a preset, but it cannot load an arbitrary external grammar.
 
 Rules sharing identical callee and type context are batched. Jev judges only
 the primary source; defects present only in context must not fail that unit.
+
+For `jev-1.13*` and `typesafe/jev-1.13*`, Jevlint counts each request's tokens
+offline before sending (an exact Jev 1.13 counter ported from
+[oh-my-pi](https://github.com/can1357/oh-my-pi)) and keeps it within the
+documented 64,000-token request limit and 32,000-token state-plus-longest-question
+limit. Other models are not
+preflighted. Over budget, questions are split across requests (Cloudflare is
+also split at 64 questions). If that is not enough, callees are dropped, then
+types, and the report says so. A unit that still does not fit is skipped:
+`oversized` lists it, the text summary warns, and the run continues. Oversized
+units alone do not change the exit code.
 
 ```json
 {
@@ -393,9 +430,10 @@ the exact request sent to Jev. Code, context, rules, prompts, or batch changes
 create a new entry. Severity changes reuse the result because severity only
 affects reporting.
 
-Entries do not expire automatically. Because `jev-latest` can change without
-changing its name, use `--refresh-cache` to reevaluate and replace cached
-results. Use `--clear-cache` to clear this project's cache before a run.
+Entries do not expire automatically. The cache key version is v2 and stores
+the parsed per-question answers plus the answering model. Use `--refresh-cache`
+to reevaluate and replace cached results. Use `--clear-cache` to clear this
+project's cache before a run.
 
 ## Eval
 
@@ -411,7 +449,7 @@ are rejected. Pack evals use their own eval document directory as this
 boundary, not the project's directory.
 
 Eval evaluates only that rule. It clears the rule's include and exclude so
-fixtures still run, and keeps kinds, exceptions, localize, and minConfidence.
+fixtures still run, and keeps kinds, exceptions, localize, checks, and minFailProbability.
 A case must evaluate at least one applicable code unit or eval exits `2`.
 
 The repository ships its own cases in `jevlint-evals.json` covering the
@@ -448,36 +486,39 @@ have many cases, including several for the same language.
 | `--verbose` | Include the per-unit decisions in JSON output. |
 
 Each case evaluates the rule against every code unit in the fixture. Each
-evaluation returns one raw decision: `pass`, `fail`, `skip`, or `abstain`. The
-tool reports a violation only when Jev's confidence reaches the rule's
-confidence floor (the rule's `minConfidence`, or the global one); each reported
-violation becomes a finding.
+choice evaluation returns one raw decision: `pass`, `fail`, `skip`, or
+`abstain`, the option with the highest probability. A checks rule is `fail`
+when the combined fail probability is at least `0.5`, otherwise `pass`. The
+tool reports a violation only when the fail probability reaches the reporting
+threshold (the rule's `minFailProbability`, the global one, or `0.5`); each
+reported violation becomes a finding.
 
 The case outcome follows from those decisions:
 
 - `fail`: at least one violation was reported.
-- `inconclusive`: no violation was reported, but Jev flagged one below the
-  confidence floor, or no unit returned an explicit pass (only `skip` or
+- `inconclusive`: no violation was reported, but a unit was below the
+  reporting threshold, or no unit returned an explicit pass (only `skip` or
   `abstain`).
 - `pass`: otherwise, meaning at least one explicit pass and no failure.
 
 A case matches when its outcome equals `expect`, and `inconclusive` never
 matches. This keeps an expected pass from succeeding just because evaluations
-skipped, abstained, or hid a failure under the confidence floor, and it makes
-an expected fail require a reportable violation.
+skipped, abstained, or hid a failure under the reporting threshold, and it
+makes an expected fail require a reportable violation.
 
 Text output streams as Jev answers come back. It starts with a legend, prints
-each code unit's answer and confidence as it arrives, then prints the case's
-expected and actual outcome. The run ends with
-`N/M eval cases matched expectations, K inconclusive`. Cases stay in file
-order; units within a case print in completion order.
+each code unit's answer and fail probability as it arrives, then prints the
+case's expected and actual outcome. The run ends with
+`N/M eval cases matched expectations, K inconclusive` and a models/usage line.
+Cases stay in file order; units within a case print in completion order.
 
 JSON is written once after the run finishes. It includes the per-case
-confidence, the raw decision counts (`pass`, `fail`, `skip`, `abstain`,
-`reported`, `belowFloor`), the confidence floor, and the suite totals
+`failProbability` (the maximum across that case's units), the raw decision
+counts (`pass`, `fail`, `skip`, `abstain`, `reported`, `belowFloor`), the
+reporting threshold (`floor`), `models`, `usage`, and the suite totals
 (`reportedFailures`, `belowFloorFailures`). `--verbose` adds a `units` array
-with each code unit's kind, name, lines, status, confidence, and whether its
-failure was reported.
+with each code unit's kind, name, lines, status, fail probability, and whether
+it was reported. Choice rules also include `probabilities`.
 
 Exit codes:
 
@@ -529,7 +570,7 @@ containing symbolic links are rejected.
 ```json
 {
   "languages": { "go": {} },
-  "minConfidence": 0.8,
+  "minFailProbability": 0.5,
   "packs": [
     {
       "id": "codegirl-007/database-joins",
@@ -541,7 +582,7 @@ containing symbolic links are rejected.
   "rules": [
     {
       "id": "database-joins",
-      "minConfidence": 0.5,
+      "minFailProbability": 0.5,
       "include": ["src/**/*.go"]
     }
   ]
@@ -602,7 +643,7 @@ not part of the primary semantic workflow.
 
 No pack is automatically enabled. Strict describes the core's evidence
 requirements, not automatic blocking enforcement. Measured fixture recall and
-specificity per rule, with suggested per-rule `minConfidence` overrides, are in
+specificity per rule, with suggested per-rule `minFailProbability` overrides, are in
 [CALIBRATION.md](docs/rust/CALIBRATION.md). Readability also records a
 tuning-set/in-sample project audit comparison, not held-out accuracy; that
 evidence does not establish precision for the other packs. Unsafe fixtures are
@@ -663,5 +704,5 @@ and the [research-to-implementation coverage ledger](docs/rust/COVERAGE.md).
 - `2`: usage, configuration, or runtime error
 
 `--fail-on` defaults to `info`, so any reported finding exits with `1`.
-Failures below the confidence floor never cause exit `1`, even with
+Results below the reporting threshold never cause exit `1`, even with
 `--show-below-floor`.

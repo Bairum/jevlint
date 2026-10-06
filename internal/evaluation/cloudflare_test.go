@@ -1,6 +1,7 @@
 package evaluation
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -203,8 +204,8 @@ func TestDecodeResultsUnwrapsCloudflareEnvelope(t *testing.T) {
 		"result": {
 			"model": "clef",
 			"answers": {
-				"database-joins": {"type": "choice", "choice": "fail", "confidence": 0.91},
-				"semicolons": {"type": "choice", "choice": "pass", "confidence": 0.87}
+				"database-joins": {"type": "choice", "choice": "fail", "probabilities": {"fail": 0.91, "pass": 0.09}},
+				"semicolons": {"type": "choice", "choice": "pass", "probabilities": {"pass": 0.87, "fail": 0.13}}
 			},
 			"usage": {"input_tokens": 10, "output_tokens": 0}
 		},
@@ -216,13 +217,13 @@ func TestDecodeResultsUnwrapsCloudflareEnvelope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Answers() error = %v", err)
 	}
-	results, err := decodeResults(answers, rules)
+	results, err := decodeAnswers(answers.Answers, Batch{Rules: rules}, answers.Model)
 	if err != nil {
-		t.Fatalf("decodeResults() error = %v", err)
+		t.Fatalf("decodeAnswers() error = %v", err)
 	}
-	if results["database-joins"].Status != StatusFail ||
-		results["semicolons"].Status != StatusPass {
-		t.Fatalf("decodeResults() = %#v", results)
+	if results["database-joins"].Status != StatusFail || results["database-joins"].FailProbability != 0.91 ||
+		results["semicolons"].Status != StatusPass || results["semicolons"].FailProbability != 0.13 {
+		t.Fatalf("decodeAnswers() = %#v", results)
 	}
 }
 
@@ -314,7 +315,7 @@ func TestNewTypeSafeFromEnvCloudflareStripsQuotes(t *testing.T) {
 	}
 }
 
-func TestRequestBodyEnforcesCloudflareLimits(t *testing.T) {
+func TestPlanRequestsEnforcesCloudflareLimits(t *testing.T) {
 	t.Parallel()
 
 	client, err := NewClient(Options{
@@ -337,19 +338,31 @@ func TestRequestBodyEnforcesCloudflareLimits(t *testing.T) {
 	for index := range tooMany {
 		tooMany[index] = config.Rule{ID: fmt.Sprintf("r%d", index)}
 	}
-	if _, err := client.requestBody(Batch{Rules: tooMany, CodeUnit: unit}); err == nil ||
-		!strings.Contains(err.Error(), "at most 64") {
-		t.Fatalf("requestBody() error = %v, want a question-count error", err)
+	bodies, _, oversized, err := client.planRequests(Batch{Rules: tooMany, CodeUnit: unit})
+	if err != nil || oversized != nil || len(bodies) != 2 {
+		t.Fatalf("planRequests() bodies=%d err=%v oversized=%#v", len(bodies), err, oversized)
+	}
+	for _, body := range bodies {
+		var payload struct {
+			Questions map[string]json.RawMessage `json:"questions"`
+		}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Fatal(err)
+		}
+		if len(payload.Questions) == 0 || len(payload.Questions) > maxCloudflareQuestions {
+			t.Fatalf("questions = %d, want 1..%d", len(payload.Questions), maxCloudflareQuestions)
+		}
 	}
 
 	badID := []config.Rule{{ID: "not valid!"}}
-	if _, err := client.requestBody(Batch{Rules: badID, CodeUnit: unit}); err == nil ||
+	if _, _, _, err := client.planRequests(Batch{Rules: badID, CodeUnit: unit}); err == nil ||
 		!strings.Contains(err.Error(), "cannot be sent to Cloudflare") {
-		t.Fatalf("requestBody() error = %v, want a rule-id error", err)
+		t.Fatalf("planRequests() error = %v, want a rule-id error", err)
 	}
 
-	if _, err := client.requestBody(Batch{Rules: []config.Rule{{ID: "ok"}}, CodeUnit: unit}); err != nil {
-		t.Fatalf("requestBody() error = %v, want success", err)
+	bodies, _, oversized, err = client.planRequests(Batch{Rules: []config.Rule{{ID: "ok"}}, CodeUnit: unit})
+	if err != nil || oversized != nil || len(bodies) != 1 {
+		t.Fatalf("planRequests() bodies=%d err=%v oversized=%#v", len(bodies), err, oversized)
 	}
 }
 

@@ -20,11 +20,11 @@ import (
 
 type unavailableCache struct{}
 
-func (unavailableCache) Get(string) (map[string]Result, bool) {
-	return nil, false
+func (unavailableCache) Get(string) (CacheHit, bool) {
+	return CacheHit{}, false
 }
 
-func (unavailableCache) Put(string, map[string]Result) bool {
+func (unavailableCache) Put(string, CacheHit) bool {
 	return false
 }
 
@@ -53,42 +53,30 @@ func TestTypeSafeEvaluateBatchesRules(t *testing.T) {
 		if len(payload.Questions) != 2 {
 			t.Errorf("questions = %#v", payload.Questions)
 		}
-		state, ok := payload.State.(map[string]any)
-		if !ok {
-			t.Errorf("state = %#v", payload.State)
-		} else {
-			if state["kind"] != "function" {
-				t.Errorf("state kind = %#v", state["kind"])
-			}
-			source, _ := state["source"].(string)
-			if !strings.HasPrefix(source, "// Joins users.") {
-				t.Errorf("state source = %q", source)
-			}
-			types, ok := state["types"].([]any)
-			if !ok || len(types) != 1 {
-				t.Errorf("state types = %#v", state["types"])
-			}
-			for _, key := range []string{
-				"startLine", "endLine", "startColumn", "endColumn", "startByte", "endByte",
-			} {
-				if _, exists := state[key]; exists {
-					t.Errorf("state includes %s = %#v", key, state[key])
-				}
-			}
+		if payload.State.Kind != parsing.CodeKindFunction {
+			t.Errorf("state kind = %q", payload.State.Kind)
 		}
-		if !strings.Contains(payload.Questions["database-joins"].Instructions, "different databases") {
-			t.Errorf("instructions = %q", payload.Questions["database-joins"].Instructions)
+		if !strings.HasPrefix(payload.State.Source, "// Joins users.") {
+			t.Errorf("state source = %q", payload.State.Source)
 		}
-		if payload.Questions["semicolons"].Criteria.Fail == "" {
-			t.Errorf("fail criterion is missing")
+		if len(payload.State.RelatedTypes) != 1 {
+			t.Errorf("state types = %#v", payload.State.RelatedTypes)
+		}
+		joins := payload.Questions["database-joins"]
+		if len(joins.Instructions.Exceptions) != 1 ||
+			!strings.Contains(joins.Instructions.Exceptions[0], "different databases") {
+			t.Errorf("exceptions = %#v", joins.Instructions.Exceptions)
+		}
+		if criterionText(joins.Criteria, "fail") == "" {
+			t.Errorf("fail criterion = %#v", joins.Criteria)
 		}
 
 		writer.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(writer, `{
 			"model": "jev-test",
 			"answers": {
-				"database-joins": {"type": "choice", "choice": "fail", "confidence": 0.91},
-				"semicolons": {"type": "choice", "choice": "pass", "confidence": 0.87}
+				"database-joins": {"type": "choice", "choice": "fail", "probabilities": {"fail": 0.91, "pass": 0.09}},
+				"semicolons": {"type": "choice", "choice": "pass", "probabilities": {"pass": 0.87, "fail": 0.13}}
 			}
 		}`)
 	}))
@@ -99,10 +87,10 @@ func TestTypeSafeEvaluateBatchesRules(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Evaluate() error = %v", err)
 	}
-	if results["database-joins"].Status != StatusFail {
+	if results["database-joins"].Status != StatusFail || results["database-joins"].FailProbability != 0.91 {
 		t.Fatalf("database-joins = %#v", results["database-joins"])
 	}
-	if results["semicolons"].Status != StatusPass {
+	if results["semicolons"].Status != StatusPass || results["semicolons"].FailProbability != 0.13 {
 		t.Fatalf("semicolons = %#v", results["semicolons"])
 	}
 }
@@ -115,21 +103,15 @@ func TestTypeSafeEvaluateExplainsRegionContext(t *testing.T) {
 		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
 			t.Errorf("decode request: %v", err)
 		}
-		state, _ := payload.State.(map[string]any)
-		if state["source"] != "Enabled bool" {
-			t.Errorf("region source = %#v", state["source"])
+		if payload.State.Source != "Enabled bool" {
+			t.Errorf("region source = %q", payload.State.Source)
 		}
-		if !strings.Contains(fmt.Sprint(state["parentSource"]), "type FeatureFlags") {
-			t.Errorf("parent source = %#v", state["parentSource"])
-		}
-		instructions := payload.Questions["database-joins"].Instructions
-		if !strings.Contains(instructions, "state.source") ||
-			!strings.Contains(instructions, "state.parentSource") {
-			t.Errorf("instructions = %q", instructions)
+		if !strings.Contains(payload.State.ParentSource, "type FeatureFlags") {
+			t.Errorf("parent source = %q", payload.State.ParentSource)
 		}
 		fmt.Fprint(writer, `{
 			"answers": {
-				"database-joins": {"type": "choice", "choice": "fail", "confidence": 1}
+				"database-joins": {"type": "choice", "choice": "fail", "probabilities": {"fail": 1, "pass": 0}}
 			}
 		}`)
 	}))
@@ -169,18 +151,18 @@ func TestTypeSafeCacheKeyTracksExactEvaluationInput(t *testing.T) {
 		t.Fatalf("NewClient() error = %v", err)
 	}
 	client.model = "jev-one"
-	body, err := client.requestBody(testBatch())
+	body, err := plannedBody(client, testBatch())
 	if err != nil {
-		t.Fatalf("requestBody() error = %v", err)
+		t.Fatalf("plannedBody() error = %v", err)
 	}
 	key := client.cacheKey(body)
 	if len(key) != sha256.Size*2 {
 		t.Fatalf("cacheKey() length = %d, want %d", len(key), sha256.Size*2)
 	}
 
-	sameBody, err := client.requestBody(testBatch())
+	sameBody, err := plannedBody(client, testBatch())
 	if err != nil {
-		t.Fatalf("requestBody() error = %v", err)
+		t.Fatalf("plannedBody() error = %v", err)
 	}
 	if sameKey := client.cacheKey(sameBody); sameKey != key {
 		t.Fatalf("identical cache key = %q, want %q", sameKey, key)
@@ -188,9 +170,9 @@ func TestTypeSafeCacheKeyTracksExactEvaluationInput(t *testing.T) {
 
 	severityOnly := testBatch()
 	severityOnly.Rules[0].Severity = config.SeverityError
-	severityBody, err := client.requestBody(severityOnly)
+	severityBody, err := plannedBody(client, severityOnly)
 	if err != nil {
-		t.Fatalf("requestBody() error = %v", err)
+		t.Fatalf("plannedBody() error = %v", err)
 	}
 	if severityKey := client.cacheKey(severityBody); severityKey != key {
 		t.Fatalf("severity cache key = %q, want %q", severityKey, key)
@@ -198,9 +180,9 @@ func TestTypeSafeCacheKeyTracksExactEvaluationInput(t *testing.T) {
 
 	changed := testBatch()
 	changed.CodeUnit.Source += "\n"
-	changedBody, err := client.requestBody(changed)
+	changedBody, err := plannedBody(client, changed)
 	if err != nil {
-		t.Fatalf("requestBody() error = %v", err)
+		t.Fatalf("plannedBody() error = %v", err)
 	}
 	if changedKey := client.cacheKey(changedBody); changedKey == key {
 		t.Fatal("source change did not change cache key")
@@ -214,9 +196,9 @@ func TestTypeSafeCacheKeyTracksExactEvaluationInput(t *testing.T) {
 	if locationOnly.CodeUnit.RelatedTypes != nil {
 		locationOnly.CodeUnit.RelatedTypes[0].StartLine++
 	}
-	locationBody, err := client.requestBody(locationOnly)
+	locationBody, err := plannedBody(client, locationOnly)
 	if err != nil {
-		t.Fatalf("requestBody() error = %v", err)
+		t.Fatalf("plannedBody() error = %v", err)
 	}
 	if locationKey := client.cacheKey(locationBody); locationKey != key {
 		t.Fatal("span-only change changed cache key")
@@ -271,9 +253,9 @@ func TestTypeSafeCacheKeyTracksExactEvaluationInput(t *testing.T) {
 
 			changed := testBatch()
 			mutate(&changed)
-			changedBody, err := client.requestBody(changed)
+			changedBody, err := plannedBody(client, changed)
 			if err != nil {
-				t.Fatalf("requestBody() error = %v", err)
+				t.Fatalf("plannedBody() error = %v", err)
 			}
 			if changedKey := client.cacheKey(changedBody); changedKey == key {
 				t.Fatalf("%s change did not change cache key", name)
@@ -321,9 +303,10 @@ func TestTypeSafeEvaluateCachesValidatedResults(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		requests.Add(1)
 		fmt.Fprint(writer, `{
+			"model": "jev-test",
 			"answers": {
-				"database-joins": {"type": "choice", "choice": "fail", "confidence": 0.9},
-				"semicolons": {"type": "choice", "choice": "pass", "confidence": 0.8}
+				"database-joins": {"type": "choice", "choice": "fail", "probabilities": {"fail": 0.9, "pass": 0.1}},
+				"semicolons": {"type": "choice", "choice": "pass", "probabilities": {"pass": 0.8, "fail": 0.2}}
 			}
 		}`)
 	}))
@@ -376,12 +359,12 @@ func TestTypeSafeEvaluateBypassesUnavailableOrDisabledCache(t *testing.T) {
 							"database-joins": {
 								"type": "choice",
 								"choice": "pass",
-								"confidence": 1
+								"probabilities": {"pass": 1, "fail": 0}
 							},
 							"semicolons": {
 								"type": "choice",
 								"choice": "pass",
-								"confidence": 1
+								"probabilities": {"pass": 1, "fail": 0}
 							}
 						}
 					}`)
@@ -418,8 +401,8 @@ func TestTypeSafeEvaluateDeduplicatesConcurrentMisses(t *testing.T) {
 		<-release
 		fmt.Fprint(writer, `{
 			"answers": {
-				"database-joins": {"type": "choice", "choice": "pass", "confidence": 1},
-				"semicolons": {"type": "choice", "choice": "pass", "confidence": 1}
+				"database-joins": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}},
+				"semicolons": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}}
 			}
 		}`)
 	}))
@@ -462,15 +445,18 @@ func TestTypeSafeEvaluateRefreshesCachedResult(t *testing.T) {
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		status := "pass"
+		fail, pass := 0, 1
 		if requests.Add(1) == 2 {
 			status = "fail"
+			fail, pass = 1, 0
 		}
 		fmt.Fprintf(writer, `{
+			"model": "jev-test",
 			"answers": {
-				"database-joins": {"type": "choice", "choice": %q, "confidence": 1},
-				"semicolons": {"type": "choice", "choice": "pass", "confidence": 1}
+				"database-joins": {"type": "choice", "choice": %q, "probabilities": {"fail": %d, "pass": %d}},
+				"semicolons": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}}
 			}
-		}`, status)
+		}`, status, fail, pass)
 	}))
 	defer server.Close()
 
@@ -516,8 +502,8 @@ func TestTypeSafeEvaluateDoesNotCacheMalformedResponse(t *testing.T) {
 		}
 		fmt.Fprint(writer, `{
 			"answers": {
-				"database-joins": {"type": "choice", "choice": "pass", "confidence": 1},
-				"semicolons": {"type": "choice", "choice": "pass", "confidence": 1}
+				"database-joins": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}},
+				"semicolons": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}}
 			}
 		}`)
 	}))
@@ -539,16 +525,17 @@ func TestTypeSafeEvaluateDoesNotCacheMalformedResponse(t *testing.T) {
 	}
 }
 
-func TestTypeSafeEvaluateReplacesIncompleteCachedBatch(t *testing.T) {
+func TestTypeSafeEvaluateRejectsPartialCachedAnswers(t *testing.T) {
 	t.Parallel()
 
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		requests.Add(1)
 		fmt.Fprint(writer, `{
+			"model": "jev-test",
 			"answers": {
-				"database-joins": {"type": "choice", "choice": "pass", "confidence": 1},
-				"semicolons": {"type": "choice", "choice": "pass", "confidence": 1}
+				"database-joins": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}},
+				"semicolons": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}}
 			}
 		}`)
 	}))
@@ -559,25 +546,28 @@ func TestTypeSafeEvaluateReplacesIncompleteCachedBatch(t *testing.T) {
 		t.Fatalf("newFileCacheAt() error = %v", err)
 	}
 	client := newCachedTestClient(t, server, cache, false)
-	body, err := client.requestBody(testBatch())
+	body, err := plannedBody(client, testBatch())
 	if err != nil {
-		t.Fatalf("requestBody() error = %v", err)
+		t.Fatalf("plannedBody() error = %v", err)
 	}
-	if !cache.Put(client.cacheKey(body), map[string]Result{
-		"database-joins": {Status: StatusFail, Confidence: 1},
+	if !cache.Put(client.cacheKey(body), CacheHit{
+		Model: "jev-test",
+		Answers: map[string]QuestionAnswer{
+			"database-joins": {
+				Type:          answerTypeChoice,
+				Choice:        "fail",
+				Probabilities: map[string]float64{"fail": 1, "pass": 0},
+			},
+		},
 	}) {
 		t.Fatal("Put() = false")
 	}
 
-	results, err := client.Evaluate(context.Background(), testBatch())
-	if err != nil {
-		t.Fatalf("Evaluate() error = %v", err)
+	if _, err := client.Evaluate(context.Background(), testBatch()); err == nil {
+		t.Fatal("Evaluate() error = nil, want missing answer")
 	}
-	if results["database-joins"].Status != StatusPass || len(results) != 2 {
-		t.Fatalf("Evaluate() results = %#v", results)
-	}
-	if got := requests.Load(); got != 1 {
-		t.Fatalf("HTTP requests = %d, want 1", got)
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("HTTP requests = %d, want 0", got)
 	}
 }
 
@@ -590,17 +580,17 @@ func TestTypeSafeSkipAndAbstainCriteria(t *testing.T) {
 			t.Errorf("decode request: %v", err)
 		}
 		joins := payload.Questions["database-joins"].Criteria
-		if joins.Skip != criterionSkip || joins.Abstain != "" {
+		if criterionText(joins, "skip") == "" || criterionText(joins, "abstain") != "" {
 			t.Errorf("database-joins criteria = %#v", joins)
 		}
 		semicolons := payload.Questions["semicolons"].Criteria
-		if semicolons.Skip != "" || semicolons.Abstain != criterionAbstain {
+		if criterionText(semicolons, "skip") != "" || criterionText(semicolons, "abstain") == "" {
 			t.Errorf("semicolons criteria = %#v", semicolons)
 		}
 		fmt.Fprint(writer, `{
 			"answers": {
-				"database-joins": {"type": "choice", "choice": "skip", "confidence": 0.9},
-				"semicolons": {"type": "choice", "choice": "abstain", "confidence": 0.8}
+				"database-joins": {"type": "choice", "choice": "skip", "probabilities": {"skip": 0.9, "fail": 0.1}},
+				"semicolons": {"type": "choice", "choice": "abstain", "probabilities": {"abstain": 0.8, "fail": 0.2}}
 			}
 		}`)
 	}))
@@ -636,10 +626,10 @@ func TestTypeSafeRejectsDisallowedSkipAndAbstain(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 				fmt.Fprintf(writer, `{
 					"answers": {
-						"database-joins": {"type": "choice", "choice": %q, "confidence": 0.9},
-						"semicolons": {"type": "choice", "choice": "pass", "confidence": 0.9}
+						"database-joins": {"type": "choice", "choice": %q, "probabilities": {%q: 0.9, "fail": 0.1}},
+						"semicolons": {"type": "choice", "choice": "pass", "probabilities": {"pass": 0.9, "fail": 0.1}}
 					}
-				}`, choice)
+				}`, choice, choice)
 			}))
 			defer server.Close()
 			client := newTestClient(t, server, nil)
@@ -656,19 +646,19 @@ func TestTypeSafeEvaluateRejectsMalformedAnswers(t *testing.T) {
 	tests := map[string]string{
 		"missing answer": `{
 			"answers": {
-				"database-joins": {"type": "choice", "choice": "pass", "confidence": 0.9}
+				"database-joins": {"type": "choice", "choice": "pass", "probabilities": {"pass": 0.9, "fail": 0.1}}
 			}
 		}`,
 		"invalid choice": `{
 			"answers": {
-				"database-joins": {"type": "choice", "choice": "maybe", "confidence": 0.9},
-				"semicolons": {"type": "choice", "choice": "pass", "confidence": 0.9}
+				"database-joins": {"type": "choice", "choice": "maybe", "probabilities": {"maybe": 0.9, "fail": 0.1}},
+				"semicolons": {"type": "choice", "choice": "pass", "probabilities": {"pass": 0.9, "fail": 0.1}}
 			}
 		}`,
-		"missing confidence": `{
+		"missing probabilities": `{
 			"answers": {
 				"database-joins": {"type": "choice", "choice": "pass"},
-				"semicolons": {"type": "choice", "choice": "pass", "confidence": 0.9}
+				"semicolons": {"type": "choice", "choice": "pass", "probabilities": {"pass": 0.9, "fail": 0.1}}
 			}
 		}`,
 	}
@@ -707,8 +697,8 @@ func TestTypeSafeEvaluateRetriesRateLimit(t *testing.T) {
 		}
 		fmt.Fprint(writer, `{
 			"answers": {
-				"database-joins": {"type": "choice", "choice": "pass", "confidence": 1},
-				"semicolons": {"type": "choice", "choice": "pass", "confidence": 1}
+				"database-joins": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}},
+				"semicolons": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}}
 			}
 		}`)
 	}))
@@ -756,8 +746,8 @@ func TestTypeSafeEndpointOverrideUsesFullURL(t *testing.T) {
 		}
 		fmt.Fprint(writer, `{
 			"answers": {
-				"database-joins": {"type": "choice", "choice": "pass", "confidence": 1},
-				"semicolons": {"type": "choice", "choice": "pass", "confidence": 1}
+				"database-joins": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}},
+				"semicolons": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}}
 			}
 		}`)
 	}))
@@ -777,7 +767,7 @@ func TestTypeSafeEndpointOverrideUsesFullURL(t *testing.T) {
 	}
 }
 
-func TestRequestDeduplicatesGuidanceAndSendsOnlyCrossFileTypePaths(t *testing.T) {
+func TestRequestPutsGuidanceOnQuestionsAndOmitsSameFileTypePaths(t *testing.T) {
 	t.Parallel()
 
 	client, err := NewClient(Options{APIKey: "sk-test"})
@@ -797,7 +787,7 @@ func TestRequestDeduplicatesGuidanceAndSendsOnlyCrossFileTypePaths(t *testing.T)
 		Path:   batch.CodeUnit.Path,
 		Source: "type Local struct{}",
 	})
-	body, err := client.requestBody(batch)
+	body, err := plannedBody(client, batch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -808,18 +798,15 @@ func TestRequestDeduplicatesGuidanceAndSendsOnlyCrossFileTypePaths(t *testing.T)
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatal(err)
 	}
-	if len(payload.State.Guidance) != 2 || payload.State.Guidance[0] != "Shared B." ||
-		payload.State.Guidance[1] != "Shared A." {
-		t.Fatalf("guidance = %#v", payload.State.Guidance)
-	}
-	for id, index := range map[string]int{"first": 0, "second": 1, "third": 0} {
-		suffix := fmt.Sprintf("\n\nAlso apply the shared guidance in state.guidance[%d].", index)
-		if !strings.HasSuffix(payload.Questions[id].Instructions, suffix) {
-			t.Fatalf("%s instructions = %q", id, payload.Questions[id].Instructions)
+	for id, guidance := range map[string]string{
+		"first":  "Shared B.",
+		"second": "Shared A.",
+		"third":  "Shared B.",
+		"fourth": "",
+	} {
+		if payload.Questions[id].Instructions.Guidance != guidance {
+			t.Fatalf("%s guidance = %q", id, payload.Questions[id].Instructions.Guidance)
 		}
-	}
-	if strings.Contains(payload.Questions["fourth"].Instructions, "state.guidance") {
-		t.Fatalf("unguided rule instructions = %q", payload.Questions["fourth"].Instructions)
 	}
 	if len(payload.State.RelatedTypes) != 2 || payload.State.RelatedTypes[0].Path != "models/user.go" ||
 		payload.State.RelatedTypes[1].Path != "" {
@@ -827,29 +814,24 @@ func TestRequestDeduplicatesGuidanceAndSendsOnlyCrossFileTypePaths(t *testing.T)
 	}
 }
 
-func TestInstructionsJudgeOnlyPrimaryUnitWithContext(t *testing.T) {
-	t.Parallel()
+func plannedBody(client *Client, batch Batch) ([]byte, error) {
+	bodies, _, oversized, err := client.planRequests(batch)
+	if err != nil {
+		return nil, err
+	}
+	if oversized != nil {
+		return nil, fmt.Errorf("evaluation unit exceeds the model input budget")
+	}
+	if len(bodies) != 1 {
+		return nil, fmt.Errorf("planRequests() = %d bodies, want 1", len(bodies))
+	}
+	return bodies[0], nil
+}
 
-	sentence := "Judge only state.source. state.types and state.callees are context only; do not fail state.source for problems that exist only in them."
-	tests := []struct {
-		name string
-		unit parsing.CodeUnit
-		want bool
-	}{
-		{name: "plain"},
-		{name: "parent only", unit: parsing.CodeUnit{ParentSource: "parent"}},
-		{name: "types", unit: parsing.CodeUnit{RelatedTypes: []parsing.TypeDeclaration{{Name: "Type"}}}, want: true},
-		{name: "callees", unit: parsing.CodeUnit{Callees: []parsing.CalleeContext{{Name: "callee"}}}, want: true},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			instructions := instructionsFor(config.Rule{Description: "A rule."}, test.unit)
-			if got := strings.Contains(instructions, sentence); got != test.want {
-				t.Fatalf("primary-only sentence present = %v, want %v: %s", got, test.want, instructions)
-			}
-		})
-	}
+func criterionText(criteria any, key string) string {
+	mapped, _ := criteria.(map[string]any)
+	text, _ := mapped[key].(string)
+	return text
 }
 
 func newTestClient(

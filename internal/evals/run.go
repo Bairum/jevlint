@@ -71,38 +71,43 @@ func (outcome *Outcome) UnmarshalJSON(data []byte) error {
 
 // UnitDecision is one raw rule answer for one code unit.
 type UnitDecision struct {
-	Name       string            `json:"name"`
-	Kind       parsing.CodeKind  `json:"kind"`
-	StartLine  uint              `json:"startLine"`
-	EndLine    uint              `json:"endLine"`
-	Status     evaluation.Status `json:"status"`
-	Confidence float64           `json:"confidence"`
-	Reported   bool              `json:"reported"`
+	Name            string             `json:"name"`
+	Kind            parsing.CodeKind   `json:"kind"`
+	StartLine       uint               `json:"startLine"`
+	EndLine         uint               `json:"endLine"`
+	Status          evaluation.Status  `json:"status"`
+	FailProbability float64            `json:"failProbability"`
+	Probabilities   map[string]float64 `json:"probabilities,omitempty"`
+	Reported        bool               `json:"reported"`
 }
 
 // Result is the outcome of scoring one eval case.
 type Result struct {
-	Rule       string           `json:"rule"`
-	Name       string           `json:"name,omitempty"`
-	File       string           `json:"file"`
-	Expected   Expect           `json:"expected"`
-	Actual     Outcome          `json:"actual"`
-	Matched    bool             `json:"matched"`
-	Confidence *float64         `json:"confidence,omitempty"`
-	Floor      float64          `json:"floor"`
-	Decisions  runner.Decisions `json:"decisions"`
-	Units      []UnitDecision   `json:"units,omitempty"`
+	Rule            string           `json:"rule"`
+	Name            string           `json:"name,omitempty"`
+	File            string           `json:"file"`
+	Expected        Expect           `json:"expected"`
+	Actual          Outcome          `json:"actual"`
+	Matched         bool             `json:"matched"`
+	FailProbability float64          `json:"failProbability"`
+	Floor           float64          `json:"floor"`
+	Decisions       runner.Decisions `json:"decisions"`
+	Units           []UnitDecision   `json:"units,omitempty"`
 }
 
 // Report is the outcome of scoring every case.
 type Report struct {
-	Total              int      `json:"total"`
-	Matched            int      `json:"matched"`
-	Mismatched         int      `json:"mismatched"`
-	Inconclusive       int      `json:"inconclusive"`
-	ReportedFailures   int      `json:"reportedFailures"`
-	BelowFloorFailures int      `json:"belowFloorFailures"`
-	Cases              []Result `json:"cases"`
+	Total              int                      `json:"total"`
+	Matched            int                      `json:"matched"`
+	Mismatched         int                      `json:"mismatched"`
+	Inconclusive       int                      `json:"inconclusive"`
+	ReportedFailures   int                      `json:"reportedFailures"`
+	BelowFloorFailures int                      `json:"belowFloorFailures"`
+	Models             []string                 `json:"models"`
+	Usage              evaluation.Usage         `json:"usage"`
+	Oversized          []evaluation.Oversized   `json:"oversized,omitempty"`
+	ContextDropped     []evaluation.ContextDrop `json:"contextDropped,omitempty"`
+	Cases              []Result                 `json:"cases"`
 }
 
 // Options holds the settings for an eval run.
@@ -119,12 +124,11 @@ type Options struct {
 // recordingEvaluator wraps a client and records the raw decisions it returns.
 // The runner evaluates units concurrently, so its maps are guarded.
 type recordingEvaluator struct {
-	inner    evaluation.Evaluator
-	onUnit   func(UnitDecision)
-	mu       sync.Mutex
-	floor    float64
-	bestFail map[string]float64
-	units    map[string][]UnitDecision
+	inner  evaluation.Evaluator
+	onUnit func(UnitDecision)
+	mu     sync.Mutex
+	floor  float64
+	units  map[string][]UnitDecision
 }
 
 // Run scores every case and returns the report.
@@ -136,15 +140,16 @@ func Run(
 	evaluator evaluation.Evaluator,
 	options Options,
 ) (Report, error) {
-	report := Report{Cases: make([]Result, 0, len(document.Cases))}
+	report := Report{Cases: make([]Result, 0, len(document.Cases)), Models: []string{}}
 	for _, evalCase := range document.Cases {
 		if err := ctx.Err(); err != nil {
 			return Report{}, err
 		}
-		result, err := runCase(ctx, evalCase, cfg, extractor, evaluator, options)
+		result, checkReport, err := runCase(ctx, evalCase, cfg, extractor, evaluator, options)
 		if err != nil {
 			return Report{}, err
 		}
+		mergeEvalMeta(&report, checkReport)
 		if options.OnResult != nil {
 			options.OnResult(result)
 		}
@@ -172,12 +177,12 @@ func runCase(
 	extractor *parsing.Extractor,
 	evaluator evaluation.Evaluator,
 	options Options,
-) (Result, error) {
+) (Result, runner.Report, error) {
 	rule, ok := ruleByID(cfg, evalCase.Rule)
 	if !ok {
-		return Result{}, fmt.Errorf("unknown eval rule %q", evalCase.Rule)
+		return Result{}, runner.Report{}, fmt.Errorf("unknown eval rule %q", evalCase.Rule)
 	}
-	floor := cfg.ConfidenceFloor(rule)
+	floor := cfg.FailProbabilityFloor(rule)
 	recorder := &recordingEvaluator{inner: evaluator, floor: floor}
 	if options.OnUnit != nil {
 		recorder.onUnit = func(unit UnitDecision) {
@@ -192,33 +197,58 @@ func runCase(
 	if root == "" {
 		root = options.Root
 	}
-	report, err := check.Evaluate(ctx, evalConfig(cfg, rule), runner.Options{
+	checkReport, err := check.Evaluate(ctx, evalConfig(cfg, rule), runner.Options{
 		Root:        root,
 		Paths:       []string{evalCase.AbsolutePath()},
 		Concurrency: options.Concurrency,
 	})
 	if err != nil {
-		return Result{}, fmt.Errorf("evaluate %s: %w", caseLabel(evalCase), err)
+		return Result{}, runner.Report{}, fmt.Errorf("evaluate %s: %w", caseLabel(evalCase), err)
 	}
-	if report.Evaluations == 0 {
-		return Result{}, fmt.Errorf("%s: %w", caseLabel(evalCase), ErrNoApplicableUnits)
+	if checkReport.Evaluations == 0 && len(checkReport.Oversized) == 0 {
+		return Result{}, checkReport, fmt.Errorf("%s: %w", caseLabel(evalCase), ErrNoApplicableUnits)
 	}
 
-	decisions := report.Rules[evalCase.Rule].Decisions
+	decisions := checkReport.Rules[evalCase.Rule].Decisions
 	actual := classifyOutcome(decisions)
 	result := Result{
-		Rule:       evalCase.Rule,
-		Name:       evalCase.Name,
-		File:       evalCase.File,
-		Expected:   evalCase.Expect,
-		Actual:     actual,
-		Matched:    actual != OutcomeInconclusive && actual == expectedOutcome(evalCase.Expect),
-		Confidence: recorder.bestFailConfidence(evalCase.Rule),
-		Floor:      floor,
-		Decisions:  decisions,
-		Units:      recorder.unitsFor(evalCase.Rule),
+		Rule:            evalCase.Rule,
+		Name:            evalCase.Name,
+		File:            evalCase.File,
+		Expected:        evalCase.Expect,
+		Actual:          actual,
+		Matched:         actual != OutcomeInconclusive && actual == expectedOutcome(evalCase.Expect),
+		FailProbability: recorder.maxFailProbability(evalCase.Rule),
+		Floor:           floor,
+		Decisions:       decisions,
+		Units:           recorder.unitsFor(evalCase.Rule),
 	}
-	return result, nil
+	return result, checkReport, nil
+}
+
+func mergeEvalMeta(report *Report, check runner.Report) {
+	report.Models = unionModels(report.Models, check.Models)
+	report.Usage.Requests += check.Usage.Requests
+	report.Usage.InputTokens += check.Usage.InputTokens
+	report.Usage.OutputTokens += check.Usage.OutputTokens
+	report.Oversized = append(report.Oversized, check.Oversized...)
+	report.ContextDropped = append(report.ContextDropped, check.ContextDropped...)
+}
+
+func unionModels(current, added []string) []string {
+	seen := make(map[string]struct{}, len(current)+len(added))
+	for _, name := range current {
+		seen[name] = struct{}{}
+	}
+	for _, name := range added {
+		seen[name] = struct{}{}
+	}
+	names := make([]string, 0, len(seen))
+	for name := range seen {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // classifyOutcome turns a rule's raw decisions into a truthful case outcome.
@@ -252,9 +282,9 @@ func evalConfig(cfg config.Config, rule config.Rule) config.Config {
 	rule.Include = nil
 	rule.Exclude = nil
 	return config.Config{
-		Languages:     cfg.Languages,
-		MinConfidence: cfg.MinConfidence,
-		Rules:         []config.Rule{rule},
+		Languages:          cfg.Languages,
+		MinFailProbability: cfg.MinFailProbability,
+		Rules:              []config.Rule{rule},
 	}
 }
 
@@ -269,32 +299,24 @@ func (recorder *recordingEvaluator) Evaluate(
 	}
 	// Localization answers refine a finding; they are not raw decisions
 	// about the fixture's primary code units.
-	if batch.CodeUnit.Kind == parsing.CodeKindRegion {
+	if batch.CodeUnit.Kind == parsing.CodeKindRegion || len(batch.Regions) > 0 {
 		return results, nil
 	}
 	recorder.mu.Lock()
-	if recorder.bestFail == nil {
-		recorder.bestFail = make(map[string]float64)
-	}
 	if recorder.units == nil {
 		recorder.units = make(map[string][]UnitDecision)
 	}
 	emitted := make([]UnitDecision, 0, len(results))
 	for id, result := range results {
-		if result.Status == evaluation.StatusFail {
-			if current, exists := recorder.bestFail[id]; !exists || result.Confidence > current {
-				recorder.bestFail[id] = result.Confidence
-			}
-		}
 		unit := UnitDecision{
-			Name:       batch.CodeUnit.Name,
-			Kind:       batch.CodeUnit.Kind,
-			StartLine:  batch.CodeUnit.StartLine,
-			EndLine:    batch.CodeUnit.EndLine,
-			Status:     result.Status,
-			Confidence: result.Confidence,
-			Reported: result.Status == evaluation.StatusFail &&
-				result.Confidence >= recorder.floor,
+			Name:            batch.CodeUnit.Name,
+			Kind:            batch.CodeUnit.Kind,
+			StartLine:       batch.CodeUnit.StartLine,
+			EndLine:         batch.CodeUnit.EndLine,
+			Status:          result.Status,
+			FailProbability: result.FailProbability,
+			Probabilities:   result.Probabilities,
+			Reported:        result.FailProbability >= recorder.floor,
 		}
 		recorder.units[id] = append(recorder.units[id], unit)
 		emitted = append(emitted, unit)
@@ -345,6 +367,15 @@ func (recorder *recordingEvaluator) CacheStats() evaluation.CacheStats {
 	return provider.CacheStats()
 }
 
+// RunMeta returns models and usage from the wrapped client.
+func (recorder *recordingEvaluator) RunMeta() evaluation.RunMeta {
+	provider, ok := recorder.inner.(evaluation.RunMetaProvider)
+	if !ok {
+		return evaluation.RunMeta{Models: []string{}}
+	}
+	return provider.RunMeta()
+}
+
 // unitsFor returns one rule's raw per-unit decisions in source order.
 func (recorder *recordingEvaluator) unitsFor(ruleID string) []UnitDecision {
 	recorder.mu.Lock()
@@ -364,16 +395,15 @@ func (recorder *recordingEvaluator) unitsFor(ruleID string) []UnitDecision {
 	return units
 }
 
-// bestFailConfidence returns the strongest fail score for a rule, whether or
-// not it reaches the confidence floor.
-func (recorder *recordingEvaluator) bestFailConfidence(ruleID string) *float64 {
+// maxFailProbability returns the strongest fail probability across a case's units.
+func (recorder *recordingEvaluator) maxFailProbability(ruleID string) float64 {
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
-
-	confidence, ok := recorder.bestFail[ruleID]
-	if !ok {
-		return nil
+	max := 0.0
+	for _, unit := range recorder.units[ruleID] {
+		if unit.FailProbability > max {
+			max = unit.FailProbability
+		}
 	}
-	value := confidence
-	return &value
+	return max
 }

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +11,7 @@ import (
 	"net/netip"
 	"net/url"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,18 +26,12 @@ const (
 	defaultTimeout      = 10 * time.Second
 	defaultMaxRetries   = 2
 	maxResponseBytes    = 1 << 20
-	cacheKeyVersion     = "typesafe-evaluation-v1"
-	answerTypeChoice    = "choice"
+	cacheKeyVersion     = "typesafe-evaluation-v2"
 	httpSuccessMin      = 200
 	httpSuccessLimit    = 300
 	retryBackoffBase    = 500 * time.Millisecond
 	retryBackoffCap     = 5 * time.Second
 	retryAfterHeaderMax = time.Minute
-	criterionPass       = "The code complies with the rule, or an explicit exception applies."
-	criterionFail       = "The code violates the rule, and no explicit exception applies."
-	criterionSkip       = "The rule's subject is not present in this unit; the rule does not apply."
-	criterionAbstain    = "The rule is relevant, but the supplied code does not contain enough context to decide pass or fail."
-	minimumBatchRules   = 1
 )
 
 // APIKey is the credential sent to the service.
@@ -59,6 +53,9 @@ type Options struct {
 	Sleep      func(context.Context, time.Duration) error
 	Cache      ResultCache
 	Refresh    bool
+	// Budget, when set, estimates a serialized request before it is sent.
+	// Nil disables the pre-flight check. Unknown models are not checked.
+	Budget func([]byte) (Estimate, error)
 	// Logf, when set, receives request and response metadata only.
 	// URLs, headers, and body contents are never logged.
 	Logf func(format string, args ...any)
@@ -78,6 +75,7 @@ type Client struct {
 	sleep       func(context.Context, time.Duration) error
 	cache       ResultCache
 	refresh     bool
+	budget      func([]byte) (Estimate, error)
 	logf        func(string, ...any)
 	warnf       func(string, ...any)
 	inflightMu  sync.Mutex
@@ -85,101 +83,19 @@ type Client struct {
 	cacheHits   atomic.Uint64
 	cacheMisses atomic.Uint64
 	cacheWrites atomic.Uint64
-}
-
-// systemOneRequest is the body sent to the service.
-type systemOneRequest struct {
-	Model     string              `json:"model"`
-	State     any                 `json:"state"`
-	Questions map[string]question `json:"questions"`
-}
-
-// questionType names the kind of question sent to the service.
-type questionType int
-
-const (
-	questionTypeUnknown questionType = iota
-	questionTypeChoice
-)
-
-// questionCriteria holds the wording for each possible answer.
-type questionCriteria struct {
-	Pass    string `json:"pass"`
-	Fail    string `json:"fail"`
-	Skip    string `json:"skip,omitempty"`
-	Abstain string `json:"abstain,omitempty"`
-}
-
-// question is one rule sent to the service.
-type question struct {
-	Type         questionType     `json:"type"`
-	Instructions string           `json:"instructions"`
-	Criteria     questionCriteria `json:"criteria"`
-}
-
-// choiceAnswer is the service answer for one rule.
-type choiceAnswer struct {
-	Type       questionType `json:"type"`
-	Choice     string       `json:"choice"`
-	Confidence *float64     `json:"confidence"`
+	metaMu      sync.Mutex
+	models      map[string]struct{}
+	usage       Usage
+	oversized   []Oversized
+	dropped     []ContextDrop
 }
 
 // evaluationCall tracks one running request that callers share.
 type evaluationCall struct {
 	done    chan struct{}
-	results map[string]Result
+	answers map[string]QuestionAnswer
+	model   string
 	err     error
-}
-
-// requestState is the code and context sent about one piece of code.
-type requestState struct {
-	Kind         parsing.CodeKind       `json:"kind"`
-	Name         string                 `json:"name"`
-	Language     parsing.SourceLanguage `json:"language"`
-	Path         string                 `json:"path"`
-	Source       string                 `json:"source"`
-	ParentSource string                 `json:"parentSource,omitempty"`
-	RegionKind   parsing.NodeKind       `json:"regionKind,omitempty"`
-	RelatedTypes []requestType          `json:"types,omitempty"`
-	Callees      []requestCallee        `json:"callees,omitempty"`
-	Guidance     []string               `json:"guidance,omitempty"`
-}
-
-// requestType is a related type sent as context.
-type requestType struct {
-	Name   string `json:"name"`
-	Path   string `json:"path,omitempty"`
-	Source string `json:"source"`
-}
-
-// requestCallee is a called function sent as context.
-type requestCallee struct {
-	Name   string `json:"name"`
-	Path   string `json:"path"`
-	Source string `json:"source"`
-}
-
-// MarshalJSON writes the question kind as its name.
-func (kind questionType) MarshalJSON() ([]byte, error) {
-	switch kind {
-	case questionTypeChoice:
-		return json.Marshal(answerTypeChoice)
-	default:
-		return nil, fmt.Errorf("unsupported question type")
-	}
-}
-
-// UnmarshalJSON reads a question kind from its name.
-func (kind *questionType) UnmarshalJSON(data []byte) error {
-	var value string
-	if err := json.Unmarshal(data, &value); err != nil {
-		return err
-	}
-	if value != answerTypeChoice {
-		return fmt.Errorf("unsupported question type %q", value)
-	}
-	*kind = questionTypeChoice
-	return nil
 }
 
 // NewClient builds a client with the default provider.
@@ -266,9 +182,11 @@ func NewClientWithProvider(provider Provider, options Options) (*Client, error) 
 		sleep:      sleep,
 		cache:      options.Cache,
 		refresh:    options.Refresh,
+		budget:     options.Budget,
 		logf:       options.Logf,
 		warnf:      options.Warnf,
 		inflight:   make(map[string]*evaluationCall),
+		models:     make(map[string]struct{}),
 	}, nil
 }
 
@@ -380,112 +298,202 @@ func safeTransportError(err error) error {
 
 // Evaluate answers the rules in a batch for one piece of code.
 func (client *Client) Evaluate(ctx context.Context, batch Batch) (map[string]Result, error) {
-	body, err := client.requestBody(batch)
+	bodies, dropped, oversized, err := client.planRequests(batch)
 	if err != nil {
 		return nil, err
 	}
-	if client.cache == nil {
-		responseBody, err := client.perform(ctx, body)
+	if oversized != nil {
+		client.noteOversized(*oversized)
+		return nil, ErrOversized
+	}
+	client.noteDrops(dropped)
+	answers := make(map[string]QuestionAnswer)
+	model := ""
+	for _, body := range bodies {
+		chunk, chunkModel, err := client.answersFor(ctx, body)
 		if err != nil {
 			return nil, err
 		}
-		return client.decode(responseBody, batch.Rules)
+		if chunkModel != "" {
+			model = chunkModel
+		}
+		for id, answer := range chunk {
+			answers[id] = answer
+		}
 	}
+	if model != "" {
+		client.noteModel(model)
+	}
+	return decodeAnswers(answers, batch, model)
+}
 
-	key := client.cacheKey(body)
-	if results, ok := client.hitCache(key, batch.Rules); ok {
-		return results, nil
+// answersFor returns cached or live per-question answers for one request body.
+func (client *Client) answersFor(
+	ctx context.Context,
+	body []byte,
+) (map[string]QuestionAnswer, string, error) {
+	if client.cache == nil {
+		return client.fetchAnswers(ctx, body)
 	}
-	return client.evaluateOnce(ctx, key, func() (map[string]Result, error) {
-		if results, ok := client.hitCache(key, batch.Rules); ok {
-			return results, nil
+	key := client.cacheKey(body)
+	if hit, ok := client.hitCache(key); ok {
+		return cloneAnswers(hit.Answers), hit.Model, nil
+	}
+	return client.evaluateOnce(ctx, key, func() (map[string]QuestionAnswer, string, error) {
+		if hit, ok := client.hitCache(key); ok {
+			return cloneAnswers(hit.Answers), hit.Model, nil
 		}
 		client.cacheMisses.Add(1)
-		responseBody, err := client.perform(ctx, body)
+		fetched, fetchedModel, err := client.fetchAnswers(ctx, body)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
-		results, err := client.decode(responseBody, batch.Rules)
-		if err != nil {
-			return nil, err
-		}
-		if client.cache.Put(key, results) {
+		if client.cache.Put(key, CacheHit{Model: fetchedModel, Answers: fetched}) {
 			client.cacheWrites.Add(1)
 		}
-		return results, nil
+		return fetched, fetchedModel, nil
 	})
 }
 
-// decode extracts the answers from a response and checks them against the rules.
-func (client *Client) decode(
-	responseBody []byte,
-	rules []config.Rule,
-) (map[string]Result, error) {
-	answers, err := client.provider.Answers(responseBody)
+// fetchAnswers sends one request and records its usage.
+func (client *Client) fetchAnswers(
+	ctx context.Context,
+	body []byte,
+) (map[string]QuestionAnswer, string, error) {
+	responseBody, err := client.perform(ctx, body)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return decodeResults(answers, rules)
+	response, err := client.provider.Answers(responseBody)
+	if err != nil {
+		return nil, "", err
+	}
+	client.noteUsage(response.Usage)
+	client.noteModel(response.Model)
+	return response.Answers, response.Model, nil
 }
 
-// hitCache returns cached results for a request when they are usable.
-func (client *Client) hitCache(key string, rules []config.Rule) (map[string]Result, bool) {
-	if client.refresh {
-		return nil, false
+// hitCache returns cached answers for a request when they are usable.
+func (client *Client) hitCache(key string) (CacheHit, bool) {
+	if client.refresh || client.cache == nil {
+		return CacheHit{}, false
 	}
-	results, ok := client.cachedResults(key, rules)
-	if !ok {
-		return nil, false
+	hit, ok := client.cache.Get(key)
+	if !ok || len(hit.Answers) == 0 {
+		return CacheHit{}, false
 	}
-	client.cacheHits.Add(1)
-	return results, true
-}
-
-// cachedResults reads and checks the cached results for a request.
-func (client *Client) cachedResults(
-	key string,
-	rules []config.Rule,
-) (map[string]Result, bool) {
-	results, ok := client.cache.Get(key)
-	if !ok || len(results) != len(rules) {
-		return nil, false
-	}
-	for _, rule := range rules {
-		result, exists := results[rule.ID]
-		if !exists || result.Validate() != nil {
-			return nil, false
+	for _, answer := range hit.Answers {
+		if err := answer.validate(); err != nil {
+			return CacheHit{}, false
 		}
 	}
-	return results, true
+	client.cacheHits.Add(1)
+	client.noteModel(hit.Model)
+	return hit, true
 }
 
 // evaluateOnce runs a request once and shares the answer with waiting callers.
 func (client *Client) evaluateOnce(
 	ctx context.Context,
 	key string,
-	evaluate func() (map[string]Result, error),
-) (map[string]Result, error) {
+	evaluate func() (map[string]QuestionAnswer, string, error),
+) (map[string]QuestionAnswer, string, error) {
 	client.inflightMu.Lock()
 	if call, ok := client.inflight[key]; ok {
 		client.inflightMu.Unlock()
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, "", ctx.Err()
 		case <-call.done:
-			return cloneResults(call.results), call.err
+			return cloneAnswers(call.answers), call.model, call.err
 		}
 	}
 	call := &evaluationCall{done: make(chan struct{})}
 	client.inflight[key] = call
 	client.inflightMu.Unlock()
 
-	call.results, call.err = evaluate()
+	call.answers, call.model, call.err = evaluate()
 
 	client.inflightMu.Lock()
 	delete(client.inflight, key)
 	close(call.done)
 	client.inflightMu.Unlock()
-	return cloneResults(call.results), call.err
+	return cloneAnswers(call.answers), call.model, call.err
+}
+
+// RunMeta returns models, usage, and budget fallout recorded so far.
+func (client *Client) RunMeta() RunMeta {
+	client.metaMu.Lock()
+	defer client.metaMu.Unlock()
+	return RunMeta{
+		Models:         sortedModels(client.models),
+		Usage:          client.usage,
+		Oversized:      append([]Oversized(nil), client.oversized...),
+		ContextDropped: append([]ContextDrop(nil), client.dropped...),
+	}
+}
+
+func (client *Client) noteModel(model string) {
+	if model == "" {
+		return
+	}
+	client.metaMu.Lock()
+	defer client.metaMu.Unlock()
+	if client.models == nil {
+		client.models = make(map[string]struct{})
+	}
+	client.models[model] = struct{}{}
+}
+
+func (client *Client) noteUsage(usage Usage) {
+	client.metaMu.Lock()
+	client.usage.Requests++
+	client.usage.InputTokens += usage.InputTokens
+	client.usage.OutputTokens += usage.OutputTokens
+	client.metaMu.Unlock()
+}
+
+func (client *Client) noteOversized(item Oversized) {
+	client.metaMu.Lock()
+	client.oversized = append(client.oversized, item)
+	client.metaMu.Unlock()
+}
+
+func (client *Client) noteDrops(dropped []ContextDrop) {
+	if len(dropped) == 0 {
+		return
+	}
+	client.metaMu.Lock()
+	client.dropped = append(client.dropped, dropped...)
+	client.metaMu.Unlock()
+}
+
+func sortedModels(models map[string]struct{}) []string {
+	if len(models) == 0 {
+		return []string{}
+	}
+	names := make([]string, 0, len(models))
+	for name := range models {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func cloneAnswers(answers map[string]QuestionAnswer) map[string]QuestionAnswer {
+	if answers == nil {
+		return nil
+	}
+	cloned := make(map[string]QuestionAnswer, len(answers))
+	for id, answer := range answers {
+		answer.Probabilities = copyProbabilities(answer.Probabilities)
+		if answer.Noul != nil {
+			value := *answer.Noul
+			answer.Noul = &value
+		}
+		cloned[id] = answer
+	}
+	return cloned
 }
 
 // CacheStats returns the cache counts for this client.
@@ -534,172 +542,6 @@ func (client *Client) Ping(ctx context.Context) error {
 	_, err := client.Evaluate(ctx, batch)
 	client.cache = saved
 	return err
-}
-
-// requestBody builds the body sent to the service.
-func (client *Client) requestBody(batch Batch) ([]byte, error) {
-	questions, guidance, err := questionsForBatch(batch)
-	if err != nil {
-		return nil, err
-	}
-	if err := client.provider.ValidateQuestions(questions); err != nil {
-		return nil, err
-	}
-	state := requestStateFrom(batch.CodeUnit)
-	state.Guidance = guidance
-	body, err := json.Marshal(systemOneRequest{
-		Model:     client.model,
-		State:     state,
-		Questions: questions,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("encode request: %w", err)
-	}
-	if max := client.provider.MaxBodyBytes(); max > 0 && len(body) > max {
-		return nil, fmt.Errorf(
-			"request body is %d bytes, over the %d-byte limit",
-			len(body),
-			max,
-		)
-	}
-	return body, nil
-}
-
-// requestStateFrom builds the sent state from a piece of code.
-func requestStateFrom(unit parsing.CodeUnit) requestState {
-	state := requestState{
-		Kind:         unit.Kind,
-		Name:         unit.Name,
-		Language:     unit.Language,
-		Path:         unit.Path,
-		Source:       unit.Source,
-		ParentSource: unit.ParentSource,
-		RegionKind:   unit.RegionKind,
-	}
-	if len(unit.RelatedTypes) > 0 {
-		state.RelatedTypes = make([]requestType, 0, len(unit.RelatedTypes))
-		for _, declaration := range unit.RelatedTypes {
-			requested := requestType{Name: declaration.Name, Source: declaration.Source}
-			// Same-file context needs no path; sending it would repeat state.path.
-			if declaration.Path != unit.Path {
-				requested.Path = declaration.Path
-			}
-			state.RelatedTypes = append(state.RelatedTypes, requested)
-		}
-	}
-	if len(unit.Callees) > 0 {
-		state.Callees = make([]requestCallee, 0, len(unit.Callees))
-		for _, callee := range unit.Callees {
-			state.Callees = append(state.Callees, requestCallee{
-				Name:   callee.Name,
-				Path:   callee.Path,
-				Source: callee.Source,
-			})
-		}
-	}
-	return state
-}
-
-// questionsForBatch builds the questions for a batch.
-func questionsForBatch(batch Batch) (map[string]question, []string, error) {
-	if len(batch.Rules) < minimumBatchRules {
-		return nil, nil, errors.New("at least one rule is required")
-	}
-	questions := make(map[string]question, len(batch.Rules))
-	var guidance []string
-	guidanceIndices := make(map[string]int)
-	for _, rule := range batch.Rules {
-		if _, exists := questions[rule.ID]; exists {
-			return nil, nil, fmt.Errorf("duplicate rule id %q in evaluation batch", rule.ID)
-		}
-		instructions := instructionsFor(rule, batch.CodeUnit)
-		if rule.Guidance != "" {
-			index, exists := guidanceIndices[rule.Guidance]
-			if !exists {
-				index = len(guidance)
-				guidanceIndices[rule.Guidance] = index
-				guidance = append(guidance, rule.Guidance)
-			}
-			instructions += fmt.Sprintf("\n\nAlso apply the shared guidance in state.guidance[%d].", index)
-		}
-		questions[rule.ID] = question{
-			Type:         questionTypeChoice,
-			Instructions: instructions,
-			Criteria:     criteriaFor(rule),
-		}
-	}
-	return questions, guidance, nil
-}
-
-// criteriaFor builds the answer wording for a rule.
-func criteriaFor(rule config.Rule) questionCriteria {
-	criteria := questionCriteria{
-		Pass: criterionPass,
-		Fail: criterionFail,
-	}
-	if rule.AllowSkip {
-		criteria.Skip = criterionSkip
-	}
-	if rule.AllowAbstain {
-		criteria.Abstain = criterionAbstain
-	}
-	return criteria
-}
-
-// decodeResults checks the answers against the rules.
-func decodeResults(
-	answers map[string]choiceAnswer,
-	rules []config.Rule,
-) (map[string]Result, error) {
-	if answers == nil {
-		return nil, errors.New("decode response: answers are missing")
-	}
-
-	results := make(map[string]Result, len(rules))
-	for _, rule := range rules {
-		answer, ok := answers[rule.ID]
-		if !ok {
-			return nil, fmt.Errorf("decode response: answer for rule %q is missing", rule.ID)
-		}
-		if answer.Type != questionTypeChoice {
-			return nil, fmt.Errorf(
-				"decode response: answer for rule %q has unsupported type",
-				rule.ID,
-			)
-		}
-		if answer.Confidence == nil {
-			return nil, fmt.Errorf(
-				"decode response: confidence for rule %q is missing",
-				rule.ID,
-			)
-		}
-
-		status, err := ParseStatus(answer.Choice)
-		if err != nil {
-			return nil, fmt.Errorf("decode response: rule %q: %w", rule.ID, err)
-		}
-		if status == StatusSkip && !rule.AllowSkip {
-			return nil, fmt.Errorf(
-				"decode response: rule %q returned skip without allowSkip",
-				rule.ID,
-			)
-		}
-		if status == StatusAbstain && !rule.AllowAbstain {
-			return nil, fmt.Errorf(
-				"decode response: rule %q returned abstain without allowAbstain",
-				rule.ID,
-			)
-		}
-		result := Result{
-			Status:     status,
-			Confidence: *answer.Confidence,
-		}
-		if err := result.Validate(); err != nil {
-			return nil, fmt.Errorf("decode response: rule %q: %w", rule.ID, err)
-		}
-		results[rule.ID] = result
-	}
-	return results, nil
 }
 
 // cacheKey returns the key that identifies a request.
@@ -804,34 +646,6 @@ func readResponse(response *http.Response) ([]byte, error) {
 		return nil, fmt.Errorf("close response: %w", closeErr)
 	}
 	return body, nil
-}
-
-// instructionsFor builds the question text for a rule.
-func instructionsFor(
-	rule config.Rule,
-	unit parsing.CodeUnit,
-) string {
-	var builder strings.Builder
-	if unit.ParentSource != "" {
-		builder.WriteString(
-			"Determine whether state.source violates this rule. " +
-				"Use state.parentSource only as surrounding context:\n",
-		)
-	} else {
-		builder.WriteString("Determine whether the supplied code complies with this rule:\n")
-	}
-	builder.WriteString(rule.Description)
-	if len(rule.Exceptions) > 0 {
-		builder.WriteString("\n\nExplicit exceptions:")
-		for _, exception := range rule.Exceptions {
-			builder.WriteString("\n- ")
-			builder.WriteString(exception)
-		}
-	}
-	if len(unit.Callees) > 0 || len(unit.RelatedTypes) > 0 {
-		builder.WriteString("\n\nJudge only state.source. state.types and state.callees are context only; do not fail state.source for problems that exist only in them.")
-	}
-	return builder.String()
 }
 
 // retryableStatus reports whether a response code should be tried again.

@@ -35,7 +35,7 @@ func TestEvalWirePayloadHidesFixtureNameWithTypeContext(t *testing.T) {
 		mu.Unlock()
 		answers := make(map[string]any, len(payload.Questions))
 		for id := range payload.Questions {
-			answers[id] = map[string]any{"type": "choice", "choice": "pass", "confidence": 1}
+			answers[id] = map[string]any{"type": "choice", "choice": "pass", "probabilities": map[string]float64{"pass": 1, "fail": 0}}
 		}
 		writer.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(writer).Encode(map[string]any{"model": "jev-test", "answers": answers})

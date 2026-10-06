@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,7 +44,7 @@ type scoredBooleanEvaluator struct {
 
 type lowConfidencePassEvaluator struct{}
 
-// lowConfidencePassConfidence is below every confidence floor in these tests.
+// lowConfidencePassConfidence is below every fail-probability floor in these tests.
 const lowConfidencePassConfidence = 0.1
 
 type fixedStatusEvaluator struct {
@@ -59,16 +60,32 @@ func (booleanFieldEvaluator) Evaluate(
 	_ context.Context,
 	batch evaluation.Batch,
 ) (map[string]evaluation.Result, error) {
+	if len(batch.Regions) > 0 {
+		results := make(map[string]evaluation.Result, len(batch.Regions))
+		for index, region := range batch.Regions {
+			probability := 0.0
+			status := evaluation.StatusPass
+			if strings.HasPrefix(region.Source, "Flag") {
+				probability = 1
+				status = evaluation.StatusFail
+			}
+			results[fmt.Sprintf("r%d", index)] = evaluation.Result{
+				Status:          status,
+				FailProbability: probability,
+			}
+		}
+		return results, nil
+	}
 	status := evaluation.StatusPass
-	if batch.CodeUnit.Kind == parsing.CodeKindType ||
-		batch.CodeUnit.Kind == parsing.CodeKindRegion &&
-			strings.HasPrefix(batch.CodeUnit.Source, "Flag") {
+	probability := 0.0
+	if batch.CodeUnit.Kind == parsing.CodeKindType {
 		status = evaluation.StatusFail
+		probability = 1
 	}
 	return map[string]evaluation.Result{
 		"boolean-property-naming": {
-			Status:     status,
-			Confidence: 1,
+			Status:          status,
+			FailProbability: probability,
 		},
 	}, nil
 }
@@ -91,8 +108,8 @@ func (evaluator *barrierEvaluator) Evaluate(
 	results := make(map[string]evaluation.Result, len(batch.Rules))
 	for _, rule := range batch.Rules {
 		results[rule.ID] = evaluation.Result{
-			Status:     evaluation.StatusPass,
-			Confidence: 1,
+			Status:          evaluation.StatusPass,
+			FailProbability: 0,
 		}
 	}
 	return results, nil
@@ -105,17 +122,19 @@ func (evaluator *recordingEvaluator) Evaluate(
 	evaluator.calls++
 	evaluator.batches = append(evaluator.batches, batch)
 	databaseStatus := evaluation.StatusPass
+	databaseProbability := 0.0
 	if batch.CodeUnit.Kind == parsing.CodeKindFunction {
 		databaseStatus = evaluation.StatusFail
+		databaseProbability = 0.91
 	}
 	return map[string]evaluation.Result{
 		"database-joins": {
-			Status:     databaseStatus,
-			Confidence: 0.91,
+			Status:          databaseStatus,
+			FailProbability: databaseProbability,
 		},
 		"semicolons": {
-			Status:     evaluation.StatusPass,
-			Confidence: 0.99,
+			Status:          evaluation.StatusPass,
+			FailProbability: 0,
 		},
 	}, nil
 }
@@ -129,8 +148,8 @@ func (evaluator *cacheStatsEvaluator) Evaluate(
 	results := make(map[string]evaluation.Result, len(batch.Rules))
 	for _, rule := range batch.Rules {
 		results[rule.ID] = evaluation.Result{
-			Status:     evaluation.StatusPass,
-			Confidence: 1,
+			Status:          evaluation.StatusPass,
+			FailProbability: 0,
 		}
 	}
 	return results, nil
@@ -148,8 +167,8 @@ func (evaluator *failingRecordingEvaluator) Evaluate(
 	results := make(map[string]evaluation.Result, len(batch.Rules))
 	for _, rule := range batch.Rules {
 		results[rule.ID] = evaluation.Result{
-			Status:     evaluation.StatusFail,
-			Confidence: 1,
+			Status:          evaluation.StatusFail,
+			FailProbability: 1,
 		}
 	}
 	return results, nil
@@ -582,21 +601,34 @@ func (evaluator *scoredBooleanEvaluator) Evaluate(
 	batch evaluation.Batch,
 ) (map[string]evaluation.Result, error) {
 	evaluator.calls++
+	if len(batch.Regions) > 0 {
+		results := make(map[string]evaluation.Result, len(batch.Regions))
+		for index, region := range batch.Regions {
+			probability := 0.0
+			status := evaluation.StatusPass
+			if strings.HasPrefix(region.Source, "Flag") {
+				probability = evaluator.regionConfidence
+				if probability >= 0.5 {
+					status = evaluation.StatusFail
+				}
+			}
+			results[fmt.Sprintf("r%d", index)] = evaluation.Result{
+				Status:          status,
+				FailProbability: probability,
+			}
+		}
+		return results, nil
+	}
 	status := evaluation.StatusPass
-	confidence := 1.0
+	probability := 0.0
 	if batch.CodeUnit.Kind == parsing.CodeKindType {
 		status = evaluation.StatusFail
-		confidence = evaluator.typeConfidence
-	}
-	if batch.CodeUnit.Kind == parsing.CodeKindRegion &&
-		strings.HasPrefix(batch.CodeUnit.Source, "Flag") {
-		status = evaluation.StatusFail
-		confidence = evaluator.regionConfidence
+		probability = evaluator.typeConfidence
 	}
 	return map[string]evaluation.Result{
 		"boolean-property-naming": {
-			Status:     status,
-			Confidence: confidence,
+			Status:          status,
+			FailProbability: probability,
 		},
 	}, nil
 }
@@ -614,7 +646,7 @@ func TestCheckSkipsFailsBelowMinConfidence(t *testing.T) {
 
 	minimum := 0.8
 	cfg := config.Config{
-		MinConfidence: &minimum,
+		MinFailProbability: &minimum,
 		Rules: []config.Rule{{
 			ID:          "boolean-property-naming",
 			Description: "Boolean fields clearly describe the true state.",
@@ -650,7 +682,7 @@ func TestCheckSkipsFailsBelowMinConfidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(report.BelowFloor) != 1 || report.BelowFloor[0].Confidence != 0.6 ||
+	if len(report.BelowFloor) != 1 || report.BelowFloor[0].FailProbability != 0.6 ||
 		report.BelowFloor[0].Name != "FeatureFlags" || report.BelowFloor[0].StartLine == 0 ||
 		report.BelowFloor[0].Path != "flags.go" || report.BelowFloor[0].Kind != parsing.CodeKindType {
 		t.Fatalf("belowFloor = %#v", report.BelowFloor)
@@ -696,14 +728,14 @@ func (lowConfidencePassEvaluator) Evaluate(
 	results := make(map[string]evaluation.Result, len(batch.Rules))
 	for _, rule := range batch.Rules {
 		results[rule.ID] = evaluation.Result{
-			Status:     evaluation.StatusPass,
-			Confidence: lowConfidencePassConfidence,
+			Status:          evaluation.StatusPass,
+			FailProbability: lowConfidencePassConfidence,
 		}
 	}
 	return results, nil
 }
 
-func TestCheckRuleMinConfidenceOverridesGlobal(t *testing.T) {
+func TestCheckRuleFloorOverridesGlobal(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -715,16 +747,16 @@ func TestCheckRuleMinConfidenceOverridesGlobal(t *testing.T) {
 	}
 
 	global := 0.8
-	allowAll := 0.0
+	ruleFloor := 0.4
 	cfg := config.Config{
-		MinConfidence: &global,
+		MinFailProbability: &global,
 		Rules: []config.Rule{{
-			ID:            "boolean-property-naming",
-			Description:   "Boolean fields clearly describe the true state.",
-			Severity:      config.SeverityWarning,
-			Kinds:         []config.TargetKind{config.TargetKindType},
-			Localize:      []config.TargetKind{config.TargetKindField},
-			MinConfidence: &allowAll,
+			ID:                 "boolean-property-naming",
+			Description:        "Boolean fields clearly describe the true state.",
+			Severity:           config.SeverityWarning,
+			Kinds:              []config.TargetKind{config.TargetKindType},
+			Localize:           []config.TargetKind{config.TargetKindField},
+			MinFailProbability: &ruleFloor,
 		}},
 	}
 	evaluator := &scoredBooleanEvaluator{typeConfidence: 0.6, regionConfidence: 0.5}
@@ -756,7 +788,7 @@ func TestCheckLocalizeIgnoresRegionFailsBelowMinConfidence(t *testing.T) {
 
 	minimum := 0.8
 	cfg := config.Config{
-		MinConfidence: &minimum,
+		MinFailProbability: &minimum,
 		Rules: []config.Rule{{
 			ID:          "boolean-property-naming",
 			Description: "Boolean fields clearly describe the true state.",
@@ -806,8 +838,8 @@ func TestCheckLocalizesFailedRuleToTreeSitterRegion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Check() error = %v", err)
 	}
-	if report.Evaluations != 3 {
-		t.Fatalf("evaluations = %d, want initial type plus two fields", report.Evaluations)
+	if report.Evaluations != 2 {
+		t.Fatalf("evaluations = %d, want one type evaluation plus one localization", report.Evaluations)
 	}
 	if len(report.Findings) != 1 {
 		t.Fatalf("findings = %#v", report.Findings)
@@ -1012,9 +1044,13 @@ func (evaluator fixedStatusEvaluator) Evaluate(
 ) (map[string]evaluation.Result, error) {
 	results := make(map[string]evaluation.Result, len(batch.Rules))
 	for _, rule := range batch.Rules {
+		probability := 0.0
+		if evaluator.status == evaluation.StatusFail {
+			probability = 1
+		}
 		results[rule.ID] = evaluation.Result{
-			Status:     evaluator.status,
-			Confidence: 1,
+			Status:          evaluator.status,
+			FailProbability: probability,
 		}
 	}
 	return results, nil
@@ -1146,7 +1182,7 @@ func loadUsers() {}
 
 	var ordinaryLocalize, enrichedLocalize evaluation.Batch
 	for _, batch := range evaluator.batches {
-		if batch.CodeUnit.Kind != parsing.CodeKindRegion {
+		if len(batch.Regions) == 0 {
 			continue
 		}
 		ids := ruleIDs(batch)
@@ -1173,15 +1209,31 @@ func (evaluator *capturingEvaluator) Evaluate(
 	batch evaluation.Batch,
 ) (map[string]evaluation.Result, error) {
 	evaluator.batches = append(evaluator.batches, batch)
-	results := make(map[string]evaluation.Result, len(batch.Rules))
-	status := evaluation.StatusPass
-	if evaluator.failFunctions &&
-		(batch.CodeUnit.Kind == parsing.CodeKindFunction ||
-			batch.CodeUnit.Kind == parsing.CodeKindRegion) {
-		status = evaluation.StatusFail
+	if len(batch.Regions) > 0 {
+		probability := 0.0
+		status := evaluation.StatusPass
+		if evaluator.failFunctions {
+			probability = 1
+			status = evaluation.StatusFail
+		}
+		results := make(map[string]evaluation.Result, len(batch.Regions))
+		for index := range batch.Regions {
+			results[fmt.Sprintf("r%d", index)] = evaluation.Result{
+				Status:          status,
+				FailProbability: probability,
+			}
+		}
+		return results, nil
 	}
+	status := evaluation.StatusPass
+	probability := 0.0
+	if evaluator.failFunctions && batch.CodeUnit.Kind == parsing.CodeKindFunction {
+		status = evaluation.StatusFail
+		probability = 1
+	}
+	results := make(map[string]evaluation.Result, len(batch.Rules))
 	for _, rule := range batch.Rules {
-		results[rule.ID] = evaluation.Result{Status: status, Confidence: 1}
+		results[rule.ID] = evaluation.Result{Status: status, FailProbability: probability}
 	}
 	return results, nil
 }
@@ -1250,14 +1302,15 @@ type mixedDecisionEvaluator struct{}
 func (mixedDecisionEvaluator) Evaluate(_ context.Context, batch evaluation.Batch) (map[string]evaluation.Result, error) {
 	results := make(map[string]evaluation.Result, len(batch.Rules))
 	for _, rule := range batch.Rules {
-		result := evaluation.Result{Status: evaluation.StatusPass, Confidence: 1}
+		result := evaluation.Result{Status: evaluation.StatusPass, FailProbability: 0}
 		if rule.ID == "mixed" {
 			switch batch.CodeUnit.Name {
 			case "Reported":
 				result.Status = evaluation.StatusFail
+				result.FailProbability = 1
 			case "BelowFloor":
 				result.Status = evaluation.StatusFail
-				result.Confidence = 0.4
+				result.FailProbability = 0.4
 			case "Skipped":
 				result.Status = evaluation.StatusSkip
 			case "Abstained":
@@ -1280,7 +1333,7 @@ func TestCheckAggregatesPrimaryDecisionsPerRule(t *testing.T) {
 	}
 	floor := 0.8
 	cfg := config.Config{
-		MinConfidence: &floor,
+		MinFailProbability: &floor,
 		Rules: []config.Rule{
 			{ID: "mixed", Description: "Mixed decisions.", Severity: config.SeverityWarning},
 			{ID: "clean", Description: "Clean decisions.", Severity: config.SeverityInfo},
@@ -1314,7 +1367,7 @@ func TestCheckAggregatesPrimaryDecisionsPerRule(t *testing.T) {
 		t.Fatalf("evaluated rules = %#v", report.Rules)
 	}
 	if len(report.Findings) != 1 || len(report.BelowFloor) != 1 ||
-		report.BelowFloor[0].Confidence != 0.4 || report.Evaluations != 10 {
+		report.BelowFloor[0].FailProbability != 0.4 || report.Evaluations != 10 {
 		t.Fatalf("report = %#v", report)
 	}
 	if !report.HasFailures(config.SeverityInfo) || !report.HasFailures(config.SeverityWarning) ||

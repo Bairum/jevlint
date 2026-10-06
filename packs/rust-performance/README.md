@@ -11,7 +11,7 @@
 
 API26 is supporting conditional reuse guidance here, not a blanket demand to expose every intermediate or a complete implementation of all public-API result-design cases. Repeated-materialization fixtures use invariant parsing and collect/sort preprocessing, not Clippy's simple `redundant_clone` pattern. Necessary snapshots, independent owned results, changing inputs and justified workload tradeoffs remain legitimate. Small-write exceptions include interactive round trips and an already-buffered sink. Flush completion is not file durability.
 
-Both descriptions contain only rule-specific criteria. [`guidance.md`](guidance.md), referenced by `pack.json`, supplies shared primary-unit judging, evidence and abstention requirements. Neither rule enables type/callee context or changes confidence floors: fixtures make the std operations, consumer requirements and workload contract visible in the primary function. Missing hidden implementation context is not evidence that work or buffering is absent. An absent workload/performance contract passes these strict rules; uncertainty about a necessary fact under an established contract can instead justify abstention.
+Both descriptions contain only rule-specific criteria. [`guidance.md`](guidance.md), referenced by `pack.json`, supplies shared primary-unit judging, evidence and abstention requirements. Neither rule enables type/callee context or sets `minFailProbability`: fixtures make the std operations, consumer requirements and workload contract visible in the primary function. Missing hidden implementation context is not evidence that work or buffering is absent. An absent workload/performance contract passes these strict rules; uncertainty about a necessary fact under an established contract can instead justify abstention.
 
 ## Applicability filters
 
@@ -67,7 +67,7 @@ jevlint eval --packs --rule rust-perf-small-writes
 
 ## Verification status
 
-`python3 scripts/check-rust-packs.py --pack rust-performance` compiled all 29 isolated Rust 2021 fixture targets without errors or warnings. Faulty fixtures were never executed. Three real provider runs (`python3 scripts/check-rust-packs.py --eval --repeat 3`) measured fixture recall and specificity; the per-run results below treat below-floor failures as not reported.
+`python3 scripts/check-rust-packs.py --pack rust-performance` compiled all 29 isolated Rust 2021 fixture targets without errors or warnings. Faulty fixtures were never executed. Three real provider runs (`python3 scripts/check-rust-packs.py --eval --repeat 3`) measured fixture recall and specificity; the per-run results below treat below-floor failures as not reported. The table is choice confidence; the floors were not refit.
 
 | Rule | Recall @0.8 | Specificity @0.8 | Recommended override | Recall @override | Specificity @override |
 | --- | --- | --- | --- | --- | --- |
@@ -76,4 +76,4 @@ jevlint eval --packs --rule rust-perf-small-writes
 
 Repeated-materialization has low recall at `0.8`; its recommended override improves fixture recall but still misses cases. Small-writes' perfect fixture results do not guarantee real-project performance or precision. Recall is measured on fixtures; real-project precision and runtime speedups remain unmeasured.
 
-Global `minConfidence` stays `0.8`; the pack has no rule-level `minConfidence`. Only consuming projects may opt into recommended rule overlays, such as `{"id": "rust-perf-repeated-materialization", "minConfidence": 0.45}`. An overlay replaces the rule floor, which overrides the global floor; `—` means keep `0.8`. Recommendations were fitted on the same fixtures and are starting points, not guarantees. See [calibration method, caveats and override configuration](../../docs/rust/CALIBRATION.md).
+Global `minFailProbability` stays `0.8`; the pack has no rule-level `minFailProbability`. Only consuming projects may opt into recommended rule overlays, such as `{"id": "rust-perf-repeated-materialization", "minFailProbability": 0.45}`. An overlay replaces the rule floor, which overrides the global floor; `—` means keep `0.8`. Those recorded floors were fitted on the old choice-confidence metric and pack calibration will refit them; the field name is `minFailProbability`. Recommendations were fitted on the same fixtures and are starting points, not guarantees. See [calibration method, caveats and override configuration](../../docs/rust/CALIBRATION.md).
