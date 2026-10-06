@@ -1,0 +1,13 @@
+Oh My Pi (https://github.com/can1357/oh-my-pi) commit cdd36ca
+MIT License. Copyright (c) 2025 Mario Zechner; Copyright (c) 2025-2026 Can Bölük;
+Copyright (c) 2026 Stencil Labs, Inc.
+
+internal/jevtok ports the offline Jev 1.13 counter from
+crates/pi-natives/src/utok/{jev.rs,bpe.rs,pretoken.rs,scan/qwen.rs,scan/mod.rs}
+and embeds the measured rank tables jev_base.bin.zst and jev_whole.bin.zst
+(data/README.md: recovered from live usage.input_tokens, 2026-09-23, not a
+published tokenizer). The checked-in .bin.gz files are those UTOK1 payloads
+recompressed with gzip; genblob.go records the fetch and the hashes.
+
+The above copyright notice and the MIT permission notice in the repository
+LICENSE apply to this port and to the embedded vocabulary data.
