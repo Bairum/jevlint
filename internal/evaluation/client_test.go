@@ -62,21 +62,22 @@ func TestTypeSafeEvaluateBatchesRules(t *testing.T) {
 		if len(payload.State.RelatedTypes) != 1 {
 			t.Errorf("state types = %#v", payload.State.RelatedTypes)
 		}
-		joins := payload.Questions["database-joins"]
+		joins := payload.Questions["database-joins.s0"]
 		if len(joins.Instructions.Exceptions) != 1 ||
 			!strings.Contains(joins.Instructions.Exceptions[0], "different databases") {
 			t.Errorf("exceptions = %#v", joins.Instructions.Exceptions)
 		}
-		if criterionText(joins.Criteria, "fail") == "" {
-			t.Errorf("fail criterion = %#v", joins.Criteria)
+		levels, _ := joins.Criteria.([]any)
+		if len(levels) != 3 {
+			t.Errorf("score levels = %#v", joins.Criteria)
 		}
 
 		writer.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(writer, `{
 			"model": "jev-test",
 			"answers": {
-				"database-joins": {"type": "choice", "choice": "fail", "probabilities": {"fail": 0.91, "pass": 0.09}},
-				"semicolons": {"type": "choice", "choice": "pass", "probabilities": {"pass": 0.87, "fail": 0.13}}
+				"database-joins.s0": {"type": "score", "score": 2},
+				"semicolons.s0": {"type": "score", "score": 0}
 			}
 		}`)
 	}))
@@ -87,10 +88,10 @@ func TestTypeSafeEvaluateBatchesRules(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Evaluate() error = %v", err)
 	}
-	if results["database-joins"].Status != StatusFail || results["database-joins"].FailProbability != 0.91 {
+	if results["database-joins"].Status != StatusFail || results["database-joins"].FailProbability != 1 {
 		t.Fatalf("database-joins = %#v", results["database-joins"])
 	}
-	if results["semicolons"].Status != StatusPass || results["semicolons"].FailProbability != 0.13 {
+	if results["semicolons"].Status != StatusPass || results["semicolons"].FailProbability != 0 {
 		t.Fatalf("semicolons = %#v", results["semicolons"])
 	}
 }
@@ -110,8 +111,9 @@ func TestTypeSafeEvaluateExplainsRegionContext(t *testing.T) {
 			t.Errorf("parent source = %q", payload.State.ParentSource)
 		}
 		fmt.Fprint(writer, `{
+			"model": "jev-test",
 			"answers": {
-				"database-joins": {"type": "choice", "choice": "fail", "probabilities": {"fail": 1, "pass": 0}}
+				"database-joins.s0": {"type": "score", "score": 2}
 			}
 		}`)
 	}))
@@ -230,11 +232,11 @@ func TestTypeSafeCacheKeyTracksExactEvaluationInput(t *testing.T) {
 		"batch membership": func(batch *Batch) {
 			batch.Rules = batch.Rules[:1]
 		},
-		"allowSkip": func(batch *Batch) {
-			batch.Rules[0].AllowSkip = true
-		},
-		"allowAbstain": func(batch *Batch) {
-			batch.Rules[0].AllowAbstain = true
+		"explicit score": func(batch *Batch) {
+			batch.Rules[0].Score = &config.Score{
+				Question: "How clearly does `source` join?",
+				Levels:   []string{"no", "unclear", "yes"},
+			}
 		},
 		"callee context": func(batch *Batch) {
 			batch.CodeUnit.Callees = []parsing.CalleeContext{{
@@ -305,8 +307,8 @@ func TestTypeSafeEvaluateCachesValidatedResults(t *testing.T) {
 		fmt.Fprint(writer, `{
 			"model": "jev-test",
 			"answers": {
-				"database-joins": {"type": "choice", "choice": "fail", "probabilities": {"fail": 0.9, "pass": 0.1}},
-				"semicolons": {"type": "choice", "choice": "pass", "probabilities": {"pass": 0.8, "fail": 0.2}}
+				"database-joins.s0": {"type": "score", "score": 2},
+				"semicolons.s0": {"type": "score", "score": 0}
 			}
 		}`)
 	}))
@@ -355,17 +357,10 @@ func TestTypeSafeEvaluateBypassesUnavailableOrDisabledCache(t *testing.T) {
 				func(writer http.ResponseWriter, _ *http.Request) {
 					requests.Add(1)
 					fmt.Fprint(writer, `{
+						"model": "jev-test",
 						"answers": {
-							"database-joins": {
-								"type": "choice",
-								"choice": "pass",
-								"probabilities": {"pass": 1, "fail": 0}
-							},
-							"semicolons": {
-								"type": "choice",
-								"choice": "pass",
-								"probabilities": {"pass": 1, "fail": 0}
-							}
+							"database-joins.s0": {"type": "score", "score": 0},
+							"semicolons.s0": {"type": "score", "score": 0}
 						}
 					}`)
 				},
@@ -400,9 +395,10 @@ func TestTypeSafeEvaluateDeduplicatesConcurrentMisses(t *testing.T) {
 		}
 		<-release
 		fmt.Fprint(writer, `{
+			"model": "jev-test",
 			"answers": {
-				"database-joins": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}},
-				"semicolons": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}}
+				"database-joins.s0": {"type": "score", "score": 0},
+				"semicolons.s0": {"type": "score", "score": 0}
 			}
 		}`)
 	}))
@@ -426,6 +422,13 @@ func TestTypeSafeEvaluateDeduplicatesConcurrentMisses(t *testing.T) {
 		}()
 	}
 	<-started
+	deadline := time.Now().Add(5 * time.Second)
+	for client.inflightAttached() < callers {
+		if time.Now().After(deadline) {
+			t.Fatalf("attached %d, want %d", client.inflightAttached(), callers)
+		}
+		time.Sleep(time.Millisecond)
+	}
 	close(release)
 	workers.Wait()
 	close(errors)
@@ -444,19 +447,17 @@ func TestTypeSafeEvaluateRefreshesCachedResult(t *testing.T) {
 
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-		status := "pass"
-		fail, pass := 0, 1
+		score := 0
 		if requests.Add(1) == 2 {
-			status = "fail"
-			fail, pass = 1, 0
+			score = 2
 		}
 		fmt.Fprintf(writer, `{
 			"model": "jev-test",
 			"answers": {
-				"database-joins": {"type": "choice", "choice": %q, "probabilities": {"fail": %d, "pass": %d}},
-				"semicolons": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}}
+				"database-joins.s0": {"type": "score", "score": %d},
+				"semicolons.s0": {"type": "score", "score": 0}
 			}
-		}`, status, fail, pass)
+		}`, score)
 	}))
 	defer server.Close()
 
@@ -502,8 +503,8 @@ func TestTypeSafeEvaluateDoesNotCacheMalformedResponse(t *testing.T) {
 		}
 		fmt.Fprint(writer, `{
 			"answers": {
-				"database-joins": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}},
-				"semicolons": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}}
+				"database-joins.s0": {"type": "score", "score": 0},
+				"semicolons.s0": {"type": "score", "score": 0}
 			}
 		}`)
 	}))
@@ -534,8 +535,8 @@ func TestTypeSafeEvaluateRejectsPartialCachedAnswers(t *testing.T) {
 		fmt.Fprint(writer, `{
 			"model": "jev-test",
 			"answers": {
-				"database-joins": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}},
-				"semicolons": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}}
+				"database-joins.s0": {"type": "score", "score": 0},
+				"semicolons.s0": {"type": "score", "score": 0}
 			}
 		}`)
 	}))
@@ -553,10 +554,9 @@ func TestTypeSafeEvaluateRejectsPartialCachedAnswers(t *testing.T) {
 	if !cache.Put(client.cacheKey(body), CacheHit{
 		Model: "jev-test",
 		Answers: map[string]QuestionAnswer{
-			"database-joins": {
-				Type:          answerTypeChoice,
-				Choice:        "fail",
-				Probabilities: map[string]float64{"fail": 1, "pass": 0},
+			"database-joins.s0": {
+				Type:  answerTypeScore,
+				Score: new(2.0),
 			},
 		},
 	}) {
@@ -571,72 +571,16 @@ func TestTypeSafeEvaluateRejectsPartialCachedAnswers(t *testing.T) {
 	}
 }
 
-func TestTypeSafeSkipAndAbstainCriteria(t *testing.T) {
+func TestTypeSafeRejectsMissingScore(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		var payload systemOneRequest
-		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
-			t.Errorf("decode request: %v", err)
-		}
-		joins := payload.Questions["database-joins"].Criteria
-		if criterionText(joins, "skip") == "" || criterionText(joins, "abstain") != "" {
-			t.Errorf("database-joins criteria = %#v", joins)
-		}
-		semicolons := payload.Questions["semicolons"].Criteria
-		if criterionText(semicolons, "skip") != "" || criterionText(semicolons, "abstain") == "" {
-			t.Errorf("semicolons criteria = %#v", semicolons)
-		}
-		fmt.Fprint(writer, `{
-			"answers": {
-				"database-joins": {"type": "choice", "choice": "skip", "probabilities": {"skip": 0.9, "fail": 0.1}},
-				"semicolons": {"type": "choice", "choice": "abstain", "probabilities": {"abstain": 0.8, "fail": 0.2}}
-			}
-		}`)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(writer, `{"model":"jev-test","answers":{"database-joins.s0":{"type":"noul","noul":0.2},"semicolons.s0":{"type":"score","score":0}}}`)
 	}))
 	defer server.Close()
-
-	batch := testBatch()
-	batch.Rules[0].AllowSkip = true
-	batch.Rules[1].AllowAbstain = true
 	client := newTestClient(t, server, nil)
-	results, err := client.Evaluate(context.Background(), batch)
-	if err != nil {
-		t.Fatalf("Evaluate() error = %v", err)
-	}
-	if results["database-joins"].Status != StatusSkip {
-		t.Fatalf("database-joins = %#v", results["database-joins"])
-	}
-	if results["semicolons"].Status != StatusAbstain {
-		t.Fatalf("semicolons = %#v", results["semicolons"])
-	}
-}
-
-func TestTypeSafeRejectsDisallowedSkipAndAbstain(t *testing.T) {
-	t.Parallel()
-
-	tests := map[string]string{
-		"skip":    "skip",
-		"abstain": "abstain",
-	}
-	for name, choice := range tests {
-		name, choice := name, choice
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-				fmt.Fprintf(writer, `{
-					"answers": {
-						"database-joins": {"type": "choice", "choice": %q, "probabilities": {%q: 0.9, "fail": 0.1}},
-						"semicolons": {"type": "choice", "choice": "pass", "probabilities": {"pass": 0.9, "fail": 0.1}}
-					}
-				}`, choice, choice)
-			}))
-			defer server.Close()
-			client := newTestClient(t, server, nil)
-			if _, err := client.Evaluate(context.Background(), testBatch()); err == nil {
-				t.Fatal("Evaluate() error = nil")
-			}
-		})
+	if _, err := client.Evaluate(context.Background(), testBatch()); err == nil {
+		t.Fatal("Evaluate() error = nil, want missing score")
 	}
 }
 
@@ -697,8 +641,8 @@ func TestTypeSafeEvaluateRetriesRateLimit(t *testing.T) {
 		}
 		fmt.Fprint(writer, `{
 			"answers": {
-				"database-joins": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}},
-				"semicolons": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}}
+				"database-joins.s0": {"type": "score", "score": 0},
+				"semicolons.s0": {"type": "score", "score": 0}
 			}
 		}`)
 	}))
@@ -746,8 +690,8 @@ func TestTypeSafeEndpointOverrideUsesFullURL(t *testing.T) {
 		}
 		fmt.Fprint(writer, `{
 			"answers": {
-				"database-joins": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}},
-				"semicolons": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}}
+				"database-joins.s0": {"type": "score", "score": 0},
+				"semicolons.s0": {"type": "score", "score": 0}
 			}
 		}`)
 	}))
@@ -799,10 +743,10 @@ func TestRequestPutsGuidanceOnQuestionsAndOmitsSameFileTypePaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	for id, guidance := range map[string]string{
-		"first":  "Shared B.",
-		"second": "Shared A.",
-		"third":  "Shared B.",
-		"fourth": "",
+		"first.s0":  "Shared B.",
+		"second.s0": "Shared A.",
+		"third.s0":  "Shared B.",
+		"fourth.s0": "",
 	} {
 		if payload.Questions[id].Instructions.Guidance != guidance {
 			t.Fatalf("%s guidance = %q", id, payload.Questions[id].Instructions.Guidance)

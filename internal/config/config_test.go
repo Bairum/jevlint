@@ -29,8 +29,8 @@ func TestDecodeValidConfig(t *testing.T) {
 	if cfg.MinFailProbability != nil {
 		t.Fatalf("Decode() minFailProbability = %#v, want omitted", cfg.MinFailProbability)
 	}
-	if cfg.Rules[0].AllowSkip || cfg.Rules[0].AllowAbstain {
-		t.Fatalf("allow flags = %#v", cfg.Rules[0])
+	if cfg.Rules[0].Score != nil || cfg.Rules[0].Checks != nil {
+		t.Fatalf("signals = score:%#v checks:%#v, want omitted", cfg.Rules[0].Score, cfg.Rules[0].Checks)
 	}
 	if cfg.Rules[0].Context.Callees {
 		t.Fatalf("context = %#v, want omitted", cfg.Rules[0].Context)
@@ -131,23 +131,36 @@ func TestDecodeRuleContext(t *testing.T) {
 	}
 }
 
-func TestDecodeAllowSkipAndAbstain(t *testing.T) {
+func TestDecodeRejectsRemovedRuleFields(t *testing.T) {
 	t.Parallel()
 
-	cfg, err := Decode(strings.NewReader(withGoLanguage(`{
+	for _, field := range []string{"allowSkip", "allowAbstain", "failWhen"} {
+		field := field
+		t.Run(field, func(t *testing.T) {
+			t.Parallel()
+			_, err := Decode(strings.NewReader(withGoLanguage(`{
+				"rules": [{
+					"id": "database-joins",
+					"description": "Join related database records in the database.",
+					"severity": "error",
+					"` + field + `": true
+				}]
+			}`)))
+			if err == nil || !strings.Contains(err.Error(), field+" "+RuleFormatRemoved) {
+				t.Fatalf("Decode() error = %v", err)
+			}
+		})
+	}
+	_, err := Decode(strings.NewReader(withGoLanguage(`{
 		"rules": [{
 			"id": "database-joins",
 			"description": "Join related database records in the database.",
 			"severity": "error",
-			"allowSkip": true,
-			"allowAbstain": true
+			"checks": [{"id": "present", "question": "Is it present?", "failWhen": true}]
 		}]
 	}`)))
-	if err != nil {
-		t.Fatalf("Decode() error = %v", err)
-	}
-	if !cfg.Rules[0].AllowSkip || !cfg.Rules[0].AllowAbstain {
-		t.Fatalf("allow flags = %#v", cfg.Rules[0])
+	if err == nil || !strings.Contains(err.Error(), "checks "+RuleFormatRemoved) {
+		t.Fatalf("Decode() checks array error = %v", err)
 	}
 }
 
@@ -726,11 +739,10 @@ func TestDecodeChecksValidation(t *testing.T) {
 			"id": "split",
 			"description": "A decomposed rule.",
 			"severity": "error",
-			"exceptions": ["nope"],
-			"checks": [{"id": "present", "question": "Is it present?", "failWhen": true}]
+			"checks": {"subject": [{"question": "In scope?"}]}
 		}]
 	}`)))
-	if err == nil || !strings.Contains(err.Error(), "must not set exceptions") {
+	if err == nil || !strings.Contains(err.Error(), "violation must include") {
 		t.Fatalf("Decode() error = %v", err)
 	}
 	cfg, err := Decode(strings.NewReader(withGoLanguage(`{
@@ -738,16 +750,25 @@ func TestDecodeChecksValidation(t *testing.T) {
 			"id": "split",
 			"description": "A decomposed rule.",
 			"severity": "error",
-			"checks": [
-				{"id": "present", "question": "Is it present?", "failWhen": true},
-				{"id": "excused", "question": "Is it excused?", "yes": "yes", "no": "no", "failWhen": false}
-			]
+			"exceptions": ["A documented exception."],
+			"score": {
+				"question": "How clearly does source break the rule?",
+				"levels": ["compliant", "unclear", "broken"],
+				"paraphrases": [{"question": "How obvious is the break?", "levels": ["no", "maybe", "yes"]}]
+			},
+			"checks": {
+				"subject": [{"question": "Is source in scope?", "yes": "In scope.", "no": "Out of scope."}],
+				"violation": [{"question": "Does source break it?", "yes": "Broken.", "no": "Sound.", "paraphrases": [{"question": "Is the break visible?", "yes": "Visible.", "no": "Not visible."}]}]
+			}
 		}]
 	}`)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cfg.Rules[0].Checks) != 2 || !cfg.Rules[0].Checks[0].FailWhen {
+	if cfg.Rules[0].Score == nil || len(cfg.Rules[0].Score.Paraphrases) != 1 {
+		t.Fatalf("score = %#v", cfg.Rules[0].Score)
+	}
+	if cfg.Rules[0].Checks == nil || len(cfg.Rules[0].Checks.Violation) != 1 || len(cfg.Rules[0].Checks.Subject) != 1 {
 		t.Fatalf("checks = %#v", cfg.Rules[0].Checks)
 	}
 }

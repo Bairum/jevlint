@@ -71,14 +71,17 @@ func (outcome *Outcome) UnmarshalJSON(data []byte) error {
 
 // UnitDecision is one raw rule answer for one code unit.
 type UnitDecision struct {
-	Name            string             `json:"name"`
-	Kind            parsing.CodeKind   `json:"kind"`
-	StartLine       uint               `json:"startLine"`
-	EndLine         uint               `json:"endLine"`
-	Status          evaluation.Status  `json:"status"`
-	FailProbability float64            `json:"failProbability"`
-	Probabilities   map[string]float64 `json:"probabilities,omitempty"`
-	Reported        bool               `json:"reported"`
+	Name            string                               `json:"name"`
+	Kind            parsing.CodeKind                     `json:"kind"`
+	StartLine       uint                                 `json:"startLine"`
+	EndLine         uint                                 `json:"endLine"`
+	Status          evaluation.Status                    `json:"status"`
+	FailProbability float64                              `json:"failProbability"`
+	Score           float64                              `json:"score"`
+	Checks          float64                              `json:"checks"`
+	SubjectGate     bool                                 `json:"subjectGate"`
+	Answers         map[string]evaluation.QuestionAnswer `json:"answers,omitempty"`
+	Reported        bool                                 `json:"reported"`
 }
 
 // Result is the outcome of scoring one eval case.
@@ -315,7 +318,10 @@ func (recorder *recordingEvaluator) Evaluate(
 			EndLine:         batch.CodeUnit.EndLine,
 			Status:          result.Status,
 			FailProbability: result.FailProbability,
-			Probabilities:   result.Probabilities,
+			Score:           result.Score,
+			Checks:          result.Checks,
+			SubjectGate:     result.SubjectGate,
+			Answers:         result.Answers,
 			Reported:        result.FailProbability >= recorder.floor,
 		}
 		recorder.units[id] = append(recorder.units[id], unit)

@@ -320,33 +320,40 @@ customize a preset, but it cannot load an arbitrary external grammar.
 - `includeTests`: evaluate structurally identified Rust test units when `true`;
   they are skipped by default.
 - `kinds`: `comment`, `docComment`, `field`, `function`, `statement`, or `type`
-- `exceptions`: cases that should pass. Not allowed on a rule that sets `checks`.
+- `exceptions`: optional cases that should pass. They are sent only with the
+  default score, for a rule that sets neither `score` nor `checks`, and with
+  localization questions. Explicit score and check questions do not repeat them.
 - `localize`: `comment`, `docComment`, `field`, or `statement`. Omit the key
   or use `[]` to skip localization. On a reported failure, matching regions
-  (up to 24) are judged together in one request. A region is a location when
-  its yes-probability reaches the reporting threshold.
-- `checks`: optional decomposed yes/no questions. Each check has `id`
-  (`^[a-z0-9][a-z0-9-]{0,40}$`, unique in the rule), `question`, optional
-  `yes`/`no` criteria, and `failWhen`. At least one check must have
-  `failWhen: true`. The rule's fail probability is the product of each
-  check's yes-probability when `failWhen` is true, otherwise one minus that
-  probability. A checks rule must not set `exceptions`, `allowSkip`, or
-  `allowAbstain`.
+  (up to 24) are judged together in one request. Each region question is built
+  from the description and exceptions. A region is a location when its
+  yes-probability reaches the reporting threshold.
+- `score`: optional 3-level question. `question` plus exactly three `levels`
+  (compliant or out of scope, borderline, clear violation) and up to two
+  `paraphrases` of the same shape. Omit it and Jevlint sends the default
+  question "How clearly does `source` violate `rule`?" with levels derived
+  from the description. The score signal is the mean of `score / 2` across
+  those wordings.
+- `checks`: optional object. `subject` questions are a hard gate: every
+  yes-probability must be at least `0.5`. `violation` is one or more ways to
+  break the rule; each may have up to two paraphrases, which are averaged,
+  and the violations are combined with max. The checks signal is that product
+  of the gate and the strongest violation. A rule with no checks uses the
+  score signal for both. `allowSkip`, `allowAbstain`, and the old `checks`
+  array with `failWhen` are rejected.
 
 ### Reporting threshold
 
 - `minFailProbability`: optional `0`–`1`. A unit is reported when its fail
   probability is at least the threshold. The threshold is the rule value, or
-  the global value, or `0.5` when both are omitted. A rule value overrides the
+  the global value, or `0.80` when both are omitted. A rule value overrides the
   global value. Results at least half the threshold and below it are
   below-floor: notable, not reported, and shown only with `--show-below-floor`.
-  `minConfidence` is rejected. The root `jevlint.json` uses `0.5` until pack
-  calibration refits it; that is not the old `0.8` choice-confidence floor.
-- `allowSkip`: let Jev answer `skip` when the rule does not apply to the unit.
-  Skip is not a finding. Not allowed on a checks rule.
-- `allowAbstain`: let Jev answer `abstain` when the rule applies but there is
-  not enough context to decide. Abstain is not a finding. Not allowed on a
-  checks rule.
+  `minConfidence` is rejected.
+- The fail probability is the minimum of the score and checks signals, so a
+  unit is reported only when both agree. Status is `fail` at `0.5` or above
+  and `pass` otherwise. `eval --verbose` includes `score`, `checks`,
+  `subjectGate`, and the per-question answers on each unit.
 - `context.callees`: include confidently resolved direct project-local callees
   as extra state. Depth is 1 and bounded (12 callees, about 16 KiB of source).
   Ambiguous and external calls are ignored. Useful when the target function
@@ -486,25 +493,23 @@ have many cases, including several for the same language.
 | `--verbose` | Include the per-unit decisions in JSON output. |
 
 Each case evaluates the rule against every code unit in the fixture. Each
-choice evaluation returns one raw decision: `pass`, `fail`, `skip`, or
-`abstain`, the option with the highest probability. A checks rule is `fail`
-when the combined fail probability is at least `0.5`, otherwise `pass`. The
+evaluation returns one raw decision. Status is `fail` when the fail
+probability is at least `0.5`, otherwise `pass`. The
 tool reports a violation only when the fail probability reaches the reporting
-threshold (the rule's `minFailProbability`, the global one, or `0.5`); each
+threshold (the rule's `minFailProbability`, the global one, or `0.80`); each
 reported violation becomes a finding.
 
 The case outcome follows from those decisions:
 
 - `fail`: at least one violation was reported.
 - `inconclusive`: no violation was reported, but a unit was below the
-  reporting threshold, or no unit returned an explicit pass (only `skip` or
-  `abstain`).
+  reporting threshold, or no unit returned an explicit pass.
 - `pass`: otherwise, meaning at least one explicit pass and no failure.
 
 A case matches when its outcome equals `expect`, and `inconclusive` never
 matches. This keeps an expected pass from succeeding just because evaluations
-skipped, abstained, or hid a failure under the reporting threshold, and it
-makes an expected fail require a reportable violation.
+hid a failure under the reporting threshold, and it makes an expected fail
+require a reportable violation.
 
 Text output streams as Jev answers come back. It starts with a legend, prints
 each code unit's answer and fail probability as it arrives, then prints the
@@ -517,8 +522,8 @@ JSON is written once after the run finishes. It includes the per-case
 counts (`pass`, `fail`, `skip`, `abstain`, `reported`, `belowFloor`), the
 reporting threshold (`floor`), `models`, `usage`, and the suite totals
 (`reportedFailures`, `belowFloorFailures`). `--verbose` adds a `units` array
-with each code unit's kind, name, lines, status, fail probability, and whether
-it was reported. Choice rules also include `probabilities`.
+with each code unit's kind, name, lines, status, fail probability, `score`,
+`checks`, `subjectGate`, per-question `answers`, and whether it was reported.
 
 Exit codes:
 

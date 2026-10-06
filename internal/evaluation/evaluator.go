@@ -30,10 +30,13 @@ type Batch struct {
 
 // Result is the answer and fail probability for one rule.
 type Result struct {
-	Status          Status             `json:"status"`
-	FailProbability float64            `json:"failProbability"`
-	Probabilities   map[string]float64 `json:"probabilities,omitempty"`
-	Model           string             `json:"model,omitempty"`
+	Status          Status                    `json:"status"`
+	FailProbability float64                   `json:"failProbability"`
+	Score           float64                   `json:"score"`
+	Checks          float64                   `json:"checks"`
+	SubjectGate     bool                      `json:"subjectGate"`
+	Answers         map[string]QuestionAnswer `json:"answers,omitempty"`
+	Model           string                    `json:"model,omitempty"`
 }
 
 // Evaluator answers a batch of rules for a piece of code.
@@ -125,10 +128,8 @@ func (result Result) Validate() error {
 	if result.FailProbability < 0 || result.FailProbability > 1 {
 		return fmt.Errorf("failProbability must be between 0 and 1")
 	}
-	for key, value := range result.Probabilities {
-		if value < 0 || value > 1 {
-			return fmt.Errorf("probability %q must be between 0 and 1", key)
-		}
+	if result.Score < 0 || result.Score > 1 || result.Checks < 0 || result.Checks > 1 {
+		return fmt.Errorf("score and checks must be between 0 and 1")
 	}
 	return nil
 }

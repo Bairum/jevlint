@@ -58,7 +58,7 @@ func TestDecodeResultsReadsTopLevelAnswers(t *testing.T) {
 	t.Parallel()
 
 	rules := []config.Rule{{ID: "database-joins"}}
-	body := []byte(`{"model":"jev-test","answers":{"database-joins":{"type":"choice","choice":"pass","probabilities":{"pass":1,"fail":0}}}}`)
+	body := []byte(`{"model":"jev-test","answers":{"database-joins.s0":{"type":"score","score":0}}}`)
 	answers, err := (TypeSafeProvider{}).Answers(body)
 	if err != nil {
 		t.Fatalf("Answers() error = %v", err)

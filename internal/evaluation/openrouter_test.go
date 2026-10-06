@@ -74,15 +74,15 @@ func TestOpenRouterProviderAnswers(t *testing.T) {
 	t.Parallel()
 
 	provider := &OpenRouterProvider{}
-	topLevel := []byte(`{"answers":{"r":{"type":"choice","choice":"pass","probabilities":{"pass":1,"fail":0}}}}`)
+	topLevel := []byte(`{"answers":{"r":{"type":"score","score":0}}}`)
 	answers, err := provider.Answers(topLevel)
-	if err != nil || answers.Answers["r"].Choice != "pass" {
+	if err != nil || answers.Answers["r"].Score == nil || *answers.Answers["r"].Score != 0 {
 		t.Fatalf("top-level Answers() = %#v, %v", answers, err)
 	}
 
-	wrapped := []byte(`{"result":{"answers":{"r":{"type":"choice","choice":"fail","probabilities":{"fail":0.5,"pass":0.5}}}}}`)
+	wrapped := []byte(`{"result":{"answers":{"r":{"type":"score","score":2}}}}`)
 	answers, err = provider.Answers(wrapped)
-	if err != nil || answers.Answers["r"].Choice != "fail" {
+	if err != nil || answers.Answers["r"].Score == nil || *answers.Answers["r"].Score != 2 {
 		t.Fatalf("wrapped Answers() = %#v, %v", answers, err)
 	}
 }
@@ -155,8 +155,8 @@ func TestOpenRouterEvaluateSendsAttributionHeaders(t *testing.T) {
 		}
 		fmt.Fprint(writer, `{
 			"answers": {
-				"database-joins": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}},
-				"semicolons": {"type": "choice", "choice": "pass", "probabilities": {"pass": 1, "fail": 0}}
+				"database-joins.s0": {"type": "score", "score": 0},
+				"semicolons.s0": {"type": "score", "score": 0}
 			}
 		}`)
 	}))

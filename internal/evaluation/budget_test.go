@@ -16,7 +16,7 @@ func TestBudgetDropsContextThenSkips(t *testing.T) {
 	var sawCallees, sawTypes bool
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{"model":"jev-1.13.0","answers":{"joins":{"type":"choice","choice":"pass","probabilities":{"pass":1,"fail":0}}},"usage":{"input_tokens":10,"output_tokens":2}}`))
+		_, _ = writer.Write([]byte(`{"model":"jev-1.13.0","answers":{"joins.s0":{"type":"score","score":0}},"usage":{"input_tokens":10,"output_tokens":2}}`))
 	}))
 	defer server.Close()
 
@@ -83,7 +83,7 @@ func TestBudgetDropsContextThenSkips(t *testing.T) {
 
 func TestUnknownModelSkipsBudget(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		_, _ = writer.Write([]byte(`{"model":"other","answers":{"joins":{"type":"choice","probabilities":{"pass":1,"fail":0}}},"usage":{"input_tokens":3,"output_tokens":1}}`))
+		_, _ = writer.Write([]byte(`{"model":"other","answers":{"joins.s0":{"type":"score","score":0}},"usage":{"input_tokens":3,"output_tokens":1}}`))
 	}))
 	defer server.Close()
 	client := budgetClient(t, server.URL, func([]byte) (Estimate, error) {

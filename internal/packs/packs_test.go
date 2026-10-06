@@ -10,9 +10,38 @@ import (
 	"github.com/codegirl-007/jevlint/internal/config"
 )
 
+func TestLoadDirReadsDualSignalRules(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ManifestFile), []byte(`{
+		"version": 1,
+		"id": "codegirl-007/database-joins",
+		"languages": ["go"]
+	}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, defaultRulesFile), []byte(`{
+		"rules": [{
+			"id": "database-joins",
+			"description": "Join in the database.",
+			"severity": "error",
+			"score": {"question": "How clearly does source join in memory?", "levels": ["no", "unclear", "yes"]},
+			"checks": {"violation": [{"question": "Does source join in memory?", "yes": "Yes.", "no": "No."}]}
+		}]
+	}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Rules[0].Score == nil || loaded.Rules[0].Checks == nil || len(loaded.Rules[0].Checks.Violation) != 1 {
+		t.Fatalf("rules = %#v", loaded.Rules)
+	}
+}
+
 func TestMergeOverlaysPackRule(t *testing.T) {
 	t.Parallel()
-
 	floor := 0.5
 	project := config.Config{
 		Languages:          map[string]config.Language{"go": {}},

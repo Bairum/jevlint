@@ -16,9 +16,11 @@ import (
 const (
 	// DefaultMinFailProbability is the reporting threshold when neither the
 	// rule nor the config sets one.
-	DefaultMinFailProbability = 0.5
+	DefaultMinFailProbability = 0.80
 	// MinConfidenceReplaced is the decode error for the removed field.
 	MinConfidenceReplaced = `minConfidence was replaced by minFailProbability; see README "Reporting threshold"`
+	// RuleFormatRemoved is the suffix of a decode error for a dropped field.
+	RuleFormatRemoved = `was removed; see README "Rule format"`
 )
 
 // Config is the rule file loaded from disk.
@@ -46,13 +48,40 @@ type Language struct {
 	Regions            map[string][]string `json:"regions,omitempty"`
 }
 
-// Check is one yes/no component of a decomposed rule.
-type Check struct {
-	ID       string `json:"id"`
+// ScoreWording is one wording of a 3-level score question.
+type ScoreWording struct {
+	Question string   `json:"question"`
+	Levels   []string `json:"levels"`
+}
+
+// Score is the optional explicit score question. Absent means the default
+// score derived from the description.
+type Score struct {
+	Question    string         `json:"question"`
+	Levels      []string       `json:"levels"`
+	Paraphrases []ScoreWording `json:"paraphrases,omitempty"`
+}
+
+// CheckWording is one yes/no wording of a subject or violation check.
+type CheckWording struct {
 	Question string `json:"question"`
 	Yes      string `json:"yes,omitempty"`
 	No       string `json:"no,omitempty"`
-	FailWhen bool   `json:"failWhen"`
+}
+
+// ViolationCheck is one way the rule can be broken. Wordings are averaged;
+// violations are combined with max.
+type ViolationCheck struct {
+	Question    string         `json:"question"`
+	Yes         string         `json:"yes,omitempty"`
+	No          string         `json:"no,omitempty"`
+	Paraphrases []CheckWording `json:"paraphrases,omitempty"`
+}
+
+// Checks is the optional subject gate and violation questions.
+type Checks struct {
+	Subject   []CheckWording   `json:"subject,omitempty"`
+	Violation []ViolationCheck `json:"violation"`
 }
 
 // Rule describes one check, the code it covers, and how it is reported.
@@ -69,10 +98,9 @@ type Rule struct {
 	Kinds              []TargetKind `json:"kinds,omitempty"`
 	Localize           []TargetKind `json:"localize,omitempty"`
 	MinFailProbability *float64     `json:"minFailProbability,omitempty"`
-	AllowSkip          bool         `json:"allowSkip,omitempty"`
-	AllowAbstain       bool         `json:"allowAbstain,omitempty"`
 	Context            RuleContext  `json:"context,omitempty"`
-	Checks             []Check      `json:"checks,omitempty"`
+	Score              *Score       `json:"score,omitempty"`
+	Checks             *Checks      `json:"checks,omitempty"`
 }
 
 // RuleContext asks for extra material to send with a rule.
@@ -256,6 +284,9 @@ func Decode(reader io.Reader) (Config, error) {
 	if err := RejectMinConfidence(data); err != nil {
 		return Config{}, fmt.Errorf("decode config: %w", err)
 	}
+	if err := RejectRemovedRuleFields(data); err != nil {
+		return Config{}, fmt.Errorf("decode config: %w", err)
+	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 
@@ -290,6 +321,43 @@ func RejectMinConfidence(data []byte) error {
 	return nil
 }
 
+// RejectRemovedRuleFields reports allowSkip, allowAbstain, failWhen, and the
+// old checks array. Those shapes were replaced by the dual-signal schema.
+func RejectRemovedRuleFields(data []byte) error {
+	var probe any
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return nil
+	}
+	return removedRuleField(probe)
+}
+
+func removedRuleField(value any) error {
+	switch typed := value.(type) {
+	case map[string]any:
+		for _, field := range []string{"allowSkip", "allowAbstain", "failWhen"} {
+			if _, ok := typed[field]; ok {
+				return fmt.Errorf("%s %s", field, RuleFormatRemoved)
+			}
+		}
+		if checks, ok := typed["checks"]; ok {
+			if _, isArray := checks.([]any); isArray {
+				return fmt.Errorf("checks %s", RuleFormatRemoved)
+			}
+		}
+		for _, child := range typed {
+			if err := removedRuleField(child); err != nil {
+				return err
+			}
+		}
+	case []any:
+		for _, child := range typed {
+			if err := removedRuleField(child); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 func hasMinConfidence(value any) bool {
 	switch typed := value.(type) {
 	case map[string]any:
@@ -494,36 +562,79 @@ func validateFailProbability(value *float64) error {
 	return nil
 }
 
-var checkID = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,40}$`)
-
-// ValidateChecks checks a decomposed rule. A rule without checks is unchanged.
+// ValidateChecks checks score and checks questions. A rule with neither is
+// evaluated with the default score.
 func ValidateChecks(rule Rule, prefix string) error {
-	if len(rule.Checks) == 0 {
+	if rule.Score != nil {
+		if err := validateScore(rule.Score, prefix+".score"); err != nil {
+			return err
+		}
+	}
+	if rule.Checks == nil {
 		return nil
 	}
-	if len(rule.Exceptions) > 0 || rule.AllowSkip || rule.AllowAbstain {
-		return fmt.Errorf("%s with checks must not set exceptions, allowSkip, or allowAbstain", prefix)
+	if len(rule.Checks.Violation) == 0 {
+		return fmt.Errorf("%s.checks.violation must include at least one question", prefix)
 	}
-	seen := make(map[string]struct{}, len(rule.Checks))
-	failing := false
-	for index, check := range rule.Checks {
-		checkPrefix := fmt.Sprintf("%s.checks[%d]", prefix, index)
-		if !checkID.MatchString(check.ID) {
-			return fmt.Errorf("%s.id must match %s", checkPrefix, checkID.String())
-		}
-		if _, exists := seen[check.ID]; exists {
-			return fmt.Errorf("%s.id %q is duplicated", checkPrefix, check.ID)
-		}
-		seen[check.ID] = struct{}{}
-		if strings.TrimSpace(check.Question) == "" {
-			return fmt.Errorf("%s.question is required", checkPrefix)
-		}
-		if check.FailWhen {
-			failing = true
+	for index, check := range rule.Checks.Subject {
+		if err := validateWording(check, fmt.Sprintf("%s.checks.subject[%d]", prefix, index)); err != nil {
+			return err
 		}
 	}
-	if !failing {
-		return fmt.Errorf("%s.checks must include at least one failWhen check", prefix)
+	for index, check := range rule.Checks.Violation {
+		checkPrefix := fmt.Sprintf("%s.checks.violation[%d]", prefix, index)
+		if err := validateWording(CheckWording{Question: check.Question, Yes: check.Yes, No: check.No}, checkPrefix); err != nil {
+			return err
+		}
+		if len(check.Paraphrases) > 2 {
+			return fmt.Errorf("%s.paraphrases accepts at most 2", checkPrefix)
+		}
+		for wording, paraphrase := range check.Paraphrases {
+			if err := validateWording(paraphrase, fmt.Sprintf("%s.paraphrases[%d]", checkPrefix, wording)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func validateScore(score *Score, prefix string) error {
+	if strings.TrimSpace(score.Question) == "" {
+		return fmt.Errorf("%s.question is required", prefix)
+	}
+	if err := validateLevels(score.Levels, prefix+".levels"); err != nil {
+		return err
+	}
+	if len(score.Paraphrases) > 2 {
+		return fmt.Errorf("%s.paraphrases accepts at most 2", prefix)
+	}
+	for index, paraphrase := range score.Paraphrases {
+		wording := fmt.Sprintf("%s.paraphrases[%d]", prefix, index)
+		if strings.TrimSpace(paraphrase.Question) == "" {
+			return fmt.Errorf("%s.question is required", wording)
+		}
+		if err := validateLevels(paraphrase.Levels, wording+".levels"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateLevels(levels []string, prefix string) error {
+	if len(levels) != 3 {
+		return fmt.Errorf("%s must contain exactly 3 levels", prefix)
+	}
+	for index, level := range levels {
+		if strings.TrimSpace(level) == "" {
+			return fmt.Errorf("%s[%d] is empty", prefix, index)
+		}
+	}
+	return nil
+}
+
+func validateWording(wording CheckWording, prefix string) error {
+	if strings.TrimSpace(wording.Question) == "" {
+		return fmt.Errorf("%s.question is required", prefix)
 	}
 	return nil
 }

@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	cacheEntryVersion   = 2
+	cacheEntryVersion   = 3
 	cacheEntryExtension = ".json"
 )
 
