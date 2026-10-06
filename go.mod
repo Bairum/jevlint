@@ -1,6 +1,6 @@
 module github.com/codegirl-007/jevlint
 
-go 1.26
+go 1.26.0
 
 require (
 	github.com/alecthomas/chroma/v2 v2.27.0

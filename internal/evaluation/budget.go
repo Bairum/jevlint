@@ -7,20 +7,18 @@ import (
 	"github.com/codegirl-007/jevlint/internal/parsing"
 )
 
+// Documented Jev 1.13 limits. They sit 743 and 1,533 tokens under the hard
+// caps measured live (32,743 state+longest question, 65,533 total), and the
+// default estimator (jevtok) reproduces usage.input_tokens exactly, so no
+// further margin is applied.
 const (
 	jev13TotalLimit = 64000
 	jev13StateLimit = 32000
-	// ponytail: 2% margin until jevtok publishes a measured max overestimate.
-	// Upgrade path: subtract that fitted error instead of a fixed fraction.
-	budgetSafetyNumerator   = 49
-	budgetSafetyDenominator = 50
 )
 
 func limitsFor(model string) (total int, stateLongest int, ok bool) {
 	if strings.HasPrefix(model, "jev-1.13") || strings.HasPrefix(model, "typesafe/jev-1.13") {
-		return jev13TotalLimit * budgetSafetyNumerator / budgetSafetyDenominator,
-			jev13StateLimit * budgetSafetyNumerator / budgetSafetyDenominator,
-			true
+		return jev13TotalLimit, jev13StateLimit, true
 	}
 	return 0, 0, false
 }

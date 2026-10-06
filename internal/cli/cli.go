@@ -15,6 +15,7 @@ import (
 	"github.com/codegirl-007/jevlint/internal/changed"
 	"github.com/codegirl-007/jevlint/internal/config"
 	"github.com/codegirl-007/jevlint/internal/evaluation"
+	"github.com/codegirl-007/jevlint/internal/jevtok"
 	"github.com/codegirl-007/jevlint/internal/packs"
 	"github.com/codegirl-007/jevlint/internal/parsing"
 	"github.com/codegirl-007/jevlint/internal/runner"
@@ -535,6 +536,7 @@ func loadRun(
 		evaluation.Options{
 			Cache:   resultCache,
 			Refresh: options.check.cache.shouldRefresh(),
+			Budget:  jevBudget,
 			Logf:    debugLogger(stderr),
 			Warnf:   warnLogger(stderr),
 		},
@@ -551,6 +553,16 @@ func loadRun(
 		extractor:      extractor,
 		evaluator:      evaluator,
 	}, exitSuccess
+}
+
+// jevBudget estimates a request with the offline Jev 1.13 token counter.
+// The client applies it only to models with known limits.
+func jevBudget(body []byte) (evaluation.Estimate, error) {
+	estimate, err := jevtok.EstimateRequest(body)
+	return evaluation.Estimate{
+		Total:                   estimate.Total,
+		StateAndLongestQuestion: estimate.StateAndLongestQuestion,
+	}, err
 }
 
 // debugLogger returns a request logger when JEVLINT_DEBUG is set. It writes to

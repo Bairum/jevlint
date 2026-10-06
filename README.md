@@ -364,9 +364,11 @@ customize a preset, but it cannot load an arbitrary external grammar.
 Rules sharing identical callee and type context are batched. Jev judges only
 the primary source; defects present only in context must not fail that unit.
 
-For `jev-1.13*` and `typesafe/jev-1.13*`, Jevlint estimates the request before
-sending and keeps a 2% margin under the 64,000-token request limit and the
-32,000-token state-plus-longest-question limit. Other models are not
+For `jev-1.13*` and `typesafe/jev-1.13*`, Jevlint counts each request's tokens
+offline before sending (an exact Jev 1.13 counter ported from
+[oh-my-pi](https://github.com/can1357/oh-my-pi)) and keeps it within the
+documented 64,000-token request limit and 32,000-token state-plus-longest-question
+limit. Other models are not
 preflighted. Over budget, questions are split across requests (Cloudflare is
 also split at 64 questions). If that is not enough, callees are dropped, then
 types, and the report says so. A unit that still does not fit is skipped:

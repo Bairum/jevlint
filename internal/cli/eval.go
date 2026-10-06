@@ -156,6 +156,7 @@ func executeEval(
 		evaluation.Options{
 			Cache:   resultCache,
 			Refresh: options.eval.cache.shouldRefresh(),
+			Budget:  jevBudget,
 			Logf:    debugLogger(stderr),
 			Warnf:   warnLogger(stderr),
 		},
