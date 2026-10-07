@@ -81,3 +81,11 @@ Use the native tools in [Rust tooling beyond Jevlint](README.md#rust-tooling-bey
 ## History
 
 Before 2026-10-06, calibration fitted per-rule choice-confidence floors on these fixtures and recommended project overlays. That metric and those overlays are retired; the shipped decision is min(score, checks) at 0.80. A 2026-10-05 unsafe wording experiment was rejected and is not this calibration.
+
+## Doc-comment recall (2026-10-07)
+
+Root `accurate-doc-comments` stays on `docComment` units and the current wording. A 35-commit public benchmark (Go, Java, Python, Rust, TypeScript; repo split recorded before scoring, 20 tune / 15 holdout) caught 1/20 tune and 1/15 holdout pre-fix units at 0.80, with 0 post-fix false alarms on either split. On the round-1 labelled set this rule had 4 violations out of 53 items and caught 0 at 0.80 (1 true / 0 false at 0.70).
+
+The miss is structural. A `docComment` unit's `source` is the comment and `parentSource` is the function. Telling the model to judge the comment against `parentSource` left visible contradictions near 0.1. Judging the function, so the comment and body share `source`, moved some visible contradictions into 0.5–0.9, but checks still capped the fail probability and holdout recall at 0.80 stayed 1/15 with 0 post-fix false alarms. That candidate was not shipped.
+
+`rust-readability-accurate-doc-comments` stays. It judges the function, not the comment unit, and its checks name `# Errors`, `# Panics`, and `# Safety`. It is not a copy of the root rule.

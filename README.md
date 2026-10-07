@@ -298,7 +298,7 @@ language and define at least one rule (or list a pack). Available presets are
 
 This repository's `jevlint.json` ships nine language-agnostic rules:
 
-- `accurate-doc-comments`
+- `accurate-doc-comments` (doc comments; the Rust pack rule `rust-readability-accurate-doc-comments` is separate and judges the function, including `# Errors`, `# Panics`, and `# Safety`)
 - `boolean-parameter`
 - `comment-quality`
 - `function-control-flow`
