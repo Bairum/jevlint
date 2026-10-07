@@ -81,3 +81,21 @@ Use the native tools in [Rust tooling beyond Jevlint](README.md#rust-tooling-bey
 ## History
 
 Before 2026-10-06, calibration fitted per-rule choice-confidence floors on these fixtures and recommended project overlays. That metric and those overlays are retired; the shipped decision is min(score, checks) at 0.80. A 2026-10-05 unsafe wording experiment was rejected and is not this calibration.
+
+## Doc-comment recall (2026-10-07)
+
+Root `accurate-doc-comments` stays on `docComment` units and the current wording.
+
+Ceiling on the 35-commit public benchmark, judged from the doc comment plus that function's own body and not a callee: 8/20 tune and 9/15 holdout are visible. The rest are not catchable by any single-unit rule.
+
+Three `function`-kind variants, scored on tune and the round-1 labelled items only. With no checks, the score signal is the fail probability, as the README says. At 0.80, post-fix false alarms were 0/20 for all three.
+
+| Variant | Tune recall @0.80 | Visible subset | Tune @0.70 | Labelled precision @0.80 |
+| --- | --- | --- | --- | --- |
+| Score only | 2/20 | 2/8 | 2/20 | 0/1 |
+| Score plus one literal check, no subject gate | 1/20 | 1/8 | 2/20 | 0/1 |
+| Score plus one polarity check, no subject gate | 2/20 | 2/8 | 2/20 | 0/1 |
+
+The polarity variant was frozen before a fresh 18-commit holdout from repos outside that split. At 0.80 it caught 1/18, the same as the current rule, with 0 post-fix false alarms for both. On the round-1 repos it reported one unit at 0.80, already labelled compliant. No new report reached 0.80. Precision 0. Not shipped.
+
+`rust-readability-accurate-doc-comments` stays. It judges the function, not the comment unit, and its checks name `# Errors`, `# Panics`, and `# Safety`. It is not a copy of the root rule.
