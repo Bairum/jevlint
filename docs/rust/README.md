@@ -27,7 +27,8 @@ Packs retired on 2026-10-07 are a dated note in [CALIBRATION.md](CALIBRATION.md#
 | 2, strict | [Rust core](../../packs/rust-core/) | Semantic checks requiring visible evidence and contracts where applicable |
 | 3, advisory | [Core advisory](../../packs/rust-core-advisory/) | Broader review without treating inferred contracts as strict failures |
 | 3, specialist | [Performance](../../packs/rust-performance/) | Workload-dependent materialization and I/O review |
-| 3, separate review | [Readability](../../packs/rust-readability/) | Contextual domain values, abstraction levels and Rustdoc accuracy |
+| 3, separate review | [Readability](../../packs/rust-readability/) | Contextual domain values and Rustdoc accuracy |
+| opt-in | [Design](../../packs/design/) | Design-taste rules, including the Rust abstraction-level rule |
 
 Packs are independent, with fixture calibration measured in
 [CALIBRATION.md](CALIBRATION.md). Strict describes the evidence required by

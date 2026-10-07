@@ -266,8 +266,8 @@ These are durable decisions, not F backlog. The complete exclusions remain in [m
 
 ## Verification and status
 
-The suite is **21 rules, 4 packs, 260 evaluation cases, 262 fixtures**
-(260 cases plus two compile-only readability repairs). Faulty, unsafe, and
+The suite is **20 rules, 4 packs, 257 evaluation cases, 259 fixtures**
+(257 cases plus two compile-only readability repairs). Faulty, unsafe, and
 deadlocking fixtures are not executed. The 2026-10-06 measurements, including
 fixture rates at 0.80 and held-out scans, are in [CALIBRATION.md](CALIBRATION.md).
 Packs ship no rule-level `minFailProbability`. The shipped default is 0.80.
@@ -321,7 +321,7 @@ codec signals, not only one manual-codec idiom.
 | --- | --- | --- |
 | `magic-domain-values` | Ported | Tunable numerical policy, unexplained byte allowances, numeric ordering and sentinel ranks; mathematical coefficients, adjacent wire/status mappings, 0/1 flags and unit conversions are explicit exceptions. |
 | `function-control-flow` | Evaluated, dropped as noisy | Conservative variant reported nothing. Broader variant recovered both upstream actionable items, but 29 project reports were independently classified as 5 actionable, 1 nit and 23 false positives: cohesive numerical algorithms and FFI validation/lifecycle glue dominated. Initial fixture majority recall 1/2, specificity 3/4. Native `too_many_lines`/`cognitive_complexity` remain the numerical heuristics; the contextual residual did not justify shipping this port. |
-| `mixed-levels-of-abstraction` | Ported | Substantial coherent codec/layout detail inside domain orchestration, not every incidental calculation. |
+| `mixed-levels-of-abstraction` | Ported, then moved to the opt-in [design pack](../../packs/design/) | Substantial coherent codec/layout detail inside domain orchestration, not every incidental calculation. Moved on 2026-10-07 after 1 actionable / 6 false reports on the held-out private Rust workspace. |
 | `accurate-doc-comments` | Ported | Concrete Rustdoc behavioral and `# Errors`/`# Panics`/`# Safety` contradictions; no missing-documentation mandate. |
 | `boolean-parameter` | Evaluated, dropped | Initial majority recall 1/2, specificity 3/3; its sole project report was independently judged a nit (a clearly named Boolean forwards an external selector). A two-variant enum can help genuinely opaque choices, but this measured port added no actionable project value. Native `fn_params_excessive_bools` retains count ownership. |
 | `invalid-state-representation` | Evaluated, dropped | Initial majority recall 0/2, specificity 3/3, no reported project finding. Impossible-state contracts were not reliably detected despite bounded type context; no rule shipped on fixture syntax alone. Native `struct_excessive_bools` retains count ownership. |

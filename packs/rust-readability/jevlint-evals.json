@@ -44,24 +44,6 @@
       "expect": "pass"
     },
     {
-      "name": "rust-readability-mixed-levels-of-abstraction-fail-telemetry-spool-inline-encoding",
-      "rule": "rust-readability-mixed-levels-of-abstraction",
-      "file": "fixtures/rust-readability-mixed-levels-of-abstraction/fail-telemetry-spool-inline-encoding.rs",
-      "expect": "fail"
-    },
-    {
-      "name": "rust-readability-mixed-levels-of-abstraction-pass-telemetry-spool-named-encoding",
-      "rule": "rust-readability-mixed-levels-of-abstraction",
-      "file": "fixtures/rust-readability-mixed-levels-of-abstraction/pass-telemetry-spool-named-encoding.rs",
-      "expect": "pass"
-    },
-    {
-      "name": "rust-readability-mixed-levels-of-abstraction-pass-summary-incidental-calculation",
-      "rule": "rust-readability-mixed-levels-of-abstraction",
-      "file": "fixtures/rust-readability-mixed-levels-of-abstraction/pass-summary-incidental-calculation.rs",
-      "expect": "pass"
-    },
-    {
       "name": "rust-readability-accurate-doc-comments-fail-errors-checked-parse",
       "rule": "rust-readability-accurate-doc-comments",
       "file": "fixtures/rust-readability-accurate-doc-comments/fail-errors-checked-parse.rs",
