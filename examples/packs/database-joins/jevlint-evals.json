@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "rule": "database-joins",
+      "file": "fixtures/good/Example.cs",
+      "expect": "pass"
+    },
+    {
+      "rule": "database-joins",
+      "file": "fixtures/good/Example.java",
+      "expect": "pass"
+    },
+    {
+      "rule": "database-joins",
+      "file": "fixtures/good/Example.kt",
+      "expect": "pass"
+    },
+    {
+      "rule": "database-joins",
+      "file": "fixtures/good/_example.c",
+      "expect": "pass"
+    },
+    {
+      "rule": "database-joins",
+      "file": "fixtures/good/_example.cpp",
+      "expect": "pass"
+    },
+    {
+      "rule": "database-joins",
+      "file": "fixtures/good/example.go",
+      "expect": "pass"
+    },
+    {
+      "rule": "database-joins",
+      "file": "fixtures/good/example.js",
+      "expect": "pass"
+    },
+    {
+      "rule": "database-joins",
+      "file": "fixtures/good/example.php",
+      "expect": "pass"
+    },
+    {
+      "rule": "database-joins",
+      "file": "fixtures/good/example.py",
+      "expect": "pass"
+    },
+    {
+      "rule": "database-joins",
+      "file": "fixtures/good/example.rb",
+      "expect": "pass"
+    },
+    {
+      "rule": "database-joins",
+      "file": "fixtures/good/example.rs",
+      "expect": "pass"
+    },
+    {
+      "rule": "database-joins",
+      "file": "fixtures/good/example.ts",
+      "expect": "pass"
+    },
+    {
+      "rule": "database-joins",
+      "file": "fixtures/good/example.tsx",
+      "expect": "pass"
+    },
+    {
+      "rule": "database-joins",
+      "file": "fixtures/bad/Example.cs",
+      "expect": "fail"
+    },
+    {
+      "rule": "database-joins",
+      "file": "fixtures/bad/Example.java",
+      "expect": "fail"
+    },
+    {
+      "rule": "database-joins",
+      "file": "fixtures/bad/Example.kt",
+      "expect": "fail"
+    },
+    {
+      "rule": "database-joins",
+      "file": "fixtures/bad/_example.c",
+      "expect": "fail"
+    },
+    {
+      "rule": "database-joins",
+      "file": "fixtures/bad/_example.cpp",
+      "expect": "fail"
+    },
+    {
+      "rule": "database-joins",
+      "file": "fixtures/bad/example.go",
+      "expect": "fail"
+    },
+    {
+      "rule": "database-joins",
+      "file": "fixtures/bad/example.js",
+      "expect": "fail"
+    },
+    {
+      "rule": "database-joins",
+      "file": "fixtures/bad/example.php",
+      "expect": "fail"
+    },
+    {
+      "rule": "database-joins",
+      "file": "fixtures/bad/example.py",
+      "expect": "fail"
+    },
+    {
+      "rule": "database-joins",
+      "file": "fixtures/bad/example.rb",
+      "expect": "fail"
+    },
+    {
+      "rule": "database-joins",
+      "file": "fixtures/bad/example.rs",
+      "expect": "fail"
+    },
+    {
+      "rule": "database-joins",
+      "file": "fixtures/bad/example.ts",
+      "expect": "fail"
+    },
+    {
+      "rule": "database-joins",
+      "file": "fixtures/bad/example.tsx",
+      "expect": "fail"
+    }
+  ]
+}

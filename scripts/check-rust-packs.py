@@ -16,9 +16,7 @@ if str(_SCRIPT_DIR) not in sys.path:
 import score_evals
 
 
-PACKS = ("rust-core", "rust-core-advisory", "rust-tokio", "rust-api", "rust-unsafe", "rust-performance", "rust-readability")
-TOKIO = '{ version = "=1.53.2", default-features = false, features = ["rt", "rt-multi-thread", "sync", "time", "io-util", "macros"] }'
-PYO3 = '{ version = "=0.29.2", default-features = false, features = ["macros", "abi3-py38", "extension-module"] }'
+PACKS = ("rust-core", "rust-core-advisory", "rust-performance", "rust-readability")
 
 
 def pack_file(pack, root, relative):
@@ -173,7 +171,7 @@ def main():
         manifest = [
             '[package]', 'name = "jevlint-rust-pack-fixtures"', 'version = "0.0.0"',
             'edition = "2021"', 'autoexamples = false', '',
-            '[workspace]', '', '[dependencies]', f'tokio = {TOKIO}', f'pyo3 = {PYO3}', '',
+            '[workspace]', '',
         ]
         for index, fixture in enumerate(fixtures):
             manifest.extend([
@@ -186,7 +184,7 @@ def main():
         # Check only: intentionally faulty/unsafe fixtures must never be executed.
         subprocess.run(
             ["cargo", "check", "--all-targets", "--manifest-path", str(cargo_manifest)],
-            cwd=temporary, check=True, env={**os.environ, "PYO3_NO_PYTHON": "1"},
+            cwd=temporary, check=True, env=os.environ,
         )
         print(f"Compiled {len(fixtures)} isolated Rust 2021 fixture targets across {len(packs)} packs.", flush=True)
         if not args.eval:

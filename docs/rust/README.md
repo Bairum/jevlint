@@ -5,11 +5,13 @@
 The first-class Rust suite lives in `packs/rust-*`, separate from the
 `examples/packs/database-joins` tutorial. Start with the native baseline, then
 use `rust-core` alone for strict, evidence-backed semantic checks. Add
-`rust-core-advisory` for broader review and only the specialists relevant to the
-code: unsafe/FFI, Tokio when used, public API contracts, or performance.
+`rust-core-advisory` for broader review and `rust-performance` only when the
+workload question is in scope.
 Run the opt-in `rust-readability` pack separately for Rust-specific
 maintainability review; generic cross-language style rules are not part of
 the semantic workflow.
+Unsafe, async, and trait-law defects are not a Jevlint pack. See
+[Rust tooling beyond Jevlint](#rust-tooling-beyond-jevlint).
 
 The [coverage ledger](COVERAGE.md) maps every research candidate to implementation,
 native-tool ownership, or an explicit outstanding item and promotion trigger.
@@ -17,15 +19,13 @@ Rule files and fixture compilation are not evidence of model precision.
 The [2026-10-06 calibration](CALIBRATION.md) records fixture rates at the shipped
 0.80 fail-probability threshold, the decision experiment, labelled real-code
 precision, and held-out scans. No pack is a blocking gate.
+Packs retired on 2026-10-07 are a dated note in [CALIBRATION.md](CALIBRATION.md#retired-packs).
 
 | Layer | Deliverable | Purpose |
 | --- | --- | --- |
 | 1 | [Native baseline](TOOLING.md) and [check-rust.sh](../../scripts/check-rust.sh) | Rustfmt, compiler, tests/doctests, documentation and Clippy |
 | 2, strict | [Rust core](../../packs/rust-core/) | Semantic checks requiring visible evidence and contracts where applicable |
 | 3, advisory | [Core advisory](../../packs/rust-core-advisory/) | Broader review without treating inferred contracts as strict failures |
-| 3, specialist | [Unsafe/FFI contracts](../../packs/rust-unsafe/) | Locally visible unsafe and FFI contracts; not soundness certification |
-| 3, specialist | [Tokio](../../packs/rust-tokio/) | Runtime, cancellation, admission and lifecycle checks when Tokio is used |
-| 3, specialist | [API contracts](../../packs/rust-api/) | Public constructor, trait and Deref contracts |
 | 3, specialist | [Performance](../../packs/rust-performance/) | Workload-dependent materialization and I/O review |
 | 3, separate review | [Readability](../../packs/rust-readability/) | Contextual domain values, abstraction levels and Rustdoc accuracy |
 
@@ -34,7 +34,21 @@ Packs are independent, with fixture calibration measured in
 `rust-core`, not a claim of production accuracy or automatic blocking enforcement.
 No Rust pack is automatically enabled in this repository's configuration. Select advisory and
 specialist packs deliberately; their presence does not establish that a project
-uses Tokio or needs a particular performance policy.
+needs a particular performance policy.
+
+## Rust tooling beyond Jevlint
+
+Unsafe, async, and trait-law defects measured on 2026-10-07 were not caught by a function-scoped model rule. Use these tools. Several lints did not fire on the measured bugs. A clean run is not a pass.
+
+- rustc `invalid_value`, and the `mem::uninitialized` deprecation. They fired on concrete uninit shapes (a `HashMap`, a concrete `u64`, a concrete header struct). They do not fire on generic `mem::uninitialized::<A>()`.
+- Clippy `cast_ptr_alignment`. It fired on both minimized alignment casts. One upstream function already had `#[allow(clippy::cast_ptr_alignment)]`, so an allow-list hides it.
+- Clippy `non_send_fields_in_send_ty`. It fired when a stored field was `!Send` without the bound. It did not fire on a `*mut T` field (`*mut T` is `Send`).
+- Clippy `await_holding_lock`, `await_holding_refcell_ref`, and `let_underscore_future`. `await_holding_lock` fired on a control std `MutexGuard` held across `.await`, not on any of 19 historical async fixes. `await_holding_refcell_ref` had nothing to catch in that set. `let_underscore_future` fired only on a control `let _ = sleep(...)`.
+- Clippy `derived_hash_with_manual_eq`, `derive_ord_xor_partial_ord`, and `non_canonical_partial_ord_impl`. They did not fire on 15 semantic trait-law breaks (exit 0). A clean Clippy run does not mean Eq, Hash, and Ord agree.
+- Miri, or debug assertions / `cargo careful`, on tests that execute the unsafe path. Most FFI is unsupported. A pass is not soundness. `cargo careful` was not installed for that measurement; one openssl advisory already describes a debug assertion.
+- loom for lock and waker protocols, when someone writes a loom test. It was not run on the 19 fixes.
+- Small law or property tests, one check per contract: Hash call-sequence versus `eq`; `a == b` iff `partial_cmp == Equal`; sort transitivity; `ExactSizeIterator::len` equals `count`; `new()` field-equals `Default` when both exist; `Borrow` hash equals the owner's hash. On 15 reductions, 15/15 buggy checks failed and the executed fixed twins passed.
+- `cargo audit` for known crate bugs. That is how 18 RustSec defects in the unsafe measurement were found.
 
 ## Run the checks
 
@@ -72,12 +86,10 @@ The native script accepts a project directory or `Cargo.toml`. It selects
 Compiler checks, tests/doctests, documentation and Clippy retain `--locked`;
 `--skip-fmt` skips rustfmt only.
 
-The fixture runner uses a temporary Cargo project, real Tokio and PyO3
+The fixture runner uses a temporary Cargo project with no external crate
 dependencies, and the real `jevlint eval --refresh-cache --format json --verbose`
 command on every evaluation run. It never substitutes synthetic model answers.
-It may download uncached dependencies. Direct dependency versions are pinned by
-the runner; transitive dependencies are resolved into a temporary lockfile on
-each invocation, so this is not a fully locked/MSRV/target matrix.
+It does not download crates. This is not a fully locked/MSRV/target matrix.
 
 Evaluation summaries are timestamped JSON files in the system temporary
 directory by default; `--summary` selects a destination.
