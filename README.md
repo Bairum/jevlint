@@ -294,6 +294,30 @@ language and define at least one rule (or list a pack). Available presets are
 `c`, `cpp`, `csharp`, `go`, `java`, `javascript`, `kotlin`, `php`, `python`,
 `ruby`, `rust`, `tsx`, and `typescript`.
 
+### Shipped default set
+
+This repository's `jevlint.json` ships nine language-agnostic rules:
+
+- `accurate-doc-comments`
+- `boolean-parameter`
+- `comment-quality`
+- `function-control-flow`
+- `function-name-behavior-mismatch`
+- `magic-domain-values`
+- `redundant-if-statements`
+- `swallowed-errors`
+- `unnecessary-mutation`
+
+Design-taste rules that need context outside the unit are the opt-in
+[`packs/design`](packs/design/) pack:
+
+```sh
+jevlint plugin install /path/to/jevlint#packs/design
+```
+
+`database-joins` is the tutorial pack at
+[`examples/packs/database-joins`](examples/packs/database-joins/), not a default rule.
+
 Each preset includes common extensions, extraction queries, and localization
 regions. Override only what your project needs:
 
@@ -486,7 +510,7 @@ have many cases, including several for the same language.
   "cases": [
     {
       "rule": "database-joins",
-      "file": "examples/rules/database-joins/bad/example.go",
+      "file": "examples/packs/database-joins/fixtures/bad/example.go",
       "expect": "fail"
     }
   ]
@@ -651,19 +675,19 @@ The first-class Rust suite lives in [`packs/`](packs/), separate from the
 `examples/packs/database-joins` tutorial. Start with the native Cargo/rustfmt/
 Clippy baseline, then run [`rust-core`](packs/rust-core/) alone for strict,
 evidence-backed semantic checks. Add
-[`rust-core-advisory`](packs/rust-core-advisory/) for broader review and only
-code-relevant specialists: [`rust-unsafe`](packs/rust-unsafe/) for unsafe/FFI,
-[`rust-tokio`](packs/rust-tokio/) when Tokio is used,
-[`rust-api`](packs/rust-api/) for API contracts, and
+[`rust-core-advisory`](packs/rust-core-advisory/) for broader review and
 [`rust-performance`](packs/rust-performance/) for workload-sensitive review.
 Use [`rust-readability`](packs/rust-readability/) separately for calibrated
 Rust-specific maintainability review; generic cross-language style rules are
-not part of the primary semantic workflow.
+not part of the primary semantic workflow. Unsafe, async, and trait-law checks
+belong to native tools; see
+[Rust tooling beyond Jevlint](docs/rust/README.md#rust-tooling-beyond-jevlint).
 
 No pack is automatically enabled. Strict describes the core's evidence
 requirements, not automatic blocking enforcement. The 2026-10-06 fixture,
 real-code, and held-out measurements are in
-[CALIBRATION.md](docs/rust/CALIBRATION.md). Packs ship no per-rule floor.
+[CALIBRATION.md](docs/rust/CALIBRATION.md). Packs retired on 2026-10-07 are a
+dated note there. Packs ship no per-rule floor.
 Unsafe fixtures are compile-only, and passing a rule is not a soundness proof.
 
 Commit pack changes, documentation and tests together before pinning a local

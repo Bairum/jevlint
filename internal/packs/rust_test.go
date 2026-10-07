@@ -13,7 +13,7 @@ import (
 	"github.com/codegirl-007/jevlint/internal/scoping"
 )
 
-var rustPacks = []string{"rust-core", "rust-core-advisory", "rust-tokio", "rust-api", "rust-unsafe", "rust-performance", "rust-readability"}
+var rustPacks = []string{"rust-core", "rust-core-advisory", "rust-performance", "rust-readability"}
 
 func TestRustPacksDeclareGuidanceAndApplyOnlyToRustPaths(t *testing.T) {
 	t.Parallel()

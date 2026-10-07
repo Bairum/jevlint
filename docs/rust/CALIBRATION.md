@@ -6,21 +6,18 @@ Fixture rates below are rounded to three decimals. A fitted threshold is the in-
 
 ## Fixture table
 
-Rust packs, threshold 0.80, specificity target 0.90, two runs. Case counts are the evaluated fixtures (461). The run recorded 62 mismatches, 135 inconclusive case-runs, 11 flipped cases, and no errors.
+Remaining Rust packs, threshold 0.80, specificity target 0.90, two runs recorded 2026-10-06. Case counts are that run's evaluated fixtures for these packs (260). The run-wide mismatch counts covered packs retired on 2026-10-07; see [Retired packs](#retired-packs).
 
 | Suite | Fail | Pass | Recall @0.80 | Specificity @0.80 | AUC | Recall at fit | Fitted threshold | Flip rate |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| rust-api | 15 | 20 | 0.467 | 1.000 | 1.000 | 1.000 | 0.234 | 0.029 |
 | rust-core | 52 | 88 | 0.635 | 1.000 | 0.825 | 0.731 | 0.579 | 0.029 |
 | rust-core-advisory | 29 | 39 | 0.621 | 1.000 | 0.967 | 0.966 | 0.363 | 0.000 |
 | rust-performance | 11 | 18 | 0.909 | 1.000 | 0.929 | 0.909 | 0.803 | 0.000 |
 | rust-readability | 10 | 13 | 0.900 | 1.000 | 0.992 | 1.000 | 0.790 | 0.000 |
-| rust-tokio | 34 | 64 | 0.353 | 0.984 | 0.897 | 0.853 | 0.470 | 0.000 |
-| rust-unsafe | 26 | 42 | 0.308 | 1.000 | 0.936 | 0.808 | 0.382 | 0.000 |
 
 Generic rules (`root`), same specificity target, two runs, recorded at threshold **0.50** (not the shipped 0.80): 337 fail and 337 pass, recall 0.961, specificity 1.000, AUC 0.985, recall at fit 0.979, fitted threshold 0.277, flip rate 0.004.
 
-Tokio and unsafe fixture recall at 0.80 is low. Do not treat fixture specificity as production precision.
+Do not treat fixture specificity as production precision.
 
 ## Architecture experiment
 
@@ -40,9 +37,9 @@ unnecessary-abstraction was removed because it had 0 correct reports at any thre
 
 ### Rust correctness threshold round
 
-Question: should the correctness packs (`rust-core`, `rust-core-advisory`, `rust-tokio`, `rust-api`, `rust-unsafe`) report at 0.70 instead of 0.80? The shipped CLI scanned 8 more public repos (walkdir 6fd031c, fd 14dcd92, rusqlite 91f876c, pydantic-core 383eb95, h2 5b17a0e, reqwest 2230ed3, axum 9f1226d, insta 5df39ce; production code only, 7,486 functions, 98M input tokens). Every result at or above 0.50 was labelled blind (129 items; 26 double-labelled, 23 agreed).
+Question: should the correctness packs (`rust-core`, `rust-core-advisory`) report at 0.70 instead of 0.80? The shipped CLI scanned 8 more public repos (walkdir 6fd031c, fd 14dcd92, rusqlite 91f876c, pydantic-core 383eb95, h2 5b17a0e, reqwest 2230ed3, axum 9f1226d, insta 5df39ce; production code only, 7,486 functions, 98M input tokens). Every result at or above 0.50 was labelled blind (129 items; 26 double-labelled, 23 agreed).
 
-- Only `rust-core-advisory` produced material: 126 of 129 items. `rust-tokio`, `rust-api` and `rust-unsafe` had no result at or above 0.50, so this round says nothing about their thresholds.
+- Only `rust-core-advisory` produced material: 126 of 129 items. The other items in that round were not a reason to lower 0.80.
 - `rust-advisory-error-kind-erasure` looked strong below 0.80 (16 correct / 1 false in 0.60–0.80), but every correct item was the same `map_err(|e| ... e.to_string())` pattern in one pydantic-core file. That is one defect repeated, not independent evidence.
 - Setting that cluster aside, precision by band was 0.26 (0.50–0.60), 0.35 (0.60–0.70), 0.33 (0.70–0.80, 3 correct / 6 false) and 0.83 at 0.80 or above (5 / 1). `rust-advisory-partial-mutation-before-error` was 3 / 3 in 0.70–0.80, and `rust-advisory-input-panics` was 0 / 1.
 
@@ -66,7 +63,20 @@ Holdout precision at 0.80 rose from 0.75 to 1.00 with the same recall. Two pass 
 
 ## Held-out
 
-Two runs each, reporting threshold 0.80. A held-out private Rust workspace (43 files): 12 seeded defects, 3/12 reported (6 more between 0.40 and 0.71, visible with `--show-below-floor`); 8 blind unsafe defects, 0/8. Do not rely on `rust-unsafe` for unsafe-defect recall. Clean workspace: 7 reports in each run, 8 distinct across the two runs, all `rust-readability`. Independent review: 2 actionable (`rust-readability-magic-domain-values` 1/1, an unnamed solver tolerance and parameter limits; `rust-readability-mixed-levels-of-abstraction` 1/7, an inline hex-digest decoder inside orchestration) and 6 false positives, all `mixed-levels-of-abstraction` on FFI adapter functions whose primary job is marshalling or publication. That rule is the current noise source on adapter-heavy Rust (precision 1/7 on this set). Projects with large FFI or adapter layers should exclude those paths or disable the rule. This scan was not used to change the rule. [serde_json `afdf6fc`](https://github.com/serde-rs/json/tree/afdf6fc67247dd7fa4fcde1381e6ecc6bcc7a30e) (38 production files): 0 reports.
+Two runs each, reporting threshold 0.80. A held-out private Rust workspace (43 files): 12 seeded defects, 3/12 reported (6 more between 0.40 and 0.71, visible with `--show-below-floor`). Clean workspace: 7 reports in each run, 8 distinct across the two runs, all `rust-readability`. Independent review: 2 actionable (`rust-readability-magic-domain-values` 1/1, an unnamed solver tolerance and parameter limits; `rust-readability-mixed-levels-of-abstraction` 1/7, an inline hex-digest decoder inside orchestration) and 6 false positives, all `mixed-levels-of-abstraction` on FFI adapter functions whose primary job is marshalling or publication. That rule is the current noise source on adapter-heavy Rust (precision 1/7 on this set). Projects with large FFI or adapter layers should exclude those paths or disable the rule. This scan was not used to change the rule. [serde_json `afdf6fc`](https://github.com/serde-rs/json/tree/afdf6fc67247dd7fa4fcde1381e6ecc6bcc7a30e) (38 production files): 0 reports.
+
+
+## Retired packs
+
+2026-10-07. These packs are deleted. Do not reinstall them or lower 0.80 to chase the misses.
+
+- `rust-unsafe`: 0/18 RustSec defects caught at 0.80 (2/18 at 0.50).
+- `rust-tokio`: 0/19 merged async fixes (best score 0.055).
+- `rust-api`: 0/3 in-scope historical defects (0/15 across the broader trait-law benchmark, of which 12 were outside the rules' scope).
+- All three: no result >= 0.50 on 17 public repos.
+- Root cause shared by all three: a token `sourceMatch` gate, comment-gated subjects, and defects that span more than one function.
+
+Use the native tools in [Rust tooling beyond Jevlint](README.md#rust-tooling-beyond-jevlint). The 2026-10-06 run of all seven packs (461 cases) recorded 62 mismatches, 135 inconclusive case-runs, 11 flipped cases, and no errors.
 
 ## History
 

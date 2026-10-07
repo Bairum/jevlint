@@ -1,8 +1,0 @@
-{
-  "version": 1,
-  "id": "Bairum/rust-unsafe",
-  "languages": ["rust"],
-  "rules": "rules.json",
-  "evals": "jevlint-evals.json",
-  "guidance": "guidance.md"
-}

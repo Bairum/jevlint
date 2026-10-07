@@ -1,0 +1,1122 @@
+{
+  "rules": [
+    {
+      "id": "boolean-property-naming",
+      "description": "Boolean property and field names should make the true state clear while following the language's conventions. Predicate prefixes such as Is, Has, Can, or Should and positive state names such as Enabled, Ready, or Visible pass. Concise domain names also pass when the containing type makes their meaning unambiguous. Fail vague names such as Flag, Value, or Data, misleading names, and negative names that create confusing double negatives. Do not require an Is or Should prefix.",
+      "severity": "error",
+      "include": [
+        "**/*"
+      ],
+      "exclude": [
+        "**/examples/**"
+      ],
+      "kinds": [
+        "field"
+      ],
+      "score": {
+        "question": "How clearly does the boolean field name in `source` hide what true means?",
+        "levels": [
+          "Not a boolean field, or the name states the true condition with a positive word or a predicate prefix.",
+          "Borderline: a short domain name whose meaning depends on the containing type in `parentSource`.",
+          "Clear violation: a vague name such as Flag, Value, or Data, a misleading name, or a negative name that hides the true state."
+        ],
+        "paraphrases": [
+          {
+            "question": "How hard is it to tell, from the boolean field's name in `source`, what the true value asserts?",
+            "levels": [
+              "Out of scope or clear: the field is not boolean, or a positive state word or a predicate prefix already says what true means.",
+              "Ambiguous: the name is a short domain word, and only the surrounding type in `parentSource` might settle its meaning.",
+              "Clear violation: the name is a placeholder such as Flag, Value, or Data, it points at the wrong condition, or a negative form conceals the true state."
+            ]
+          },
+          {
+            "question": "How plainly does the boolean name in `source` fail to state the condition that true represents?",
+            "levels": [
+              "Fine or not applicable: not a boolean field, or the name already names the true condition in the language's usual positive or predicate form.",
+              "Uncertain: a brief domain label whose reading depends on the type wrapped around it in `parentSource`.",
+              "Clear violation: Flag, Value, Data, or a similar blank label, a name that implies a different condition, or a negative that buries what true means."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Is the boolean field name vague, such as Flag, Value, or Data?",
+            "yes": "The name is vague and does not state the true condition.",
+            "no": "The name is not a vague placeholder.",
+            "paraphrases": [
+              {
+                "question": "Is the boolean field labeled with a placeholder such as Flag, Value, or Data instead of the condition it stores?",
+                "yes": "The label is a placeholder and does not name the stored condition.",
+                "no": "The label is not a placeholder for the stored condition."
+              }
+            ]
+          },
+          {
+            "question": "Is the boolean field name misleading about what true means?",
+            "yes": "The name points at a different condition than the field stores.",
+            "no": "The name matches the condition the field stores.",
+            "paraphrases": [
+              {
+                "question": "Does the boolean field's name assert a different condition from the one the field actually stores?",
+                "yes": "The name asserts a condition other than the one stored.",
+                "no": "The name asserts the condition that is stored."
+              }
+            ]
+          },
+          {
+            "question": "Is the boolean field name negative in a way that hides the true state?",
+            "yes": "The name is a negative that hides what true means.",
+            "no": "The name is not a hiding negative.",
+            "paraphrases": [
+              {
+                "question": "Does a negative wording of the boolean field conceal the state that true stands for?",
+                "yes": "A negative wording conceals the state that true stands for.",
+                "no": "The wording does not conceal the state that true stands for."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Is `source` a boolean field?",
+            "yes": "`source` is a boolean field.",
+            "no": "`source` is not a boolean field."
+          }
+        ]
+      }
+    },
+    {
+      "id": "redundant-type-properties",
+      "description": "Fail types that store multiple fields representing the same information when one can be reliably and cheaply derived from the others. Do not fail intentionally cached derived values, denormalized data required for performance, serialized or database-backed schemas, compatibility fields, or fields maintained for an external API contract.",
+      "severity": "warning",
+      "include": [
+        "**/*"
+      ],
+      "exclude": [
+        "**/examples/**"
+      ],
+      "kinds": [
+        "type"
+      ],
+      "localize": [
+        "field"
+      ],
+      "score": {
+        "question": "How clearly does `source` store a field the other fields already determine?",
+        "levels": [
+          "No such derived field, or the extra field is a cache, a denormalized copy, a schema field, a compatibility field, or an external API field.",
+          "Borderline: a field that looks derived but may be a stored snapshot the other fields do not fully determine.",
+          "Clear violation: a field whose value is fully determined by the other fields of the same type and is a cheap derivation rather than a cache, schema, or contract field."
+        ],
+        "paraphrases": [
+          {
+            "question": "How completely do the other fields of the type in `source` already decide the extra field?",
+            "levels": [
+              "No extra field is decided by the others, or that field is a cache, a denormalized copy, a schema column, a compatibility slot, or an external API field.",
+              "Ambiguous: the field looks computed, but it may be a snapshot the other fields do not fully decide.",
+              "Clear violation: another field's value is fixed by the rest of the type and is a cheap derivation, not a cache, schema, or contract field."
+            ]
+          },
+          {
+            "question": "How redundant is a stored field in `source` given the rest of that type?",
+            "levels": [
+              "Nothing stored is implied by the other fields, or the extra storage is a cache, a performance copy, a schema field, a compatibility field, or an API contract field.",
+              "Unclear: the field resembles a derivation, yet the other fields may not determine it completely.",
+              "Clear violation: the type stores a value the other fields already fix, and recomputing it would be cheap rather than a cache or a contract."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does `source` store a field whose value is fully determined by other fields of the same type?",
+            "yes": "One field is fully determined by the other fields.",
+            "no": "No field is fully determined by the other fields.",
+            "paraphrases": [
+              {
+                "question": "Is one field in `source` nothing but a value the other fields of that type already fix?",
+                "yes": "One field is nothing but a value the other fields already fix.",
+                "no": "No field is fixed entirely by the other fields."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` declare a type with fields?",
+            "yes": "`source` declares a type with fields.",
+            "no": "`source` does not declare a type with fields."
+          }
+        ]
+      }
+    },
+    {
+      "id": "speculative-generalization",
+      "description": "`source` adds options, extension points, or extra paths that the visible code does not use.",
+      "severity": "warning",
+      "include": [
+        "**/*"
+      ],
+      "exclude": [
+        "**/examples/**"
+      ],
+      "kinds": [
+        "function",
+        "type"
+      ],
+      "score": {
+        "question": "How clearly does `source` declare flexibility the body never uses?",
+        "levels": [
+          "No options, hooks, or spare paths, or the body reads them, or they are a dependency boundary, public API, or framework requirement.",
+          "Borderline: a parameter that is stored or forwarded, so it is unclear whether the body itself uses it.",
+          "Clear violation: options, hooks, or alternate paths are declared and the visible body never reads them."
+        ],
+        "paraphrases": [
+          {
+            "question": "How unused is the configurability or extension point that `source` declares?",
+            "levels": [
+              "Nothing extra is declared, the body reads what it declares, or the extra piece is a dependency boundary, a public API, or a framework requirement.",
+              "Ambiguous: a parameter is stored or passed along, so it is unclear whether this body uses it.",
+              "Clear violation: options, hooks, or alternate paths are declared and the visible body never consults them."
+            ]
+          },
+          {
+            "question": "How much machinery does `source` expose that its own body leaves untouched?",
+            "levels": [
+              "No spare machinery, the body touches what it exposes, or the machinery is a dependency boundary, a library API, or required by a framework.",
+              "Unclear: the value is kept or handed onward, so this body may or may not be the user of it.",
+              "Clear violation: the body never consults options, hooks, or alternate paths that `source` itself declares."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does the body of `source` leave those options or hooks unread?",
+            "yes": "The body never reads the options or hooks.",
+            "no": "The body reads the options or hooks, or none are declared.",
+            "paraphrases": [
+              {
+                "question": "Does the visible body ignore the options or hooks `source` declared?",
+                "yes": "The visible body ignores the declared options or hooks.",
+                "no": "The visible body consults those options or hooks, or none were declared."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` declare an alternate implementation path the visible code never takes?",
+            "yes": "An alternate path is declared and never taken.",
+            "no": "No unused alternate path is declared.",
+            "paraphrases": [
+              {
+                "question": "Does `source` offer a second implementation path that the visible code never enters?",
+                "yes": "A second implementation path is offered and never entered.",
+                "no": "No second implementation path sits unused."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` declare options, hooks, or alternate paths?",
+            "yes": "`source` declares options, hooks, or alternate paths.",
+            "no": "`source` does not declare options, hooks, or alternate paths."
+          }
+        ]
+      }
+    },
+    {
+      "id": "wrapper-without-value",
+      "description": "Fail functions or methods whose only meaningful behavior is forwarding an operation to another function or object without adding domain meaning, validation, transformation, policy, error handling, instrumentation, or a useful abstraction boundary. Adapters, compatibility layers, dependency boundaries, framework hooks, and intentionally stable public APIs pass.",
+      "severity": "warning",
+      "include": [
+        "**/*"
+      ],
+      "exclude": [
+        "**/examples/**"
+      ],
+      "kinds": [
+        "function"
+      ],
+      "context": {
+        "callees": true
+      },
+      "score": {
+        "question": "How clearly does `source` only forward a call?",
+        "levels": [
+          "The body does more than forward, or the forward is an adapter, a compatibility layer, a dependency boundary, a framework hook, or a stable public API.",
+          "Borderline: a forward plus a trivial rename or log, so it is unclear whether anything was added.",
+          "Clear violation: the body only calls another function and returns that result."
+        ],
+        "paraphrases": [
+          {
+            "question": "How completely is `source` a pass-through to another call?",
+            "levels": [
+              "The body does additional work, or the pass-through is an adapter, a compatibility layer, a dependency boundary, a framework hook, or a stable public API.",
+              "Ambiguous: the pass-through also renames or logs, so it is unclear whether that counts as added work.",
+              "Clear violation: the body calls another function and returns that result, and that is the whole behavior."
+            ]
+          },
+          {
+            "question": "How little does `source` add beyond invoking another function and returning its result?",
+            "levels": [
+              "Something beyond the invocation is present, or the invocation is an adapter, a compatibility layer, a dependency boundary, a framework hook, or a stable public API.",
+              "Uncertain: the invocation is paired with a rename or a log whose contribution is doubtful.",
+              "Clear violation: invoking another function and returning its result is the entire body."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does `source` only forward its arguments to that call and return the result?",
+            "yes": "`source` only forwards its arguments and returns the result.",
+            "no": "`source` does more than forward, or it does not return that result.",
+            "paraphrases": [
+              {
+                "question": "Is the whole behavior of `source` to pass its inputs into another call and hand that call's result back?",
+                "yes": "The whole behavior is to pass inputs into another call and hand the result back.",
+                "no": "`source` does further work, or it does not hand that result back."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` call another function?",
+            "yes": "`source` calls another function.",
+            "no": "`source` does not call another function."
+          }
+        ]
+      }
+    },
+    {
+      "id": "mixed-levels-of-abstraction",
+      "description": "`source` both calls a helper for part of a result and inlines a further calculation of that same result.",
+      "severity": "warning",
+      "include": [
+        "**/*"
+      ],
+      "exclude": [
+        "**/examples/**"
+      ],
+      "kinds": [
+        "function"
+      ],
+      "score": {
+        "question": "How clearly does `source` mix a helper call with an inline calculation of the same result?",
+        "levels": [
+          "No helper call, or the body only calls helpers, or the inline work is a small calculation, a property read, validation, or an incidental detail.",
+          "Borderline: a helper call plus a one-line adjustment, so it is unclear whether the adjustment is its own step.",
+          "Clear violation: `source` calls a helper for part of a result and also inlines a further calculation of that same result."
+        ],
+        "paraphrases": [
+          {
+            "question": "How mixed is the helper call in `source` with a hand-written calculation of the same result?",
+            "levels": [
+              "No helper is called, the body only calls helpers, or the hand-written part is a small calculation, a property read, validation, or an incidental detail.",
+              "Ambiguous: a helper call sits next to a one-line adjustment, and that adjustment may or may not be its own step.",
+              "Clear violation: part of the result is delegated to a helper and another part of that same result is calculated in the body."
+            ]
+          },
+          {
+            "question": "How far does `source` both delegate a step and still calculate the rest of that result by hand?",
+            "levels": [
+              "No delegation, only delegation, or the hand work is a small calculation, a property read, validation, or an incidental detail.",
+              "Unclear: delegation plus a single-line tweak that might be incidental rather than a separate step.",
+              "Clear violation: one step of the result is delegated and a further step of that same result is written out in the body."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does `source` also compute part of that same result inline?",
+            "yes": "`source` inlines a calculation of the same result it also delegates.",
+            "no": "`source` does not inline a calculation of that same result.",
+            "paraphrases": [
+              {
+                "question": "Does the body of `source` still calculate part of the result it is also delegating?",
+                "yes": "The body calculates part of the result it also delegates.",
+                "no": "The body does not calculate part of the result it delegates."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` call a helper while building a result?",
+            "yes": "`source` calls a helper while building a result.",
+            "no": "`source` does not call a helper while building a result."
+          }
+        ]
+      }
+    },
+    {
+      "id": "invalid-state-representation",
+      "description": "Fail types that use several independent fields to represent mutually exclusive states when the representation permits contradictory or impossible combinations. Prefer an enum, tagged union, sum type, state object, or equivalent representation when appropriate for the language. Independent fields representing genuinely independent properties pass.",
+      "severity": "warning",
+      "include": [
+        "**/*"
+      ],
+      "exclude": [
+        "**/examples/**"
+      ],
+      "kinds": [
+        "type"
+      ],
+      "localize": [
+        "field"
+      ],
+      "score": {
+        "question": "How clearly does `source` represent exclusive states with separate fields?",
+        "levels": [
+          "No separate fields for exclusive states, the fields are independent properties, or the state is already one enum, tagged union, or single state value.",
+          "Borderline: two fields that usually move together but might still be independent properties.",
+          "Clear violation: separate fields stand for states that cannot hold together, so a contradictory combination is representable."
+        ],
+        "paraphrases": [
+          {
+            "question": "How freely can the fields in `source` combine into a state the domain rules out?",
+            "levels": [
+              "Exclusive states are not separate fields, the fields are independent properties, or the state is already one enum, tagged union, or single state value.",
+              "Ambiguous: two fields tend to change together, yet they might still be independent properties.",
+              "Clear violation: separate fields stand for states that exclude each other, and both can be set at once."
+            ]
+          },
+          {
+            "question": "How open is `source` to storing a combination of states that cannot occur together?",
+            "levels": [
+              "No separate fields encode exclusive states, those fields are independent, or one enum, tagged union, or single state value already holds the state.",
+              "Unclear: the fields usually travel together but may still be independent properties.",
+              "Clear violation: independent fields encode states that exclude each other, so an impossible combination can be stored."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does `source` use separate fields for states that cannot hold together?",
+            "yes": "Separate fields represent mutually exclusive states.",
+            "no": "Separate fields do not represent mutually exclusive states.",
+            "paraphrases": [
+              {
+                "question": "Do separate fields in `source` stand for states that exclude one another?",
+                "yes": "Separate fields stand for states that exclude one another.",
+                "no": "Separate fields do not stand for states that exclude one another."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` declare a type with fields?",
+            "yes": "`source` declares a type with fields.",
+            "no": "`source` does not declare a type with fields."
+          }
+        ]
+      }
+    },
+    {
+      "id": "stringly-typed-control-flow",
+      "description": "Fail strings used as a closed set of control-flow, mode, type, or state values when misspellings or unsupported values could silently change behavior. Prefer enums, named constants, literal unions, tagged types, or equivalent language features. Free-form user input, external protocol values, serialization formats, database values, and genuinely open-ended strings pass.",
+      "severity": "warning",
+      "include": [
+        "**/*"
+      ],
+      "exclude": [
+        "**/examples/**"
+      ],
+      "kinds": [
+        "function",
+        "type"
+      ],
+      "localize": [
+        "statement"
+      ],
+      "context": {
+        "callees": true
+      },
+      "score": {
+        "question": "How clearly does `source` use a string or byte sequence as a closed control-flow set?",
+        "levels": [
+          "`source` does not branch on strings or bytes, or the values are an enum, a named constant, or free-form text.",
+          "A string or byte is compared, but it is unclear whether the values are a closed control set or open text, or whether an external protocol is validated first.",
+          "`source` selects behavior by matching a string or byte sequence to a small fixed set of command, mode, type, or state literals, and it does not validate an external protocol first."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clearly is behavior in `source` chosen from a closed string or byte menu?",
+            "levels": [
+              "`source` never selects a path from string or byte tokens, or those tokens are an enum, a named constant, or open text.",
+              "A string or byte comparison is present, but the menu may be open text, or an external protocol may already be checked.",
+              "Behavior is chosen by matching string or byte tokens that name commands, modes, types, or states, with no prior protocol check."
+            ]
+          },
+          {
+            "question": "To what degree does `source` treat string or byte literals as a fixed control vocabulary?",
+            "levels": [
+              "String and byte literals do not steer control, or they are an enum, a named constant, or unrestricted text.",
+              "Literals appear in a comparison, yet it is unsettled whether they form a fixed vocabulary or were checked as an external protocol.",
+              "String or byte literals are a fixed vocabulary of commands, modes, types, or states that steer behavior, and no protocol check precedes that choice."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Do those string or byte literals form a closed set of commands, modes, types, or states that select behavior?",
+            "yes": "The literals are a closed control set that selects behavior.",
+            "no": "The literals are free-form text, or they do not select behavior.",
+            "paraphrases": [
+              {
+                "question": "Are the compared string or byte literals a fixed vocabulary of commands, modes, types, or states that picks the path?",
+                "yes": "Those literals are a fixed control vocabulary that picks the path.",
+                "no": "Those literals are open text, or they do not pick the path."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` compare or match a string or byte literal?",
+            "yes": "`source` contains a string or byte literal in a comparison, case, or match.",
+            "no": "`source` has no string or byte literal comparison."
+          }
+        ]
+      }
+    },
+    {
+      "id": "duplicate-domain-logic",
+      "description": "Fail when substantially the same domain rule or decision is independently implemented multiple times within the supplied context and those implementations could diverge. Syntactically similar code implementing different domain concepts passes. Small mechanical duplication also passes when extracting it would create an abstraction weaker than the duplication itself.",
+      "severity": "warning",
+      "include": [
+        "**/*"
+      ],
+      "exclude": [
+        "**/examples/**"
+      ],
+      "kinds": [
+        "function"
+      ],
+      "context": {
+        "callees": true
+      },
+      "score": {
+        "question": "How clearly does `source` restate one domain decision with a different test?",
+        "levels": [
+          "`source` tests each domain decision once, the repeated code decides a different concept, or the repetition is a copy of the identical test.",
+          "`source` has similar conditions, but it is unclear whether they are the same domain decision or different concepts.",
+          "`source` implements one domain decision again with a condition that is not the same test, so the two statements can diverge."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clearly does `source` write the same domain decision again with a test that differs?",
+            "levels": [
+              "Each domain decision appears as one test, similar code decides another concept, or the repeat is the same test copied.",
+              "Conditions look alike, yet they may be different concepts rather than one decision written twice.",
+              "One domain decision is written again with a different test, so the two statements can disagree."
+            ]
+          },
+          {
+            "question": "How plain is a second, non-matching statement of one domain decision in `source`?",
+            "levels": [
+              "`source` does not restate a domain decision, the similar code is another concept, or the repeat matches the first test exactly.",
+              "Similar conditions are present, but whether they are one decision is unsettled.",
+              "The same domain decision appears again as a different test, and the two can diverge."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does a condition in `source` restate a domain decision that another condition in `source` already tests, using a test that is not the same?",
+            "yes": "A different condition restates a domain decision already tested in `source`.",
+            "no": "No different condition restates a domain decision already tested in `source`.",
+            "paraphrases": [
+              {
+                "question": "Does `source` test a domain decision it already tests, with a condition that is not a copy?",
+                "yes": "A non-copy condition tests a domain decision already tested in `source`.",
+                "no": "No non-copy condition retests a domain decision already in `source`."
+              }
+            ]
+          },
+          {
+            "question": "Does a separate block in `source` reimplement a domain decision that another block in `source` already implements, with code that is not the same?",
+            "yes": "A separate block reimplements the same domain decision differently.",
+            "no": "No separate block reimplements the same domain decision differently.",
+            "paraphrases": [
+              {
+                "question": "Does another block in `source` carry out a domain decision an earlier block already carries out, without being the same code?",
+                "yes": "Another block carries out the same domain decision in different code.",
+                "no": "No other block carries out the same domain decision in different code."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` contain a conditional?",
+            "yes": "`source` has a conditional.",
+            "no": "`source` has no conditional."
+          },
+          {
+            "question": "Does that conditional implement a domain decision, such as a business rule, eligibility test, or policy?",
+            "yes": "The conditional is a domain decision.",
+            "no": "The conditional is mechanical, such as a loop, parse step, or bounds check."
+          }
+        ]
+      }
+    },
+    {
+      "id": "coincidental-abstraction",
+      "description": "Fail shared abstractions that combine code which is currently structurally similar but represents different domain concepts that may evolve independently. Duplication is preferable when sharing would couple unrelated behavior. Do not fail abstractions built around a genuine shared concept, invariant, protocol, policy, or domain responsibility.",
+      "severity": "warning",
+      "include": [
+        "**/*"
+      ],
+      "exclude": [
+        "**/examples/**"
+      ],
+      "kinds": [
+        "function",
+        "type"
+      ],
+      "context": {
+        "callees": true
+      },
+      "score": {
+        "question": "How clearly does `source` share an abstraction across different domain concepts?",
+        "levels": [
+          "`source` does not share an abstraction, or the shared check, helper, or type represents one concept, invariant, protocol, or policy.",
+          "`source` shares structure, but it is unclear whether the grouped values are one concept or only currently similar.",
+          "`source` applies or defines one abstraction for concepts that are different and only structurally similar."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clearly does `source` put different concepts under one shared check, helper, or type?",
+            "levels": [
+              "`source` does not share a check, helper, or type, or what it shares is one concept, invariant, protocol, or policy.",
+              "Structure is shared, yet the grouped values may still be one concept.",
+              "One check, helper, or type covers concepts that differ and are similar only in shape."
+            ]
+          },
+          {
+            "question": "How plain is it that an abstraction in `source` is shared across concepts that are not the same?",
+            "levels": [
+              "No abstraction is shared across concepts, or the share is one concept, invariant, protocol, or policy.",
+              "An abstraction is shared, but the concepts may be genuinely one.",
+              "The abstraction covers concepts that are different and only look alike."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does `source` pass a value into a helper or threshold that represents a different concept than that value?",
+            "yes": "A value is sent to a helper or threshold from a different concept.",
+            "no": "No value is sent to a helper or threshold from a different concept.",
+            "paraphrases": [
+              {
+                "question": "Does `source` hand a value to a helper or threshold whose concept is not that value's concept?",
+                "yes": "A value goes to a helper or threshold from another concept.",
+                "no": "No value goes to a helper or threshold from another concept."
+              }
+            ]
+          },
+          {
+            "question": "Does a shared type or helper in `source` group fields, parameters, or behaviors from concepts that are only structurally similar?",
+            "yes": "The shared type or helper groups different concepts that are only structurally similar.",
+            "no": "The shared type or helper does not group different concepts.",
+            "paraphrases": [
+              {
+                "question": "Does a type or helper in `source` gather fields, parameters, or behaviors whose concepts match only in shape?",
+                "yes": "The type or helper gathers concepts that match only in shape.",
+                "no": "The type or helper does not gather concepts that match only in shape."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` define or apply a shared helper, threshold, or type?",
+            "yes": "`source` defines or applies a shared helper, threshold, or type.",
+            "no": "`source` does not define or apply a shared helper, threshold, or type."
+          }
+        ]
+      }
+    },
+    {
+      "id": "temporal-coupling",
+      "description": "Fail APIs where callers must invoke multiple methods in a specific fragile or non-obvious order for an object to become valid or usable. Prefer construction or APIs that make valid states explicit when practical. Lifecycle APIs, builders, transactions, streams, framework callbacks, and protocols whose ordering is inherent to the domain pass.",
+      "severity": "warning",
+      "include": [
+        "**/*"
+      ],
+      "exclude": [
+        "**/examples/**"
+      ],
+      "kinds": [
+        "type"
+      ],
+      "score": {
+        "question": "How clearly does `source` require a later init step before it is valid?",
+        "levels": [
+          "`source` is complete at construction, or the required order is a builder, lifecycle, transaction, stream, or protocol.",
+          "`source` has setup steps, but it is unclear whether callers must run them in a fragile order or the order is inherent to the domain.",
+          "`source` is invalid until a separate init method runs or a setup flag is set, and that order is not a builder, lifecycle, transaction, stream, or protocol."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clearly must a caller finish a later setup step before `source` can be used?",
+            "levels": [
+              "`source` is ready at construction, or the order is a builder, lifecycle, transaction, stream, or protocol.",
+              "Setup steps exist, yet the order may be inherent to the domain rather than fragile.",
+              "`source` cannot be used until a separate init method runs or a setup flag is set, and that order is not a builder, lifecycle, transaction, stream, or protocol."
+            ]
+          },
+          {
+            "question": "How plain is an unready state in `source` that a later init has to clear?",
+            "levels": [
+              "`source` has no unready state, or the order belongs to a builder, lifecycle, transaction, stream, or protocol.",
+              "Setup is visible, but it may be the domain's own order rather than an extra init.",
+              "An unready state remains until a separate init runs or a setup flag is set, outside a builder, lifecycle, transaction, stream, or protocol."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does `source` require a separate init or setup method before another method is valid?",
+            "yes": "A separate init or setup method must run before another method is valid.",
+            "no": "No separate init or setup method is required before another method is valid.",
+            "paraphrases": [
+              {
+                "question": "Must another method wait until a separate init or setup method has run?",
+                "yes": "Another method is invalid until a separate init or setup method runs.",
+                "no": "No method waits on a separate init or setup method."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` carry a flag that records whether setup has run, such that use before the flag is set is invalid?",
+            "yes": "A flag records that setup has not run, and use before it is set is invalid.",
+            "no": "`source` has no setup flag that makes early use invalid.",
+            "paraphrases": [
+              {
+                "question": "Does a flag in `source` mark setup as unfinished, so use before it is set is invalid?",
+                "yes": "A flag marks setup unfinished, and use before it is set is invalid.",
+                "no": "No flag marks setup unfinished in a way that makes early use invalid."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` declare a type or methods on one object?",
+            "yes": "`source` declares a type or methods on one object.",
+            "no": "`source` declares neither a type nor methods on one object."
+          }
+        ]
+      }
+    },
+    {
+      "id": "hidden-global-dependency",
+      "description": "Fail domain logic that depends on mutable global state, process-wide configuration, environment variables, or other hidden dependencies when those dependencies materially affect behavior and could reasonably be passed explicitly. Application startup code, framework configuration, constants, logging, metrics, and language-standard global facilities pass.",
+      "severity": "warning",
+      "include": [
+        "**/*"
+      ],
+      "exclude": [
+        "**/examples/**"
+      ],
+      "kinds": [
+        "function"
+      ],
+      "localize": [
+        "statement"
+      ],
+      "context": {
+        "callees": true
+      },
+      "score": {
+        "question": "How clearly does `source` depend on hidden mutable state?",
+        "levels": [
+          "`source` uses only parameters and locals, or the read is a constant, logging, metrics, startup configuration, or a language-standard facility.",
+          "`source` reads a name that is not a parameter, but it is unclear whether that name is mutable domain state or an allowed facility.",
+          "`source` uses mutable global, static, or environment state that is not a parameter in its result, and that read is domain state rather than an allowed facility."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clearly does the result of `source` depend on mutable state the caller does not pass?",
+            "levels": [
+              "The result uses only parameters and locals, or the outside read is a constant, logging, metrics, startup configuration, or a language-standard facility.",
+              "An outside name is read, yet it may be an allowed facility rather than mutable domain state.",
+              "Mutable global, static, or environment state that is not a parameter is used in the result, and it is domain state rather than an allowed facility."
+            ]
+          },
+          {
+            "question": "How plain is a hidden mutable input in the result of `source`?",
+            "levels": [
+              "`source` has no hidden mutable input in its result, or the input is a constant, logging, metrics, startup configuration, or a language-standard facility.",
+              "A non-parameter name appears, but it may not be mutable domain state.",
+              "The result uses mutable global, static, or environment state the caller does not pass, and that state is not an allowed facility."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Is that name mutable global, static, or environment state used in the result?",
+            "yes": "The name is mutable global, static, or environment state used in the result.",
+            "no": "The name is not mutable hidden state used in the result.",
+            "paraphrases": [
+              {
+                "question": "Does `source` use mutable global, static, or environment state, rather than a parameter, when producing its result?",
+                "yes": "Mutable global, static, or environment state is used in the result.",
+                "no": "The result does not use mutable global, static, or environment state."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` read a name that is not a parameter and not a local declared in `source`?",
+            "yes": "`source` reads a name that is not a parameter or a local it declares.",
+            "no": "`source` reads only parameters and locals it declares."
+          }
+        ]
+      }
+    },
+    {
+      "id": "constructor-side-effects",
+      "description": "Fail constructors or initialization functions that unexpectedly perform substantial network, database, filesystem, process, or other external side effects when callers would reasonably expect object construction to be cheap and predictable. Dependency wiring, lightweight validation, local initialization, resource wrappers, and APIs whose construction semantics clearly imply resource acquisition pass.",
+      "severity": "warning",
+      "include": [
+        "**/*"
+      ],
+      "exclude": [
+        "**/examples/**"
+      ],
+      "kinds": [
+        "function"
+      ],
+      "localize": [
+        "statement"
+      ],
+      "context": {
+        "callees": true
+      },
+      "score": {
+        "question": "How clearly does `source` perform external I/O while constructing or loading an object?",
+        "levels": [
+          "`source` is not a constructor, New, create, load, or init function, or it only assigns fields, validates locally, or stores a resource the caller already opened.",
+          "`source` looks like construction or loading and calls something that might be I/O, but the call's effect is unclear.",
+          "A constructor, New, create, load, or init function in `source` opens a file, connects to a database, reaches the network, or starts a process."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clearly does construction, creation, loading, or initialization in `source` touch an external resource?",
+            "levels": [
+              "`source` is not construction, creation, loading, or initialization, or it only assigns fields, validates locally, or stores a resource the caller already opened.",
+              "The unit looks like construction or loading and calls out, but the call may not be filesystem, database, network, or process I/O.",
+              "Construction, creation, loading, or initialization opens a file, connects to a database, reaches the network, or starts a process."
+            ]
+          },
+          {
+            "question": "How plain is external I/O inside a constructor, factory, loader, or initializer in `source`?",
+            "levels": [
+              "No constructor, factory, loader, or initializer performs external I/O, or the body only stores fields, checks inputs, or keeps a caller-opened resource.",
+              "A constructor-like function calls out, yet the effect may not be external I/O.",
+              "A constructor, factory, loader, or initializer opens a file, talks to a database, uses the network, or launches a process."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does `source` open a file or other filesystem resource?",
+            "yes": "`source` opens a file or other filesystem resource.",
+            "no": "`source` does not open a filesystem resource.",
+            "paraphrases": [
+              {
+                "question": "Does `source` open something on the filesystem?",
+                "yes": "`source` opens a filesystem resource.",
+                "no": "`source` opens nothing on the filesystem."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` connect to a database or send a query?",
+            "yes": "`source` connects to a database or sends a query.",
+            "no": "`source` does not connect to a database or send a query.",
+            "paraphrases": [
+              {
+                "question": "Does `source` open a database connection or issue a query?",
+                "yes": "`source` opens a database connection or issues a query.",
+                "no": "`source` neither opens a database connection nor issues a query."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` perform network I/O or fetch a remote resource?",
+            "yes": "`source` performs network I/O or fetches a remote resource.",
+            "no": "`source` does not perform network I/O or fetch a remote resource.",
+            "paraphrases": [
+              {
+                "question": "Does `source` talk to the network or retrieve a remote resource?",
+                "yes": "`source` talks to the network or retrieves a remote resource.",
+                "no": "`source` does not talk to the network or retrieve a remote resource."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` start a process or external command?",
+            "yes": "`source` starts a process or external command.",
+            "no": "`source` does not start a process or external command.",
+            "paraphrases": [
+              {
+                "question": "Does `source` launch a process or run an external command?",
+                "yes": "`source` launches a process or runs an external command.",
+                "no": "`source` does not launch a process or run an external command."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Is `source` a constructor, New function, create function, load function, or initialization function?",
+            "yes": "`source` constructs, creates, loads, or initializes an object.",
+            "no": "`source` is ordinary logic, not construction, creation, loading, or initialization."
+          }
+        ]
+      }
+    },
+    {
+      "id": "parallel-data-structures",
+      "description": "Fail multiple collections that represent parts of the same entities and must remain synchronized by index, key, or insertion order when a single structure or type could represent the relationship directly. Separate indexes, performance-oriented data layouts, ECS-style designs, columnar data, and intentionally normalized representations pass.",
+      "severity": "warning",
+      "include": [
+        "**/*"
+      ],
+      "exclude": [
+        "**/examples/**"
+      ],
+      "kinds": [
+        "type",
+        "function"
+      ],
+      "context": {
+        "callees": true
+      },
+      "score": {
+        "question": "How clearly does `source` keep one entity's parts in collections that must stay aligned?",
+        "levels": [
+          "`source` keeps each entity in one structure, or the split is a separate index, a columnar layout, or an intentionally normalized store.",
+          "`source` uses separate collections, but it is unclear whether they are parts of the same entities or independent.",
+          "Separate collections hold parts of the same entities and must stay aligned by index, key, or insertion order."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clearly must separate collections in `source` stay in step because they hold parts of the same entities?",
+            "levels": [
+              "Each entity lives in one structure, or the split is a separate index, a columnar layout, or an intentionally normalized store.",
+              "Separate collections are used, yet they may be independent rather than parts of the same entities.",
+              "Separate collections hold parts of the same entities and must stay aligned by index, key, or insertion order."
+            ]
+          },
+          {
+            "question": "How plain is a split of one entity across collections that have to remain aligned?",
+            "levels": [
+              "`source` does not split an entity that way, or the split is an index, a columnar layout, or a normalized store.",
+              "Collections sit side by side, but whether they are parts of one entity is unsettled.",
+              "Parts of the same entities sit in separate collections that must remain aligned by index, key, or insertion order."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Do those collections hold parts of the same entities and have to stay aligned by index, key, or insertion order?",
+            "yes": "The collections hold parts of the same entities and must stay aligned.",
+            "no": "The collections do not have to stay aligned as parts of the same entities.",
+            "paraphrases": [
+              {
+                "question": "Do separate collections in `source` each hold a piece of the same entities and therefore have to remain aligned by index, key, or insertion order?",
+                "yes": "Each collection holds a piece of the same entities and they must remain aligned.",
+                "no": "The collections do not each hold a piece of the same entities that must remain aligned."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` declare or update separate collections?",
+            "yes": "`source` declares or updates separate collections.",
+            "no": "`source` does not declare or update separate collections."
+          }
+        ]
+      }
+    },
+    {
+      "id": "excessive-optional-configuration",
+      "description": "Fail configuration objects or function signatures with many unrelated optional switches when the options represent distinct modes, responsibilities, or behaviors that would be clearer as separate APIs or structured sub-options. Cohesive configuration objects, framework configuration, serialization settings, and genuinely independent options pass.",
+      "severity": "warning",
+      "include": [
+        "**/*"
+      ],
+      "exclude": [
+        "**/examples/**"
+      ],
+      "kinds": [
+        "function",
+        "type"
+      ],
+      "context": {
+        "callees": true
+      },
+      "score": {
+        "question": "How clearly does `source` mix unrelated optional settings in one object or signature?",
+        "levels": [
+          "`source` is not a configuration object or parameter list, the settings are one cohesive concern, or they are independent command-line flags.",
+          "`source` has several optional settings, but it is unclear whether they are one concern or different responsibilities.",
+          "One object or signature mixes optional settings from different responsibilities, and they are not command-line flags."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clearly does one object or signature in `source` pack optional settings from different jobs?",
+            "levels": [
+              "`source` is not a configuration object or parameter list, the settings share one concern, or they are independent command-line flags.",
+              "Several optional settings are present, yet they may still be one concern.",
+              "One object or signature packs optional settings from different jobs, and they are not command-line flags."
+            ]
+          },
+          {
+            "question": "How plain is a mix of unrelated optional responsibilities in the configuration or parameter list of `source`?",
+            "levels": [
+              "No such mix is present, the options are one cohesive concern, or they are independent command-line flags.",
+              "Optional settings are grouped, but the responsibilities may still be one concern.",
+              "Unrelated responsibilities are mixed as optional settings in one object or signature, and they are not command-line flags."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Do those settings mix different responsibilities rather than one cohesive concern?",
+            "yes": "The settings mix different responsibilities.",
+            "no": "The settings are one cohesive concern.",
+            "paraphrases": [
+              {
+                "question": "Does one object or signature in `source` combine optional settings that belong to different responsibilities?",
+                "yes": "Optional settings from different responsibilities share one object or signature.",
+                "no": "Optional settings in one object or signature belong to one concern."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` declare a configuration object, options type, or a parameter list of settings?",
+            "yes": "`source` declares a configuration object, options type, or a parameter list of settings.",
+            "no": "`source` does not declare configuration or a settings parameter list."
+          }
+        ]
+      }
+    },
+    {
+      "id": "unnecessary-complexity",
+      "description": "The snippet of code is not unnecessarily complicated.",
+      "severity": "warning",
+      "include": [
+        "**/*"
+      ],
+      "exclude": [
+        "**/examples/**"
+      ],
+      "kinds": [
+        "function",
+        "type"
+      ],
+      "localize": [
+        "statement"
+      ],
+      "score": {
+        "question": "How clearly does `source` add a nested branch that restates an enclosing condition?",
+        "levels": [
+          "`source` has no nested branch, or the inner branch decides a different question from the outer branch.",
+          "`source` has a nested branch, but it is unclear whether the inner condition restates the outer one.",
+          "A nested condition repeats or negates the enclosing condition, so the inner branch does not decide a new question."
+        ],
+        "paraphrases": [
+          {
+            "question": "How clearly does a nested condition in `source` restate the condition around it?",
+            "levels": [
+              "`source` has no nested branch, or the inner branch asks a different question from the outer branch.",
+              "A branch is nested, yet the inner condition may ask a new question.",
+              "The inner condition repeats or negates the outer condition, so it does not ask a new question."
+            ]
+          },
+          {
+            "question": "How plain is an inner branch in `source` that retests what the outer branch already settled?",
+            "levels": [
+              "No inner branch retests the outer branch, or the inner branch asks a different question.",
+              "Nesting is present, but the inner test may not restate the outer one.",
+              "The inner branch retests the outer condition by repeating or negating it, and does not decide a new question."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does the inner condition repeat or negate the outer condition?",
+            "yes": "The inner test restates the outer test.",
+            "no": "The inner test asks a different question.",
+            "paraphrases": [
+              {
+                "question": "Does the condition inside the nested branch repeat the outer condition or state its opposite?",
+                "yes": "The inner condition repeats the outer condition or states its opposite.",
+                "no": "The inner condition asks something else."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` add a branch whose result is already decided by a simpler branch in `source`?",
+            "yes": "An added branch's result is already decided by a simpler branch.",
+            "no": "No added branch's result is already decided by a simpler branch.",
+            "paraphrases": [
+              {
+                "question": "Does a branch in `source` reach a result a simpler branch in `source` already settles?",
+                "yes": "A branch reaches a result a simpler branch already settles.",
+                "no": "No branch reaches a result a simpler branch already settles."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` contain a branch nested inside another branch?",
+            "yes": "`source` has a branch inside a branch.",
+            "no": "`source` has no nested branch."
+          }
+        ]
+      }
+    }
+  ]
+}
