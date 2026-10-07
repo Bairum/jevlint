@@ -15,6 +15,8 @@ Remaining Rust packs, threshold 0.80, specificity target 0.90, two runs recorded
 | rust-performance | 11 | 18 | 0.909 | 1.000 | 0.929 | 0.909 | 0.803 | 0.000 |
 | rust-readability | 10 | 13 | 0.900 | 1.000 | 0.992 | 1.000 | 0.790 | 0.000 |
 
+The rust-readability row includes `rust-readability-mixed-levels-of-abstraction` (1 fail and 2 pass cases), which moved to the opt-in design pack on 2026-10-07.
+
 Generic rules (`root`), same specificity target, two runs, recorded at threshold **0.50** (not the shipped 0.80): 337 fail and 337 pass, recall 0.961, specificity 1.000, AUC 0.985, recall at fit 0.979, fitted threshold 0.277, flip rate 0.004.
 
 Do not treat fixture specificity as production precision.

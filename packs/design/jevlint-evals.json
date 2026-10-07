@@ -1940,6 +1940,24 @@
       "rule": "unnecessary-complexity",
       "file": "fixtures/unnecessary-complexity/bad/example.tsx",
       "expect": "fail"
+    },
+    {
+      "name": "rust-readability-mixed-levels-of-abstraction-fail-telemetry-spool-inline-encoding",
+      "rule": "rust-readability-mixed-levels-of-abstraction",
+      "file": "fixtures/rust-readability-mixed-levels-of-abstraction/fail-telemetry-spool-inline-encoding.rs",
+      "expect": "fail"
+    },
+    {
+      "name": "rust-readability-mixed-levels-of-abstraction-pass-telemetry-spool-named-encoding",
+      "rule": "rust-readability-mixed-levels-of-abstraction",
+      "file": "fixtures/rust-readability-mixed-levels-of-abstraction/pass-telemetry-spool-named-encoding.rs",
+      "expect": "pass"
+    },
+    {
+      "name": "rust-readability-mixed-levels-of-abstraction-pass-summary-incidental-calculation",
+      "rule": "rust-readability-mixed-levels-of-abstraction",
+      "file": "fixtures/rust-readability-mixed-levels-of-abstraction/pass-summary-incidental-calculation.rs",
+      "expect": "pass"
     }
   ]
 }

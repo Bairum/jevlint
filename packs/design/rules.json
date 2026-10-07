@@ -1117,6 +1117,94 @@
           }
         ]
       }
+    },
+    {
+      "id": "rust-readability-mixed-levels-of-abstraction",
+      "description": "`source` interleaves domain orchestration with an inline codec.",
+      "severity": "info",
+      "include": [
+        "**/*.rs"
+      ],
+      "sourceMatch": [
+        "\\b(?:let|if|match|for|while|loop|u8|u16|u32|u64|u128|i8|i16|i32|i64|i128|usize|isize|char)\\b|(?:<<|>>|\\^|[&|=\\[\\]])|\\b(?:bytes|chars|to_digit|from_str_radix|to_be_bytes|to_le_bytes|from_be_bytes|from_le_bytes|push|extend_from_slice|copy_from_slice)\\s*\\("
+      ],
+      "kinds": [
+        "function"
+      ],
+      "score": {
+        "question": "How clearly does `source` mix domain orchestration with an inline codec?",
+        "levels": [
+          "`source` stays at one level: a focused codec, orchestration that calls a helper, small glue, or no codec work.",
+          "Low-level steps might be incidental glue or a coherent codec, and it is unclear whether they are a separate responsibility.",
+          "Domain orchestration and a coherent inline codec are both written in `source`."
+        ],
+        "paraphrases": [
+          {
+            "question": "How mixed are the responsibilities inside `source`?",
+            "levels": [
+              "One responsibility only: the codec itself, a caller of a named helper, incidental glue, or no codec at all.",
+              "The low-level lines might be throwaway glue or a codec that deserves its own name, and `source` does not settle that.",
+              "A domain operation and a codec that could stand alone are both spelled out in `source`."
+            ]
+          },
+          {
+            "question": "How obvious is it that `source` both runs a domain operation and writes a codec inline?",
+            "levels": [
+              "`source` does not do both: it is the codec, it delegates the codec, it only glues, or it has no codec.",
+              "Some low-level work is present, but it is ambiguous whether that work is a real codec or just glue.",
+              "Both a domain operation and an inline codec are obvious in `source`."
+            ]
+          }
+        ]
+      },
+      "checks": {
+        "violation": [
+          {
+            "question": "Does `source` interleave domain orchestration with inline byte or character assembly?",
+            "yes": "Both the domain operation and the assembly are written in `source`.",
+            "no": "`source` does not interleave those two.",
+            "paraphrases": [
+              {
+                "question": "Are domain steps and hand-built bytes or characters written together in `source`?",
+                "yes": "`source` both orchestrates a domain operation and assembles bytes or characters inline.",
+                "no": "Those two jobs are not both inline in `source`."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` interleave domain orchestration with inline framing or checksumming?",
+            "yes": "Both the domain operation and the framing or checksum are written in `source`.",
+            "no": "`source` does not interleave those two.",
+            "paraphrases": [
+              {
+                "question": "Does `source` both run a domain operation and compute a frame or checksum in place?",
+                "yes": "The domain operation and the frame or checksum are written in the same function.",
+                "no": "`source` does not combine those two."
+              }
+            ]
+          },
+          {
+            "question": "Does `source` interleave domain orchestration with inline parsing or storage-layout work?",
+            "yes": "Both the domain operation and the layout work are written in `source`.",
+            "no": "`source` does not interleave those two.",
+            "paraphrases": [
+              {
+                "question": "Does `source` both orchestrate a domain operation and spell out parsing or a storage layout?",
+                "yes": "The domain operation and that parse or layout are inline together.",
+                "no": "`source` does not combine those two."
+              }
+            ]
+          }
+        ],
+        "subject": [
+          {
+            "question": "Does `source` contain control flow, a scalar or bit operation, or a byte or character call?",
+            "yes": "`source` has that kind of executable work.",
+            "no": "`source` has none of those signals."
+          }
+        ]
+      },
+      "guidance": "Judge only what `source` shows. Do not invent a layout, caller, or project policy that `source` does not state."
     }
   ]
 }
