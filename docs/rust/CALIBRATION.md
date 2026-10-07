@@ -84,8 +84,18 @@ Before 2026-10-06, calibration fitted per-rule choice-confidence floors on these
 
 ## Doc-comment recall (2026-10-07)
 
-Root `accurate-doc-comments` stays on `docComment` units and the current wording. A 35-commit public benchmark (Go, Java, Python, Rust, TypeScript; repo split recorded before scoring, 20 tune / 15 holdout) caught 1/20 tune and 1/15 holdout pre-fix units at 0.80, with 0 post-fix false alarms on either split. On the round-1 labelled set this rule had 4 violations out of 53 items and caught 0 at 0.80 (1 true / 0 false at 0.70).
+Root `accurate-doc-comments` stays on `docComment` units and the current wording.
 
-The miss is structural. A `docComment` unit's `source` is the comment and `parentSource` is the function. Telling the model to judge the comment against `parentSource` left visible contradictions near 0.1. Judging the function, so the comment and body share `source`, moved some visible contradictions into 0.5–0.9, but checks still capped the fail probability and holdout recall at 0.80 stayed 1/15 with 0 post-fix false alarms. That candidate was not shipped.
+Ceiling on the 35-commit public benchmark, judged from the doc comment plus that function's own body and not a callee: 8/20 tune and 9/15 holdout are visible. The rest are not catchable by any single-unit rule.
+
+Three `function`-kind variants, scored on tune and the round-1 labelled items only. With no checks, the score signal is the fail probability, as the README says. At 0.80, post-fix false alarms were 0/20 for all three.
+
+| Variant | Tune recall @0.80 | Visible subset | Tune @0.70 | Labelled precision @0.80 |
+| --- | --- | --- | --- | --- |
+| Score only | 2/20 | 2/8 | 2/20 | 0/1 |
+| Score plus one literal check, no subject gate | 1/20 | 1/8 | 2/20 | 0/1 |
+| Score plus one polarity check, no subject gate | 2/20 | 2/8 | 2/20 | 0/1 |
+
+The polarity variant was frozen before a fresh 18-commit holdout from repos outside that split. At 0.80 it caught 1/18, the same as the current rule, with 0 post-fix false alarms for both. On the round-1 repos it reported one unit at 0.80, already labelled compliant. No new report reached 0.80. Precision 0. Not shipped.
 
 `rust-readability-accurate-doc-comments` stays. It judges the function, not the comment unit, and its checks name `# Errors`, `# Panics`, and `# Safety`. It is not a copy of the root rule.
