@@ -30,7 +30,8 @@ const usage = `Usage:
   jevlint version
 
 Check flags:
-  --changed             check only git-modified files
+  --base ref            check units changed since the merge-base with ref
+  --changed             check units changed since HEAD, including staged, unstaged, and untracked
   --clear-cache         clear this project's cached evaluations before checking
   --color mode          color output: auto, always, or never (default "auto")
   --config path         rule configuration (default "jevlint.json")
@@ -169,6 +170,8 @@ type checkContext struct {
 	configPath     string
 	concurrency    int
 	changed        bool
+	base           string
+	selection      *changed.Selection
 	cache          cacheMode
 	failOn         config.Severity
 	showBelowFloor bool
@@ -363,7 +366,8 @@ func parseRunOptions(
 	stderr io.Writer,
 ) (runOptions, int, bool) {
 	flags := newRunFlagSet(command, stderr)
-	changedFiles := flags.Bool("changed", false, "check only git-modified files")
+	changedFiles := flags.Bool("changed", false, "check units changed since HEAD")
+	base := flags.String("base", "", "check units changed since the merge-base with ref")
 	clearCache := flags.Bool("clear-cache", false, "clear cached evaluations")
 	color := flags.String("color", "auto", "color output")
 	configPath := flags.String("config", defaultConfigFile, "rule configuration")
@@ -392,6 +396,10 @@ func parseRunOptions(
 	if !valid {
 		return runOptions{}, exitCode, false
 	}
+	if *changedFiles && *base != "" {
+		fmt.Fprintln(stderr, "jevlint: --changed and --base cannot be used together")
+		return runOptions{}, exitUsageError, false
+	}
 	threshold, err := config.ParseSeverity(*failOn)
 	if err != nil {
 		fmt.Fprintln(stderr, "jevlint: --fail-on must be info, warning, or error")
@@ -418,6 +426,7 @@ func parseRunOptions(
 			configPath:     *configPath,
 			concurrency:    *concurrency,
 			changed:        *changedFiles,
+			base:           *base,
 			cache:          mode,
 			failOn:         threshold,
 			showBelowFloor: *showBelowFloor,
@@ -454,7 +463,7 @@ func parseOutputOptions(
 	return parsedFormat, parsedColor, exitSuccess, true
 }
 
-// executeRun narrows the run to changed files and runs a check.
+// executeRun selects changed units when asked and runs a check.
 func executeRun(
 	ctx context.Context,
 	options runOptions,
@@ -466,13 +475,8 @@ func executeRun(
 	if !ready {
 		return exitCode
 	}
-	if options.check.changed && len(options.paths) == 0 {
-		return writeReportOrFail(
-			stdout,
-			stderr,
-			runner.Report{},
-			options.output,
-		)
+	if options.check.selection != nil && options.check.selection.Empty() {
+		return writeReportOrFail(stdout, stderr, scopedReport(*options.check.selection), options.output)
 	}
 	loaded, exitCode := loadRun(options, stderr, userCacheDir)
 	if exitCode != 0 {
@@ -480,32 +484,57 @@ func executeRun(
 	}
 	return runLoaded(ctx, loaded, stdout, stderr)
 }
+func scopedReport(selection changed.Selection) runner.Report {
+	return runner.Report{
+		Scope: &runner.Scope{
+			Base:      selection.Base,
+			MergeBase: selection.MergeBase,
+		},
+	}
+}
 
-// applyChangedFilter narrows the run to the files git reports as changed.
+func diffScope(selection *changed.Selection) *runner.DiffScope {
+	if selection == nil {
+		return nil
+	}
+	return &runner.DiffScope{
+		Base:      selection.Base,
+		MergeBase: selection.MergeBase,
+		Includes:  selection.Overlaps,
+	}
+}
+
+// applyChangedFilter records the diff scope. Discovery stays on the requested
+// paths so callee and type context matches an unscoped check of those paths.
 func applyChangedFilter(
 	options runOptions,
 	stderr io.Writer,
 ) (runOptions, int, bool) {
-	if !options.check.changed {
+	if !options.check.changed && options.check.base == "" {
 		return options, 0, true
+	}
+	ref := options.check.base
+	if options.check.changed {
+		ref = "HEAD"
 	}
 	absoluteConfig, err := filepath.Abs(options.check.configPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "jevlint: resolve config path: %v\n", err)
-		return runOptions{}, 2, false
+		return runOptions{}, exitUsageError, false
 	}
 	root := filepath.Dir(absoluteConfig)
-	files, err := changed.Files(root)
+	selection, err := changed.Since(root, ref)
 	if err != nil {
 		fmt.Fprintf(stderr, "jevlint: %v\n", err)
-		return runOptions{}, 2, false
+		return runOptions{}, exitUsageError, false
 	}
 	requested, err := changed.Relativize(root, options.paths)
 	if err != nil {
 		fmt.Fprintf(stderr, "jevlint: %v\n", err)
-		return runOptions{}, 2, false
+		return runOptions{}, exitUsageError, false
 	}
-	options.paths = changed.Intersect(files, requested)
+	selection = selection.Restrict(requested)
+	options.check.selection = &selection
 	return options, 0, true
 }
 
@@ -679,6 +708,7 @@ func runLoaded(
 		Concurrency:    loaded.options.check.concurrency,
 		ShowBelowFloor: loaded.options.check.showBelowFloor,
 		Progress:       onProgress,
+		Diff:           diffScope(loaded.options.check.selection),
 	})
 	progress.clear()
 	if err != nil {
@@ -858,6 +888,15 @@ func writeSummary(writer io.Writer, style outputStyle, findings []runner.Finding
 
 // writeReportTotals prints the file, unit, evaluation, and cache counts.
 func writeReportTotals(writer io.Writer, report runner.Report) {
+	if report.Scope != nil {
+		fmt.Fprintf(
+			writer,
+			"  scope: %s in %s since %s\n",
+			countLabel(report.Scope.Units, "changed unit", "changed units"),
+			countLabel(report.Scope.Files, "file", "files"),
+			report.Scope.Base,
+		)
+	}
 	fmt.Fprintf(
 		writer,
 		"  %d files · %d code units · %d evaluations\n",

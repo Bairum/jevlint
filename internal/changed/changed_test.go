@@ -79,6 +79,7 @@ func TestIntersectKeepsRequestedSubtree(t *testing.T) {
 	files := []string{"src/a.go", "src/nested/b.go", "other.go"}
 	got := Intersect(files, []string{"src"})
 	assertFiles(t, got, "src/a.go", "src/nested/b.go")
+	assertFiles(t, Intersect(files, []string{"."}), "src/a.go", "src/nested/b.go", "other.go")
 }
 
 func TestRelativizeKeepsPathsInsideRoot(t *testing.T) {

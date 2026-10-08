@@ -299,6 +299,14 @@ func safeTransportError(err error) error {
 
 // Evaluate answers the rules in a batch for one piece of code.
 func (client *Client) Evaluate(ctx context.Context, batch Batch) (map[string]Result, error) {
+	if answers, model, ok, err := client.cachedUnsplit(batch); err != nil {
+		return nil, err
+	} else if ok {
+		if model != "" {
+			client.noteModel(model)
+		}
+		return decodeAnswers(answers, batch, model)
+	}
 	bodies, dropped, oversized, err := client.planRequests(batch)
 	if err != nil {
 		return nil, err
@@ -326,6 +334,29 @@ func (client *Client) Evaluate(ctx context.Context, batch Batch) (map[string]Res
 		client.noteModel(model)
 	}
 	return decodeAnswers(answers, batch, model)
+}
+
+// cachedUnsplit returns a cache hit for the exact unsplit request body.
+// A hit skips budget planning. A miss, including a request that will be
+// split, falls through so each sent body keeps its own cache key.
+func (client *Client) cachedUnsplit(batch Batch) (map[string]QuestionAnswer, string, bool, error) {
+	if client.cache == nil || client.refresh {
+		return nil, "", false, nil
+	}
+	state := stateFor(batch)
+	questions, err := questionsFor(batch, state)
+	if err != nil {
+		return nil, "", false, err
+	}
+	body, err := marshalRequest(client.model, state, questions)
+	if err != nil {
+		return nil, "", false, err
+	}
+	hit, ok := client.hitCache(client.cacheKey(body))
+	if !ok {
+		return nil, "", false, nil
+	}
+	return cloneAnswers(hit.Answers), hit.Model, true, nil
 }
 
 // answersFor returns cached or live per-question answers for one request body.
