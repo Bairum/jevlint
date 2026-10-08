@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -117,4 +118,51 @@ func budgetClient(t *testing.T, endpoint string, budget func([]byte) (Estimate, 
 
 func contains(body []byte, needle string) bool {
 	return strings.Contains(string(body), needle)
+}
+
+func TestCacheHitSkipsBudget(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"model":"jev-1.13.0","answers":{"joins.s0":{"type":"score","score":0}},"usage":{"input_tokens":10,"output_tokens":2}}`))
+	}))
+	defer server.Close()
+	cache, err := newFileCacheAt(filepath.Join(t.TempDir(), "cache"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	budgets := 0
+	client, err := NewClient(Options{
+		APIKey:     "apikey_test",
+		Endpoint:   server.URL,
+		Model:      "jev-1.13.0",
+		Cache:      cache,
+		HTTPClient: server.Client(),
+		Budget: func([]byte) (Estimate, error) {
+			budgets++
+			return Estimate{Total: 10, StateAndLongestQuestion: 10}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch := Batch{
+		Rules:    []config.Rule{{ID: "joins", Description: "Join records."}},
+		CodeUnit: parsing.CodeUnit{Kind: parsing.CodeKindFunction, Name: "Load", Path: "db.go", Source: "func Load() {}"},
+	}
+	if _, err := client.Evaluate(context.Background(), batch); err != nil {
+		t.Fatal(err)
+	}
+	if budgets == 0 {
+		t.Fatal("cache miss did not plan a budget")
+	}
+	spent := budgets
+	if _, err := client.Evaluate(context.Background(), batch); err != nil {
+		t.Fatal(err)
+	}
+	if budgets != spent {
+		t.Fatalf("cache hit planned a budget: before %d after %d", spent, budgets)
+	}
+	if client.CacheStats().Hits != 1 {
+		t.Fatalf("hits = %d", client.CacheStats().Hits)
+	}
 }

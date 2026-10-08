@@ -71,7 +71,7 @@ func TestRunnerConfinesReadsAfterDiscovery(t *testing.T) {
 			if err := os.Symlink(target, path); err != nil {
 				t.Fatal(err)
 			}
-			_, jobs, err := runner.planEvaluations(context.Background(), sourceBoundaryConfig(), boundary, files, nil)
+			_, jobs, err := runner.planEvaluations(context.Background(), sourceBoundaryConfig(), boundary, files, nil, nil)
 			if len(jobs) != 0 {
 				t.Fatalf("replaced external source became an evaluation job: %#v", jobs)
 			}
@@ -150,7 +150,7 @@ func TestRunnerConfinesCalleeContextReads(t *testing.T) {
 	cfg.Rules[0].Include = []string{"caller.go"}
 	cfg.Rules[0].Context.Callees = true
 	evaluator := &capturingEvaluator{}
-	_, jobs, err := runner.planEvaluations(context.Background(), cfg, boundary, files, nil)
+	_, jobs, err := runner.planEvaluations(context.Background(), cfg, boundary, files, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

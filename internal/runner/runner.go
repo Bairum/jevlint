@@ -43,6 +43,24 @@ type Options struct {
 	ShowBelowFloor bool
 	// Progress is called serially after each primary job completes.
 	Progress func(done, total int)
+	// Diff, when set, evaluates only units it accepts. Discovery is unchanged
+	// so callee and type context still come from the requested paths.
+	Diff *DiffScope
+}
+
+// DiffScope is a unit-level selection against a git ref.
+type DiffScope struct {
+	Base      string
+	MergeBase string
+	Includes  func(path string, startLine, endLine uint) bool
+}
+
+// Scope counts the units selected by a diff-scoped check.
+type Scope struct {
+	Base      string `json:"base"`
+	MergeBase string `json:"mergeBase"`
+	Files     int    `json:"files"`
+	Units     int    `json:"units"`
 }
 
 // Decisions counts primary rule answers. Reported and belowFloor follow the
@@ -76,6 +94,7 @@ type Report struct {
 	BelowFloor     []BelowFloorFinding      `json:"belowFloor,omitempty"`
 	Oversized      []evaluation.Oversized   `json:"oversized,omitempty"`
 	ContextDropped []evaluation.ContextDrop `json:"contextDropped,omitempty"`
+	Scope          *Scope                   `json:"scope,omitempty"`
 	SourcePaths    []string                 `json:"-"`
 }
 
@@ -206,6 +225,7 @@ func (runner Runner) Evaluate(ctx context.Context, cfg config.Config, options Op
 		root,
 		files,
 		setup.sourceOverlay,
+		options.Diff,
 	)
 	if err != nil {
 		return Report{}, err
@@ -338,6 +358,7 @@ func (runner Runner) planEvaluations(
 	root *os.Root,
 	files []string,
 	sourceOverlay map[string][]byte,
+	diff *DiffScope,
 ) (Report, []evaluationJob, error) {
 	needCallees := rulesWantCallees(cfg.Rules)
 	needTypes := rulesWantTypes(cfg.Rules)
@@ -379,16 +400,44 @@ func (runner Runner) planEvaluations(
 		if len(planned.applicable) == 0 {
 			continue
 		}
+		units := planned.units
+		if diff != nil {
+			units = unitsInScope(planned.relative, units, diff.Includes)
+			if len(units) == 0 {
+				continue
+			}
+		}
 		report.ScannedFiles++
 		report.SourcePaths = append(report.SourcePaths, planned.relative)
-		report.CodeUnits += len(planned.units)
-		fileJobs, err := jobsForUnits(planned.units, planned.applicable, sourceMatches)
+		report.CodeUnits += len(units)
+		fileJobs, err := jobsForUnits(units, planned.applicable, sourceMatches)
 		if err != nil {
 			return Report{}, nil, err
 		}
 		jobs = append(jobs, fileJobs...)
 	}
+	if diff != nil {
+		report.Scope = &Scope{
+			Base:      diff.Base,
+			MergeBase: diff.MergeBase,
+			Files:     report.ScannedFiles,
+			Units:     report.CodeUnits,
+		}
+	}
 	return report, jobs, nil
+}
+
+func unitsInScope(path string, units []parsing.CodeUnit, includes func(string, uint, uint) bool) []parsing.CodeUnit {
+	if includes == nil {
+		return units
+	}
+	selected := make([]parsing.CodeUnit, 0, len(units))
+	for _, unit := range units {
+		if includes(path, unit.StartLine, unit.EndLine) {
+			selected = append(selected, unit)
+		}
+	}
+	return selected
 }
 
 // extractFile reads one file and records the rules that apply to it.

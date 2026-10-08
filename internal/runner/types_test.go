@@ -149,7 +149,7 @@ func TestRustTypeContextDiscoveryAndTestModulePlanning(t *testing.T) {
 	defer project.Close()
 	testRule := config.Rule{ID: "functions", Kinds: []config.TargetKind{config.TargetKindFunction}, Include: []string{"checks.rs"}}
 	_, jobs, err := runner.planEvaluations(context.Background(), config.Config{Rules: []config.Rule{testRule}}, project,
-		[]string{filepath.Join(root, "lib.rs"), filepath.Join(root, "checks.rs")}, nil)
+		[]string{filepath.Join(root, "lib.rs"), filepath.Join(root, "checks.rs")}, nil, nil)
 	if err != nil || len(jobs) != 0 {
 		t.Fatalf("test module file planned for production rule: jobs=%d, error=%v", len(jobs), err)
 	}

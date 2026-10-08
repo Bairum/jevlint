@@ -84,7 +84,8 @@ go run ./cmd/jevlint eval --rule database-joins --format json
 
 | Flag | Description |
 | --- | --- |
-| `--changed` | Check only git-modified files (staged, unstaged, and untracked). |
+| `--base ref` | Check only units whose lines changed since the merge base of `ref` and `HEAD`. Includes commits, staged edits, unstaged edits, and untracked non-ignored files. Any ref, tag, or SHA works; no default branch is assumed. |
+| `--changed` | Same unit selection as `--base HEAD`: uncommitted changes only. |
 | `--clear-cache` | Clear this project's cached evaluations before checking. New results are cached. |
 | `--color auto\|always\|never` | Control colored text output. Defaults to `auto`. |
 | `--config path` | Use a different rule file. Its directory becomes the project root. |
@@ -94,8 +95,21 @@ go run ./cmd/jevlint eval --rule database-joins --format json
 | `--refresh-cache` | Reevaluate code and replace matching cached results. |
 | `--show-below-floor` | Show results below the reporting threshold. These never affect the exit code. |
 
+`--changed` and `--base` together is an error. A pure deletion selects the unit
+that spans the deletion point. Renames are reported at the destination path;
+deleted files are skipped. Units outside the changed lines are not sent to the
+model. Callee and type context for a selected unit is the same as a check of
+the same paths. An unknown ref asks you to `git fetch` it. A missing merge
+base, including a shallow clone, asks for a deeper fetch (`fetch-depth: 0`).
+
+A warm cache means only changed units are sent. On ripgrep with the Rust packs,
+a warm full check of 4,068 cached requests took 58 seconds before cache hits
+skipped token budgeting and 8 seconds after, with no provider calls either time.
+`--changed` or `--base` also skips unchanged units entirely.
+
 Source reads, including callee context, stay inside the project root. Explicit
-paths outside that root are rejected; `--changed` skips escaping symlinks.
+paths outside that root are rejected; `--changed` and `--base` skip escaping
+symlinks.
 Relative symlinks must stay inside the root. Absolute symlink targets are not
 followed, even when they point inside the root.
 
@@ -124,8 +138,8 @@ on stderr only when stderr is a terminal and is cleared on completion.
 
 | Field | Description |
 | --- | --- |
-| `scannedFiles` | Number of scanned files. |
-| `codeUnits` | Number of extracted code units. |
+| `scannedFiles` | Number of files that had units evaluated. |
+| `codeUnits` | Number of evaluated code units. |
 | `evaluations` | Number of rule evaluations, including localization requests. |
 | `cache` | Cache statistics, when available. |
 | `models` | Sorted distinct answering model ids, including cached answers. |
@@ -135,6 +149,7 @@ on stderr only when stderr is a terminal and is cleared on completion.
 | `belowFloor` | Notable results below the threshold, included only with `--show-below-floor` and when nonempty. Never affect the exit code. |
 | `oversized` | Units skipped because they still exceeded the model input budget. Does not affect the exit code. |
 | `contextDropped` | Units whose callee or type context was dropped so the request fit the budget. |
+| `scope` | Present for `--changed` and `--base`. `base` is the requested ref, `mergeBase` is the resolved commit, and `files` and `units` count what was evaluated. |
 
 Each rule's `decisions` contains integer counts named `pass`, `fail`, `skip`,
 `abstain`, `reported`, and `belowFloor`. `pass`/`fail`/`skip`/`abstain` count
@@ -147,7 +162,50 @@ Findings contain `ruleId`, `severity`, `status`, `path`, `language`, `kind`,
 it up in `rules[ruleId]`.
 
 Text output prints one line with the answering models and token usage, and
-warns when units were skipped as oversized.
+warns when units were skipped as oversized. A diff-scoped run also prints
+`scope: N changed units in M files since <ref>`.
+
+Pull requests can check only what changed. Fetch the full history so the merge
+base exists, keep the evaluation cache in the workspace, and treat findings as
+advisory. A manual full review is `workflow_dispatch` with `--refresh-cache`
+and no `--base`.
+
+```yaml
+name: jevlint
+on:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .cache
+          key: jevlint-${{ runner.os }}-${{ hashFiles('jevlint.json') }}
+      - name: Check changed units
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+          XDG_CACHE_HOME: ${{ github.workspace }}/.cache
+        run: go run github.com/codegirl-007/jevlint/cmd/jevlint check --base origin/${{ github.base_ref }}
+      - name: Full review
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+          XDG_CACHE_HOME: ${{ github.workspace }}/.cache
+        run: go run github.com/codegirl-007/jevlint/cmd/jevlint check --refresh-cache
+```
+
+`continue-on-error` keeps a pull request advisory: exit `1` means findings, exit `2` is a usage or git error.
 
 ## Configuration
 
@@ -399,7 +457,7 @@ For `jev-1.13*` and `typesafe/jev-1.13*`, Jevlint counts each request's tokens
 offline before sending (an exact Jev 1.13 counter ported from
 [oh-my-pi](https://github.com/can1357/oh-my-pi)) and keeps it within the
 documented 64,000-token request limit and 32,000-token state-plus-longest-question
-limit. Other models are not
+limit. A cache hit for the unsplit request skips that count. Other models are not
 preflighted. Over budget, questions are split across requests (Cloudflare is
 also split at 64 questions). If that is not enough, callees are dropped, then
 types, and the report says so. A unit that still does not fit is skipped:
